@@ -1,0 +1,44 @@
+{
+  "name": "Forthy",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Forthy": {
+        "$path": "src/server"
+      }
+    },
+    "StarterGui": {
+      "$className": "StarterGui",
+      "ForthyGui": {
+        "$className": "ScreenGui",
+        "$properties": {
+          "ResetOnSpawn": false,
+          "IgnoreGuiInset": false,
+          "ZIndexBehavior": "Sibling"
+        },
+        "Client": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Forthy": {
+        "$path": "src/shared"
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "FilteringEnabled": true
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$properties": {
+        "CharacterWalkSpeed": 16
+      }
+    }
+  }
+}
