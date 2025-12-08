@@ -1,6 +1,6 @@
 # FORTH TOWER DEFENSE - [Play in Roblox](https://www.roblox.com/games/73272728030902/FORTH-TOWER-DEFENSE)
 
-> 90% ai generated code, cost about 200$ in API cost and about 10 hours of human time
+> 90% ai generated code, cost about 200$ in tokens and about 10 hours of human time
 
 ![0.jpg](images/0.jpg)
 
