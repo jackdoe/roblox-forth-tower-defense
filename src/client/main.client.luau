@@ -1026,8 +1026,11 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 	program:update(state)
 	editor:setPaused(state.paused)
 
-	-- Load golem program source into editor when first entering golem mind mode
-	if state.isGolem and not golemProgramLoaded and state.programSource then
+	-- [FIX] Ensure we are actually targeting THIS golem before overwriting the editor
+	local isTargetingGolem = (currentInterpreterTarget.type == "golem")
+	local matchesTargetId = (state.golemId == currentInterpreterTarget.golemId)
+
+	if state.isGolem and isTargetingGolem and matchesTargetId and not golemProgramLoaded and state.programSource then
 		editor:setTextFormatted(state.programSource)
 		golemProgramLoaded = true
 	end
