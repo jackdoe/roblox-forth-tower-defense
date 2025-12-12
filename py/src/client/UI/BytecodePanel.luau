@@ -228,16 +228,15 @@ function BytecodePanel.create(parent)
 
 	-- ===== BYTECODE SECTION =====
 	-- Layout constants
-	local HEADER_HEIGHT = 28
 	local BC_HEADER_Y = 34
 	local BC_SCROLL_Y = BC_HEADER_Y + 18  -- 52
-	local LINE_HEIGHT = 14
-	local MIN_BC_HEIGHT = 100
-	local MAX_BC_HEIGHT = 400
-	local STACK_GAP = 8
+	local LINE_HEIGHT = 12  -- Actual text line height
+	local MIN_BC_HEIGHT = 60
+	local MAX_BC_HEIGHT = 350
+	local STACK_GAP = 6
 	local STACK_HEADER_HEIGHT = 16
-	local STACK_FRAME_HEIGHT = 80
-	local BOTTOM_PADDING = 10
+	local STACK_FRAME_HEIGHT = 70
+	local BOTTOM_PADDING = 8
 
 	local bcHeader = Instance.new("TextLabel")
 	bcHeader.Size = UDim2.new(1, -20, 0, 16)
