@@ -93,6 +93,7 @@ screenGui.Parent = playerGui
 -- Forward declarations
 local editor, program
 local showHelp -- Forward declaration for help button callback
+local showBytecodePanel -- Forward declaration for step button callback
 
 -- Create UI panels with callbacks
 editor = EditorPanel.create(screenGui, {
@@ -103,6 +104,8 @@ editor = EditorPanel.create(screenGui, {
 	onStep = function(source)
 		-- Server handles loading/pausing if needed
 		stepProgramEvent:FireServer(source, currentInterpreterTarget)
+		-- Auto-open bytecode panel when stepping (unless user manually closed it)
+		showBytecodePanel()
 	end,
 
 	onPause = function()
@@ -122,13 +125,25 @@ program = ProgramPanel.create(screenGui)
 local bytecodePanel = BytecodePanel.create(screenGui)
 
 -- Bytecode panel toggle state
-local bytecodeVisible = true
+-- Hidden by default, auto-opens when stepping through code
+local bytecodeVisible = false
+local bytecodeUserOverride = false  -- True if user manually toggled (respect their choice)
 bytecodePanel:setVisible(bytecodeVisible)
 program:setBytecodeVisible(bytecodeVisible)
+
+-- Function to show bytecode panel (for step button)
+showBytecodePanel = function()
+	if not bytecodeUserOverride then
+		bytecodeVisible = true
+		bytecodePanel:setVisible(true)
+		program:setBytecodeVisible(true)
+	end
+end
 
 -- Wire up bytecode toggle button
 program.onBytecodeToggle = function()
 	bytecodeVisible = not bytecodeVisible
+	bytecodeUserOverride = true  -- User manually toggled, respect their choice
 	bytecodePanel:setVisible(bytecodeVisible)
 	program:setBytecodeVisible(bytecodeVisible)
 end

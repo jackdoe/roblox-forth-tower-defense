@@ -26,7 +26,6 @@ function Runtime.new()
 	-- For API compatibility with old Runtime
 	self.globals = {}
 	self.globalNames = {}
-	self.currentLine = 0
 
 	return self
 end
@@ -116,9 +115,6 @@ function Runtime:step()
 		self.globalNames[name] = true
 	end
 
-	-- Sync current line
-	self.currentLine = vmState.currentLine
-
 	return self.running
 end
 
@@ -163,7 +159,6 @@ function Runtime:stepOnce()
 	for name in pairs(vmState.vars) do
 		self.globalNames[name] = true
 	end
-	self.currentLine = vmState.currentLine
 	self.running = vmState.running and not vmState.halted
 
 	return stillRunning
@@ -192,8 +187,8 @@ function Runtime:getState()
 		source = self.source,
 		globals = allGlobals,
 		globalNames = self.globalNames,
+		-- currentLine derived from bytecode[ip] by VM - passed through for legacy compatibility
 		currentLine = vmState.currentLine,
-		lastLine = vmState.currentLine,
 
 		-- VM-specific state for bytecode visualization
 		vm = {

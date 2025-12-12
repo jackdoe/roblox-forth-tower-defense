@@ -203,9 +203,11 @@ end
 
 -- Get current token index (for UI highlighting)
 -- Returns the current line number (1-indexed) being executed
+-- Derives from bytecode[ip].line - single source of truth
 function Interpreter:getCurrentTokenIndex()
 	if self.runtime then
-		return self.runtime.currentLine
+		local state = self.runtime:getState()
+		return state.currentLine
 	end
 	return nil
 end
@@ -259,14 +261,14 @@ function Interpreter:getDynamicState()
 		end
 	end
 
-	-- Get current line from runtime
-	local currentLine = self.runtime and self.runtime.currentLine or 0
-
 	-- Get VM state for bytecode visualization
+	-- currentLine is derived from bytecode[ip].line by VM - single source of truth
 	local vmState = nil
 	local bytecode = {}
+	local currentLine = 0
 	if self.runtime then
 		local runtimeState = self.runtime:getState()
+		currentLine = runtimeState.currentLine or 0
 		if runtimeState.vm then
 			vmState = runtimeState.vm
 		end

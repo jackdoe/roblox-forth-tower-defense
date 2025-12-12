@@ -43,8 +43,7 @@ function VM.new()
 	-- Iterator state (for for loops)
 	self.iterators = {}
 
-	-- Debug info
-	self.currentLine = 0
+	-- Source code (for reference)
 	self.source = ""
 
 	return self
@@ -75,7 +74,6 @@ function VM:load(compiled)
 	self.error = nil
 	self.output = {}
 	self.iterators = {}
-	self.currentLine = self.code[1] and self.code[1].line or 1
 
 	return true
 end
@@ -195,7 +193,7 @@ function VM:step()
 	end
 
 	local instr = self.code[self.ip]
-	self.currentLine = instr.line or self.currentLine
+	local instrLine = instr.line or 0
 
 	local op = instr.op
 	local arg = instr.arg
@@ -206,7 +204,7 @@ function VM:step()
 	end)
 
 	if not success then
-		self.error = "Line " .. self.currentLine .. ": " .. tostring(err)
+		self.error = "Line " .. instrLine .. ": " .. tostring(err)
 		self.running = false
 		return false
 	end
@@ -703,6 +701,9 @@ function VM:getState()
 		end
 	end
 
+	-- Derive current line from bytecode - single source of truth
+	local currentLine = self.code[self.ip] and self.code[self.ip].line or 0
+
 	return {
 		ip = self.ip,
 		stack = self.stack,
@@ -712,7 +713,7 @@ function VM:getState()
 		halted = self.halted,
 		error = self.error,
 		output = self.output,
-		currentLine = self.currentLine,
+		currentLine = currentLine,
 		code = self.code,
 	}
 end

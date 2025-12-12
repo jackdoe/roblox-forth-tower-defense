@@ -597,7 +597,11 @@ function ProgramPanel.create(parent)
 
 		-- Code display - show Python source with line numbers
 		local tokens = state.tokens  -- For Python, these are source lines
-		local currentLine = state.currentLine or 0  -- Line currently executing
+
+		-- Derive current line from bytecode[ip].line - single source of truth
+		local bytecode = state.bytecode or {}
+		local ip = state.vm and state.vm.ip or 1
+		local currentLine = bytecode[ip] and bytecode[ip].line or 0
 		if tokens and #tokens > 0 then
 			local lines = {}
 			for i, line in ipairs(tokens) do
