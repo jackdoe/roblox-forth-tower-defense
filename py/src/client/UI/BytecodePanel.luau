@@ -312,21 +312,6 @@ function BytecodePanel.create(parent)
 	stackLabel.TextWrapped = true
 	stackLabel.Parent = stackFrame
 
-	-- Track if user is manually scrolling
-	local lastUserScrollTime = 0
-	local isUserScrolling = false
-
-	bcScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-		lastUserScrollTime = tick()
-		isUserScrolling = true
-		-- Reset after a short delay
-		task.delay(1, function()
-			if tick() - lastUserScrollTime >= 0.9 then
-				isUserScrolling = false
-			end
-		end)
-	end)
-
 	panel.frame = frame
 
 	function panel:setTheme(themeName)
@@ -338,9 +323,8 @@ function BytecodePanel.create(parent)
 		stackFrame.BackgroundColor3 = theme.codeBg
 	end
 
-	-- Store current IP for copy and scroll tracking
+	-- Store current IP for copy button
 	local currentIP = 0
-	local lastScrolledIP = -1  -- Track which IP we last scrolled to
 
 	-- Copy button handler
 	copyBtn.MouseButton1Click:Connect(function()
@@ -401,15 +385,14 @@ function BytecodePanel.create(parent)
 				local opColor = OP_COLORS[op] or "#D4D4D4"
 
 				-- Format the line (rich text)
+				-- Current instruction: cyan line number, same layout (no arrow to avoid text jumping)
 				local line
 				if i == ip then
-					-- Current instruction - bright highlight with arrow
-					line = '<font color="#00FFFF"><b>-&gt;' .. addr .. '</b></font> <font color="' .. opColor .. '"><b>' .. op .. '</b></font>'
+					line = '<font color="#00FFFF"><b>' .. addr .. '</b></font> <font color="' .. opColor .. '"><b>' .. op .. '</b></font>'
 					if arg ~= "" then
 						line = line .. ' <font color="#FFFFFF"><b>' .. arg .. '</b></font>'
 					end
 				else
-					-- Normal instruction
 					line = '<font color="#505060">' .. addr .. '</font> <font color="' .. opColor .. '">' .. op .. '</font>'
 					if arg ~= "" then
 						line = line .. ' <font color="#9CDCFE">' .. arg .. '</font>'
@@ -429,14 +412,6 @@ function BytecodePanel.create(parent)
 
 			-- Update canvas size
 			bcScroll.CanvasSize = UDim2.new(0, 0, 0, #bytecode * 14 + 8)
-
-			-- Auto-scroll to keep IP visible (but not if user is scrolling or IP hasn't changed)
-			if not isUserScrolling and ip > 0 and ip <= #bytecode and ip ~= lastScrolledIP then
-				lastScrolledIP = ip
-				local targetY = (ip - 5) * 14  -- Show a few lines before current
-				targetY = math.max(0, math.min(targetY, bcScroll.AbsoluteCanvasSize.Y - bcScroll.AbsoluteWindowSize.Y))
-				bcScroll.CanvasPosition = Vector2.new(0, targetY)
-			end
 		else
 			bcLabel.Text = '<font color="#606080">No bytecode loaded</font>'
 			bcScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
