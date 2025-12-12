@@ -557,25 +557,19 @@ local function createBotProxy(spotId, deps, directBot)
 		return BotRegistry.issueCommand(bot.id, "SUPPLY", { target = targetSpotId }, true)
 	end
 
-	proxy.collect = function(scrapId)
+	proxy.collect = function(scrap)
 		local bot = getBot()
 		-- Don't allow collection if dead
 		if not bot or not isAlive() then return false end
-		if BotRegistry.issueCommand then
-			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrapId }, true)
+
+		-- Handle scrap object from scraps() or raw id
+		local scrapId = scrap
+		if type(scrap) == "table" then
+			scrapId = scrap.id
 		end
-		return false
-	end
 
-	proxy.collect_nearest = function()
-		local bot = getBot()
-		-- Don't allow collection if dead
-		if not bot or not isAlive() or not bot.character or not ScrapManager then return false end
-
-		local x, z = getCharacterPos(bot.character)
-		local scrap = ScrapManager.findNearest(x, z)
-		if scrap and BotRegistry.issueCommand then
-			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrap.id }, true)
+		if BotRegistry.issueCommand and scrapId then
+			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrapId }, true)
 		end
 		return false
 	end
@@ -702,6 +696,88 @@ local function createBotProxy(spotId, deps, directBot)
 				char:SetAttribute("FacingAngle", startAngle)
 			end)
 		end
+	end
+
+	-- =========================================================
+	-- TURTLE-STYLE MOVEMENT (Like Python turtle!)
+	-- =========================================================
+
+	-- forward(steps) - Move forward in facing direction (blocking)
+	proxy.forward = function(steps)
+		steps = steps or 10
+		local bot = getBot()
+		if not bot or not isAlive() or not bot.character then return false end
+		local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+		if not hrp then return false end
+
+		-- Get current facing direction from FacingAngle attribute
+		local facingAngle = bot.character:GetAttribute("FacingAngle") or 0
+
+		-- Calculate target position in world coords
+		local dirX = -math.sin(facingAngle)
+		local dirZ = -math.cos(facingAngle)
+		local targetX = hrp.Position.X + dirX * steps
+		local targetZ = hrp.Position.Z + dirZ * steps
+
+		if BotRegistry and BotRegistry.issueCommand then
+			return BotRegistry.issueCommand(bot.id, "MOVE", { x = targetX, z = targetZ }, true)
+		end
+		return false
+	end
+
+	-- backward(steps) - Move backward (blocking)
+	proxy.backward = function(steps)
+		return proxy.forward(-(steps or 10))
+	end
+
+	-- left(angle) - Turn left (in degrees)
+	proxy.left = function(angle)
+		angle = angle or 90
+		local bot = getBot()
+		if not bot or not bot.character then return false end
+
+		local currentAngle = bot.character:GetAttribute("FacingAngle") or 0
+		local newAngle = currentAngle + math.rad(angle)
+		bot.character:SetAttribute("FacingAngle", newAngle)
+		return true
+	end
+
+	-- right(angle) - Turn right (in degrees)
+	proxy.right = function(angle)
+		return proxy.left(-(angle or 90))
+	end
+
+	-- =========================================================
+	-- SCRAP COLLECTION
+	-- =========================================================
+
+	-- scraps() - Returns list of all scraps sorted by distance (closest first)
+	proxy.scraps = function()
+		local bot = getBot()
+		if not bot or not bot.character or not ScrapManager then return {} end
+
+		local x, z = getCharacterPos(bot.character)
+		local allScraps = ScrapManager.getAll and ScrapManager.getAll() or {}
+
+		-- Build list with distances
+		local result = {}
+		for _, scrap in pairs(allScraps) do
+			if scrap and scrap.position and scrap.id then
+				local dx = scrap.position.X - x
+				local dz = scrap.position.Z - z
+				local dist = math.sqrt(dx * dx + dz * dz)
+				table.insert(result, {
+					id = scrap.id,
+					distance = dist,
+					x = scrap.position.X,
+					z = scrap.position.Z,
+				})
+			end
+		end
+
+		-- Sort by distance (closest first)
+		table.sort(result, function(a, b) return a.distance < b.distance end)
+		return result
 	end
 
 	proxy.methods = function()
@@ -836,9 +912,184 @@ end
 
 function GameAPI.createBotEnvironment(bot, deps)
 	local env = {}
+	local BotRegistry = deps.BotRegistry
+	local ScrapManager = deps.ScrapManager
+	local GolemRegistry = deps.GolemRegistry
+	local EnemyManager = deps.EnemyManager
+	local WaveManager = deps.WaveManager
 
 	-- Use the same proxy as B1-B4, but with direct bot reference
 	env.self = createBotProxy(bot.spotId, deps, bot)
+
+	-- Helper to get fresh bot reference
+	local function getBot()
+		return BotRegistry and BotRegistry.get and BotRegistry.get(bot.id)
+	end
+
+	-- Helper to get bot's HRP
+	local function getHRP()
+		local b = getBot()
+		if b and b.character then
+			return b.character:FindFirstChild("HumanoidRootPart")
+		end
+		return nil
+	end
+
+	-- =========================================================
+	-- VISUAL & FUN METHODS (Instant gratification for kids!)
+	-- =========================================================
+
+	-- self.say("Hello!") - Shows a chat bubble above the bot
+	env.self.say = function(message)
+		if BotRegistry and BotRegistry.setChatBubble then
+			return BotRegistry.setChatBubble(bot.id, tostring(message))
+		end
+		return false
+	end
+
+	-- self.color("red") - Changes body color
+	env.self.color = function(colorName)
+		if BotRegistry and BotRegistry.setBotColor then
+			return BotRegistry.setBotColor(bot.id, colorName)
+		end
+		return false
+	end
+
+	-- self.dance() - Makes the bot spin
+	env.self.dance = function()
+		if BotRegistry and BotRegistry.playEmote then
+			return BotRegistry.playEmote(bot.id, "dance")
+		end
+		return false
+	end
+
+	-- self.jump() - Makes the bot hop
+	env.self.jump = function()
+		if BotRegistry and BotRegistry.playEmote then
+			return BotRegistry.playEmote(bot.id, "jump")
+		end
+		return false
+	end
+
+	-- self.shake() - Makes the bot shake/shiver
+	env.self.shake = function()
+		if BotRegistry and BotRegistry.playEmote then
+			return BotRegistry.playEmote(bot.id, "shake")
+		end
+		return false
+	end
+
+	-- =========================================================
+	-- HIGH-LEVEL "MACRO" METHODS (Easy for kids - no coordinates!)
+	-- Note: forward/backward/left/right/scraps are in the proxy
+	-- =========================================================
+
+	-- self.go_home() - Move to the core (blocking)
+	env.self.go_home = function()
+		local coreX, coreZ = 150, 150
+		if WaveManager and WaveManager.getCorePosition then
+			local corePos = WaveManager.getCorePosition()
+			if corePos then
+				coreX = corePos.x or 150
+				coreZ = corePos.z or 150
+			end
+		end
+		if BotRegistry and BotRegistry.issueCommand then
+			return BotRegistry.issueCommand(bot.id, "MOVE", { x = coreX, z = coreZ }, true)
+		end
+		return false
+	end
+
+	-- self.goto(target) - Go to a turret or position (blocking)
+	env.self.goto = function(target)
+		if not target then return false end
+
+		-- If target has a position method (like T1), use it
+		if type(target) == "table" and target.position then
+			local pos = target.position()
+			if pos then
+				-- Position is already in world coords from the proxy
+				local coreX, coreZ = 150, 150
+				if WaveManager and WaveManager.getCorePosition then
+					local corePos = WaveManager.getCorePosition()
+					if corePos then
+						coreX = corePos.x or 150
+						coreZ = corePos.z or 150
+					end
+				end
+				local worldX = pos[1] + coreX
+				local worldZ = pos[2] + coreZ
+				if BotRegistry and BotRegistry.issueCommand then
+					return BotRegistry.issueCommand(bot.id, "MOVE", { x = worldX, z = worldZ }, true)
+				end
+			end
+		end
+		return false
+	end
+
+	-- self.wait(seconds) - Wait for some time
+	env.self.wait = function(seconds)
+		if BotRegistry and BotRegistry.issueCommand then
+			return BotRegistry.issueCommand(bot.id, "IDLE", { duration = seconds or 1 }, true)
+		end
+		return false
+	end
+
+	-- =========================================================
+	-- COMBAT ABILITIES (For aggressive playstyles)
+	-- =========================================================
+
+	-- self.explode() - Kamikaze attack! Bot dies but damages nearby enemies
+	env.self.explode = function(damage)
+		env.self.say("BOOM!")
+		if BotRegistry and BotRegistry.triggerExplosion then
+			return BotRegistry.triggerExplosion(bot.id, damage or 200)
+		end
+		return false
+	end
+
+	-- self.zap() - Short range electric shock to nearest enemy
+	env.self.zap = function()
+		if BotRegistry and BotRegistry.zapEnemy then
+			return BotRegistry.zapEnemy(bot.id, 10)
+		end
+		return false
+	end
+
+	-- self.attack() - Attack nearest enemy (uses zap)
+	env.self.attack = function()
+		return env.self.zap()
+	end
+
+	-- =========================================================
+	-- SENSOR METHODS (What can I see?)
+	-- =========================================================
+
+	-- self.enemies_nearby() - Count enemies within range
+	env.self.enemies_nearby = function(range)
+		if not EnemyManager or not EnemyManager.findInRange then return 0 end
+		local hrp = getHRP()
+		if not hrp then return 0 end
+
+		local enemies = EnemyManager.findInRange(hrp.Position.X, hrp.Position.Z, range or 20)
+		return #enemies
+	end
+
+	-- self.scrap_nearby() - Is there scrap within range?
+	env.self.scrap_nearby = function(range)
+		if not ScrapManager then return false end
+		local hrp = getHRP()
+		if not hrp then return false end
+
+		local scrap = ScrapManager.findNearest(hrp.Position.X, hrp.Position.Z)
+		if scrap and scrap.position then
+			local dx = scrap.position.X - hrp.Position.X
+			local dz = scrap.position.Z - hrp.Position.Z
+			local dist = math.sqrt(dx * dx + dz * dz)
+			return dist <= (range or 50)
+		end
+		return false
+	end
 
 	-- Add turret references (T1-T4) for bot scripts
 	addTurretProxies(env, deps)
@@ -856,40 +1107,39 @@ end
 function GameAPI.createPlayerEnvironment(player, interp, deps)
 	local ScrapManager = deps.ScrapManager
 	local GolemRegistry = deps.GolemRegistry
+	local WaveManager = deps.WaveManager
 
 	local env = {}
+	env.self = {}
 
+	-- Helper to get player position
 	local function getPlayerPos()
 		local char = interp.character
 		return getCharacterPos(char, 150, 150)
 	end
 
-	-- Player-specific functions
-	env.scrap = function()
-		local x, z = getPlayerPos()
-		if ScrapManager then
-			local scrap = ScrapManager.findNearest(x, z)
-			if scrap and scrap.position then
-				return scrap.position.X, scrap.position.Z
+	-- Helper to get HRP
+	local function getHRP()
+		local char = interp.character
+		if char then
+			return char:FindFirstChild("HumanoidRootPart")
+		end
+		return nil
+	end
+
+	-- Get core position for coordinate transformation
+	local function getCoreOffset()
+		if WaveManager and WaveManager.getCorePosition then
+			local corePos = WaveManager.getCorePosition()
+			if corePos then
+				return corePos.x or 150, corePos.z or 150
 			end
 		end
-		return nil, nil
+		return 150, 150
 	end
 
-	env.has_scrap = function()
-		local x, z = env.scrap()
-		return x ~= nil
-	end
-
-	env.my_scrap = function()
-		return interp.scrapInventory or 0
-	end
-
-	env.bag_full = function()
-		return (interp.scrapInventory or 0) >= (interp.maxCapacity or 50)
-	end
-
-	env.move = function(x, z)
+	-- Internal move function (uses world coords)
+	local function moveInternal(x, z)
 		if not x or not z then return end
 		local char = interp.character
 		if char then
@@ -910,92 +1160,168 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 		end
 	end
 
-	env.teleport = function(x, z)
-		if not x or not z then return end
-		local char = interp.character
-		if char then
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				hrp.CFrame = CFrame.new(x, hrp.Position.Y, z)
-			end
-		end
-	end
+	-- =========================================================
+	-- SELF METHODS (player calls these with self.method())
+	-- =========================================================
 
-	env.golem = function(spotId)
-		if GolemRegistry then
-			local golem = GolemRegistry.getBySpotId(spotId)
-			if golem and golem.character then
-				return getCharacterPos(golem.character)
-			end
-		end
-		return nil, nil
-	end
-
-	env.move_to_golem = function(spotId)
-		local x, z = env.golem(spotId)
-		if x then env.move(x, z) end
-	end
-
-	env.teleport_to_golem = function(spotId)
-		local x, z = env.golem(spotId)
-		if x then env.teleport(x, z) end
-	end
-
-	env.collect = function()
+	-- self.position() - Get player's position relative to core
+	env.self.position = function()
 		local x, z = getPlayerPos()
-		if ScrapManager then
-			local scrap = ScrapManager.findNearest(x, z, 5)
-			if scrap and scrap.id then
-				return ScrapManager.collect(scrap.id, interp)
+		local coreX, coreZ = getCoreOffset()
+		return {x - coreX, z - coreZ}
+	end
+
+	-- self.cargo() - Get scrap inventory
+	env.self.cargo = function()
+		return interp.scrapInventory or 0
+	end
+
+	-- self.max_cargo() - Get max capacity
+	env.self.max_cargo = function()
+		return interp.maxCapacity or 50
+	end
+
+	-- self.is_full() - Check if inventory full
+	env.self.is_full = function()
+		return (interp.scrapInventory or 0) >= (interp.maxCapacity or 50)
+	end
+
+	-- =========================================================
+	-- TURTLE-STYLE MOVEMENT
+	-- =========================================================
+
+	-- self.forward(steps) - Move forward (blocking)
+	env.self.forward = function(dist)
+		dist = dist or 10
+		local hrp = getHRP()
+		if hrp then
+			local dir = hrp.CFrame.LookVector
+			local newPos = hrp.Position + dir * dist
+			moveInternal(newPos.X, newPos.Z)
+		end
+	end
+
+	-- self.backward(steps) - Move backward (blocking)
+	env.self.backward = function(dist)
+		env.self.forward(-(dist or 10))
+	end
+
+	-- self.left(angle) - Turn left (in degrees)
+	env.self.left = function(deg)
+		deg = deg or 90
+		local hrp = getHRP()
+		if hrp then
+			hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(deg), 0)
+		end
+	end
+
+	-- self.right(angle) - Turn right (in degrees)
+	env.self.right = function(deg)
+		env.self.left(-(deg or 90))
+	end
+
+	-- self.goto(target) - Go to a turret, bot, or position
+	env.self.goto = function(target)
+		if not target then return false end
+		-- If target has position method (like T1, B1)
+		if type(target) == "table" and target.position then
+			local pos = target.position()
+			if pos then
+				local coreX, coreZ = getCoreOffset()
+				moveInternal(pos[1] + coreX, pos[2] + coreZ)
+				return true
 			end
+		end
+		-- If target is array [x, z]
+		if type(target) == "table" and target[1] and target[2] then
+			local coreX, coreZ = getCoreOffset()
+			moveInternal(target[1] + coreX, target[2] + coreZ)
+			return true
+		end
+		return false
+	end
+
+	-- =========================================================
+	-- SCRAP & SUPPLY
+	-- =========================================================
+
+	-- self.scraps() - Get all scraps sorted by distance
+	env.self.scraps = function()
+		local x, z = getPlayerPos()
+		local allScraps = ScrapManager and ScrapManager.getAll and ScrapManager.getAll() or {}
+
+		local result = {}
+		for _, scrap in pairs(allScraps) do
+			if scrap and scrap.position and scrap.id then
+				local dx = scrap.position.X - x
+				local dz = scrap.position.Z - z
+				local dist = math.sqrt(dx * dx + dz * dz)
+				table.insert(result, {
+					id = scrap.id,
+					distance = dist,
+					x = scrap.position.X,
+					z = scrap.position.Z,
+				})
+			end
+		end
+
+		table.sort(result, function(a, b) return a.distance < b.distance end)
+		return result
+	end
+
+	-- self.collect(scrap) - Collect a specific scrap (from scraps() list)
+	env.self.collect = function(scrap)
+		if not ScrapManager then return 0 end
+
+		-- If scrap is from scraps() list, it has id field
+		local scrapId = scrap
+		if type(scrap) == "table" then
+			scrapId = scrap.id
+		end
+
+		-- Find the scrap
+		local target = ScrapManager.get and ScrapManager.get(scrapId)
+		if target and target.position then
+			-- Move to scrap
+			moveInternal(target.position.X, target.position.Z)
+			-- Collect it
+			return ScrapManager.collect(scrapId, interp) or 0
 		end
 		return 0
 	end
 
-	env.supply = function(spotId)
-		if GolemRegistry then
-			local golem = GolemRegistry.getBySpotId(spotId)
-			if golem then
-				local amount = GolemRegistry.refillAmmo(golem.id, interp.scrapInventory or 0)
-				interp.scrapInventory = (interp.scrapInventory or 0) - amount
-				return amount
+	-- self.supply(turret) - Supply ammo to a turret
+	env.self.supply = function(target)
+		if not GolemRegistry then return 0 end
+
+		local spotId = target
+		if type(target) == "table" and target.spot then
+			spotId = target.spot()
+		end
+
+		local golem = GolemRegistry.getBySpotId(spotId)
+		if golem then
+			-- Move to golem first
+			if golem.character then
+				local gx, gz = getCharacterPos(golem.character)
+				moveInternal(gx, gz)
 			end
+			-- Supply
+			local amount = GolemRegistry.refillAmmo(golem.id, interp.scrapInventory or 0)
+			interp.scrapInventory = (interp.scrapInventory or 0) - amount
+			return amount
 		end
 		return 0
 	end
 
-	env.forward = function(dist)
-		dist = dist or 1
-		local char = interp.character
-		if char then
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				local dir = hrp.CFrame.LookVector
-				local newPos = hrp.Position + dir * dist
-				env.move(newPos.X, newPos.Z)
-			end
-		end
-	end
+	-- =========================================================
+	-- COMBAT
+	-- =========================================================
 
-	env.left = function(deg)
-		deg = deg or 90
-		local char = interp.character
-		if char then
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(deg), 0)
-			end
-		end
-	end
-
-	env.right = function(deg)
-		deg = deg or 90
-		env.left(-deg)
-	end
-
-	env.hit = function()
+	-- self.hit() - Attack nearest enemy
+	env.self.hit = function()
 		if deps.attackHitEvent and interp.character then
-			local hrp = interp.character:FindFirstChild("HumanoidRootPart")
+			local hrp = getHRP()
 			if hrp and deps.EnemyManager then
 				local x, z = getPlayerPos()
 				local enemy = deps.EnemyManager.findNearest(x, z, 6)

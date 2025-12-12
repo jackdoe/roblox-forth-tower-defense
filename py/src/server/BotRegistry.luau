@@ -29,13 +29,21 @@ local GameAPI = nil            -- For bot environment
 local nextBotNumber = 1
 
 -- Default program for new bots (Python!)
+-- Kid-friendly with visual feedback and easy commands
 local DEFAULT_PROGRAM = [[
-# Collect scrap, supply turret
+# My helpful bot!
+self.say("Ready!")
+self.color("cyan")
+
 while True:
     if self.is_full():
+        self.say("Delivering!")
+        self.goto(T1)
         self.supply(T1)
     else:
-        self.collect_nearest()
+        s = self.scraps()
+        if len(s) > 0:
+            self.collect(s[0])
 ]]
 
 -- Bot stats
@@ -720,10 +728,33 @@ function BotRegistry.update(dt)
 			end
 		end
 
+		-- Emote animations (spin, jump, shake)
+		local emoteRotation = 0
+		local emoteYOffset = 0
+		local emoteTilt = 0
+
+		if bot.emoteEndTime and tick() < bot.emoteEndTime then
+			local emoteProgress = 1 - ((bot.emoteEndTime - tick()) / 2)  -- 0 to 1 over duration
+
+			if bot.emoteType == "spin" then
+				-- Spin around
+				emoteRotation = emoteProgress * math.pi * 8  -- 4 full rotations
+			elseif bot.emoteType == "jump" then
+				-- Hop up and down
+				emoteYOffset = math.sin(emoteProgress * math.pi) * 3
+			elseif bot.emoteType == "shake" then
+				-- Quick shake side to side
+				emoteTilt = math.sin(tick() * 30) * 0.3
+			end
+		else
+			bot.emoteType = nil
+			bot.emoteEndTime = nil
+		end
+
 		-- Apply position + waddle animation via CFrame
-		hrp.CFrame = CFrame.new(newX, baseY + bounce, newZ)
-			* CFrame.Angles(0, facingAngle, 0)  -- Face direction
-			* CFrame.Angles(lean, 0, -tilt)     -- Lean + waddle
+		hrp.CFrame = CFrame.new(newX, baseY + bounce + emoteYOffset, newZ)
+			* CFrame.Angles(0, facingAngle + emoteRotation, 0)  -- Face direction + spin
+			* CFrame.Angles(lean, emoteTilt, -tilt)     -- Lean + waddle + shake
 
 		-- BOT INTERPRETER (if bot has its own program running)
 		-- COMMAND QUEUE (from either bot's own program or Machinist)
@@ -1337,6 +1368,207 @@ end
 
 --============================================================================
 -- UPDATE HEARTBEAT
+--============================================================================
+-- VISUAL & FUN APIs (Kid-friendly features)
+--============================================================================
+
+-- Color map for easy color names
+local colorMap = {
+	red = Color3.fromRGB(255, 80, 80),
+	blue = Color3.fromRGB(80, 150, 255),
+	green = Color3.fromRGB(80, 255, 80),
+	yellow = Color3.fromRGB(255, 255, 80),
+	cyan = Color3.fromRGB(80, 255, 255),
+	purple = Color3.fromRGB(180, 80, 255),
+	pink = Color3.fromRGB(255, 150, 200),
+	orange = Color3.fromRGB(255, 180, 80),
+	white = Color3.fromRGB(240, 240, 240),
+	black = Color3.fromRGB(50, 50, 50),
+}
+
+function BotRegistry.setBotColor(botId, colorName)
+	local bot = bots[botId]
+	if not bot or not bot.character then return false end
+
+	local col = colorMap[string.lower(colorName or "")] or colorMap.white
+	bot.color = col  -- Store for respawn
+
+	-- Apply to visual parts
+	for _, part in pairs(bot.character:GetDescendants()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			part.Color = col
+		end
+	end
+	return true
+end
+
+function BotRegistry.setChatBubble(botId, message)
+	local bot = bots[botId]
+	if not bot or not bot.character then return false end
+
+	-- Find head or primary part
+	local head = bot.character:FindFirstChild("Head") or bot.character.PrimaryPart
+	if not head then return false end
+
+	-- Check for existing or create new BillboardGui
+	local bb = head:FindFirstChild("BotChat")
+
+	if not bb then
+		bb = Instance.new("BillboardGui")
+		bb.Name = "BotChat"
+		bb.Size = UDim2.new(0, 150, 0, 50)
+		bb.StudsOffset = Vector3.new(0, 4, 0)
+		bb.AlwaysOnTop = true
+		bb.Parent = head
+
+		local txt = Instance.new("TextLabel")
+		txt.Name = "ChatText"
+		txt.Size = UDim2.new(1, 0, 1, 0)
+		txt.BackgroundTransparency = 1
+		txt.TextColor3 = Color3.new(1, 1, 1)
+		txt.TextStrokeTransparency = 0
+		txt.TextStrokeColor3 = Color3.new(0, 0, 0)
+		txt.Font = Enum.Font.Cartoon
+		txt.TextSize = 18
+		txt.TextScaled = false
+		txt.Parent = bb
+	end
+
+	local txt = bb:FindFirstChild("ChatText")
+	if txt then
+		txt.Text = tostring(message)
+
+		-- Fade out after 3 seconds
+		task.delay(3, function()
+			if txt and txt.Parent and txt.Text == tostring(message) then
+				txt.Text = ""
+			end
+		end)
+	end
+	return true
+end
+
+function BotRegistry.playEmote(botId, emoteName)
+	local bot = bots[botId]
+	if not bot or not bot.character then return false end
+
+	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+
+	if emoteName == "dance" or emoteName == "spin" then
+		-- Spin animation
+		bot.emoteEndTime = tick() + 2
+		bot.emoteType = "spin"
+	elseif emoteName == "jump" or emoteName == "hop" then
+		-- Hop animation
+		bot.emoteEndTime = tick() + 0.5
+		bot.emoteType = "jump"
+	elseif emoteName == "shake" or emoteName == "shiver" then
+		-- Shake animation
+		bot.emoteEndTime = tick() + 1
+		bot.emoteType = "shake"
+	end
+
+	return true
+end
+
+--============================================================================
+-- COMBAT APIs
+--============================================================================
+
+function BotRegistry.triggerExplosion(botId, damage)
+	local bot = bots[botId]
+	if not bot or not bot.character then return false end
+
+	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+
+	local pos = hrp.Position
+
+	-- Visual explosion
+	local exp = Instance.new("Explosion")
+	exp.Position = pos
+	exp.BlastRadius = 0  -- We handle damage manually
+	exp.BlastPressure = 0
+	exp.Parent = workspace
+
+	-- Damage enemies in radius
+	local EnemyManager = deps.EnemyManager
+	if EnemyManager and EnemyManager.findInRange then
+		local hitList = EnemyManager.findInRange(pos.X, pos.Z, 15)  -- 15 stud radius
+		for _, enemy in ipairs(hitList) do
+			if EnemyManager.damage then
+				EnemyManager.damage(enemy.id, damage or 200)
+			end
+		end
+	end
+
+	-- Kill the bot (kamikaze)
+	BotRegistry.kill(botId)
+	return true
+end
+
+function BotRegistry.zapEnemy(botId, range)
+	local bot = bots[botId]
+	if not bot or not bot.character then return false end
+
+	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+
+	local EnemyManager = deps.EnemyManager
+	if not EnemyManager or not EnemyManager.findNearest then return false end
+
+	local bx, bz = hrp.Position.X, hrp.Position.Z
+	local enemy, dist = EnemyManager.findNearest(bx, bz, range or 10)
+
+	if enemy then
+		-- Visual effect: beam/lightning
+		local enemyPos = enemy.position
+		if enemyPos then
+			local beam = Instance.new("Part")
+			beam.Name = "ZapBeam"
+			beam.Anchored = true
+			beam.CanCollide = false
+			beam.Material = Enum.Material.Neon
+			beam.Color = Color3.fromRGB(100, 200, 255)
+
+			local startPos = hrp.Position
+			local endPos = Vector3.new(enemyPos.X, startPos.Y, enemyPos.Z)
+			local midPoint = (startPos + endPos) / 2
+			local length = (startPos - endPos).Magnitude
+
+			beam.Size = Vector3.new(0.3, 0.3, length)
+			beam.CFrame = CFrame.lookAt(midPoint, endPos)
+			beam.Parent = workspace
+
+			-- Remove after brief flash
+			task.delay(0.15, function()
+				if beam and beam.Parent then
+					beam:Destroy()
+				end
+			end)
+		end
+
+		-- Deal damage
+		if EnemyManager.damage then
+			EnemyManager.damage(enemy.id, 25)
+		end
+		return true
+	end
+	return false
+end
+
+function BotRegistry.visualEffect(botId, effectType, targetId)
+	local bot = bots[botId]
+	if not bot then return false end
+
+	-- For now, just trigger the zap if that's requested
+	if effectType == "zap" then
+		return BotRegistry.zapEnemy(botId, 15)
+	end
+	return false
+end
+
 --============================================================================
 
 function BotRegistry.startUpdateLoop()

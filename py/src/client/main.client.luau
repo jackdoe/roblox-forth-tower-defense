@@ -78,6 +78,7 @@ local currentInterpreterTarget = {
 -- Save player program when entering golem mind
 local savedPlayerProgram = nil
 local golemProgramLoaded = false
+local playerProgramLoaded = false
 
 -- Range indicator for golem mind mode
 local golemMindRangeRing = nil
@@ -1027,20 +1028,29 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 	bytecodePanel:update(state)  -- Update bytecode visualization
 	editor:setPaused(state.paused)
 
-	-- [FIX] Ensure we are actually targeting THIS golem/bot before overwriting the editor
+	-- [FIX] Ensure we are actually targeting THIS golem/bot/player before overwriting the editor
 	local isTargetingGolem = (currentInterpreterTarget.type == "golem")
 	local isTargetingBot = (currentInterpreterTarget.type == "bot")
+	local isTargetingPlayer = (currentInterpreterTarget.type == "player")
 	local matchesGolemId = (state.golemId == currentInterpreterTarget.golemId)
 	local matchesBotId = (state.botId == currentInterpreterTarget.botId)
 
-	if state.isGolem and isTargetingGolem and matchesGolemId and not golemProgramLoaded and state.programSource then
-		editor:setTextFormatted(state.programSource)
+	-- Load golem program
+	if state.isGolem and isTargetingGolem and matchesGolemId and not golemProgramLoaded and state.source then
+		editor:setTextFormatted(state.source)
 		golemProgramLoaded = true
 	end
 
-	if state.isBot and isTargetingBot and matchesBotId and not golemProgramLoaded and state.programSource then
-		editor:setTextFormatted(state.programSource)
+	-- Load bot program
+	if state.isBot and isTargetingBot and matchesBotId and not golemProgramLoaded and state.source then
+		editor:setTextFormatted(state.source)
 		golemProgramLoaded = true
+	end
+
+	-- Load player program (when targeting player and not golem/bot)
+	if isTargetingPlayer and not state.isGolem and not state.isBot and not playerProgramLoaded and state.source then
+		editor:setTextFormatted(state.source)
+		playerProgramLoaded = true
 	end
 
 	if hpBillboard then

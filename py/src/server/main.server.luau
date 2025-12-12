@@ -181,7 +181,7 @@ golemRegisterViewerEvent.OnServerEvent:Connect(function(player, golemId)
 		state.golemId = golemId
 		state.spotId = golem.spotId
 		state.typeName = golem.typeData and golem.typeData.name
-		state.programSource = golem.interpreter.source
+		state.source = golem.interpreter.source
 		state.isGolem = true
 		stateUpdateEvent:FireClient(player, state)
 	end
@@ -205,7 +205,7 @@ botRegisterViewerEvent.OnServerEvent:Connect(function(player, botId)
 		local state = bot.interpreter:getState()
 		state.botId = botId
 		state.spotId = bot.spotId
-		state.programSource = bot.interpreter.source
+		state.source = bot.interpreter.source
 		state.isBot = true
 		stateUpdateEvent:FireClient(player, state)
 	end
@@ -405,6 +405,14 @@ end
 requestStateEvent.OnServerEvent:Connect(function(player)
 	GolemRegistry.sendStateToPlayer(player)
 	BotRegistry.sendStateToPlayer(player)
+
+	-- Also send player's own interpreter state
+	local interp = playerInterpreters[player.UserId]
+	if interp then
+		local state = interp:getState()
+		state.source = interp.source
+		stateUpdateEvent:FireClient(player, state)
+	end
 end)
 
 --============================================================================
@@ -429,18 +437,19 @@ local function sendInterpreterState(player, interpreterTarget)
 
 	local state = interp:getState()
 
+	-- Always include source for editor loading
+	state.source = interp.source
+
 	if golem then
 		state.golemId = interpreterTarget.golemId
 		state.spotId = golem.spotId
 		state.typeName = golem.typeData and golem.typeData.name
-		state.programSource = interp.source
 		state.isGolem = true
 	end
 
 	if bot then
 		state.botId = interpreterTarget.botId
 		state.spotId = bot.spotId
-		state.programSource = interp.source
 		state.isBot = true
 	end
 
@@ -644,8 +653,10 @@ RunService.Heartbeat:Connect(function(dt)
 						state.spotId = golem.spotId
 						state.typeName = golem.typeData and golem.typeData.name
 						state.isGolem = true
+						state.source = golem.interpreter.source  -- Include source for editor
 					else
 						state = interp:getDynamicState()
+						state.source = interp.source
 						playerViewingGolem[userId] = nil
 					end
 				elseif viewingBotId then
@@ -655,12 +666,15 @@ RunService.Heartbeat:Connect(function(dt)
 						state.botId = viewingBotId
 						state.spotId = bot.spotId
 						state.isBot = true
+						state.source = bot.interpreter.source  -- Include source for editor
 					else
 						state = interp:getDynamicState()
+						state.source = interp.source
 						playerViewingBot[userId] = nil
 					end
 				else
 					state = interp:getDynamicState()
+					state.source = interp.source  -- Include source for editor
 				end
 
 				-- Add player list
