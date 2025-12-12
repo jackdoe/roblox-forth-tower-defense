@@ -2,6 +2,8 @@
 -- Python API for tower defense game commands
 -- Refactored: DRY architecture with shared builders
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local GameAPI = {}
 
 --============================================================================
@@ -1122,24 +1124,19 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 	end
 
 	-- Internal move function (uses world coords)
+	-- Sends event to client for smooth movement with woosh effect
+	-- BLOCKING: VM waits until client signals movement complete
 	local function moveInternal(x, z)
 		if not x or not z then return end
-		local char = interp.character
-		if char then
-			local humanoid = char:FindFirstChild("Humanoid")
-			local hrp = char:FindFirstChild("HumanoidRootPart")
-			if humanoid and hrp then
-				local done = false
-				humanoid:MoveTo(Vector3.new(x, hrp.Position.Y, z))
-				local conn = humanoid.MoveToFinished:Connect(function()
-					done = true
-				end)
-				while not done do
-					interp.runtime.waitUntil = os.clock() + 0.1
-					coroutine.yield()
-				end
-				conn:Disconnect()
-			end
+
+		local vm = interp.runtime and interp.runtime.vm
+		local PythonTD = ReplicatedStorage:FindFirstChild("PythonTD")
+		local teleportEvent = PythonTD and PythonTD:FindFirstChild("PlayerTeleport")
+
+		if teleportEvent and interp.player then
+			-- Block VM until movement completes
+			if vm then vm:block() end
+			teleportEvent:FireClient(interp.player, x, z)
 		end
 	end
 

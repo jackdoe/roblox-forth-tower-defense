@@ -58,6 +58,8 @@ local enterBuildModeEvent = createRemoteEvent("EnterBuildMode")
 local playerReadyEvent = createRemoteEvent("PlayerReady")
 local skipBuildEvent = createRemoteEvent("SkipBuild")
 local waveStateEvent = createRemoteEvent("WaveState")
+local playerTeleportEvent = createRemoteEvent("PlayerTeleport")
+local playerMoveCompleteEvent = createRemoteEvent("PlayerMoveComplete")
 
 -- Player interpreters
 local playerInterpreters = {}
@@ -568,6 +570,14 @@ manualAttackEvent.OnServerEvent:Connect(function(player)
 	end
 
 	stateUpdateEvent:FireClient(player, interp:getState())
+end)
+
+-- Player movement complete callback - unblocks VM
+playerMoveCompleteEvent.OnServerEvent:Connect(function(player)
+	local interp = playerInterpreters[player.UserId]
+	if interp and interp.runtime and interp.runtime.vm then
+		interp.runtime.vm:unblock()
+	end
 end)
 
 --============================================================================

@@ -386,4 +386,35 @@ function HelpDatabase.get(word)
 	return nil
 end
 
+-- Alias for compatibility with client code
+function HelpDatabase.getWordHelp(word)
+	local entry = HelpDatabase.get(word)
+	if entry then
+		return {
+			desc = entry.description,
+			signature = entry.signature,
+			example = entry.example,
+		}
+	end
+	return nil
+end
+
+-- Get words in category (returns array of {word=, info=} for client)
+function HelpDatabase.getWordsInCategory(category)
+	local result = {}
+	for _, entry in ipairs(HelpDatabase.entries) do
+		if entry.category == category then
+			table.insert(result, {
+				word = entry.word,
+				info = {
+					desc = entry.description,
+					signature = entry.signature,
+					example = entry.example,
+				}
+			})
+		end
+	end
+	return result
+end
+
 return HelpDatabase

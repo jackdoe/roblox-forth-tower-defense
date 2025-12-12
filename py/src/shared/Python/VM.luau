@@ -40,6 +40,10 @@ function VM.new()
 	-- Wait state
 	self.waitUntil = 0
 
+	-- Blocking operation state (callback-based)
+	-- When true, VM is blocked waiting for external signal
+	self.blocked = false
+
 	-- Iterator state (for for loops)
 	self.iterators = {}
 
@@ -74,6 +78,8 @@ function VM:load(compiled)
 	self.error = nil
 	self.output = {}
 	self.iterators = {}
+	self.blocked = false
+	self.waitUntil = 0
 
 	return true
 end
@@ -183,6 +189,11 @@ function VM:step()
 			return true  -- Still waiting
 		end
 		self.waitUntil = 0
+	end
+
+	-- Check blocked state (callback-based)
+	if self.blocked then
+		return true  -- Waiting for unblock() call
 	end
 
 	-- Check bounds
@@ -728,6 +739,17 @@ end
 -- Resume execution
 function VM:resume()
 	self.paused = false
+end
+
+-- Block execution (for async operations)
+-- Game code calls this, then unblock() when done
+function VM:block()
+	self.blocked = true
+end
+
+-- Unblock execution (called by game when async op completes)
+function VM:unblock()
+	self.blocked = false
 end
 
 -- Step one instruction (for debugger)

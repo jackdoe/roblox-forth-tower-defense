@@ -42,6 +42,8 @@ local skipBuildEvent = PythonTD:WaitForChild("SkipBuild")
 local golemPlaceAtEvent = PythonTD:WaitForChild("GolemPlaceAt")
 local golemSellEvent = PythonTD:WaitForChild("GolemSell")
 local enterBuildModeEvent = PythonTD:WaitForChild("EnterBuildMode")
+local playerTeleportEvent = PythonTD:WaitForChild("PlayerTeleport")
+local playerMoveCompleteEvent = PythonTD:WaitForChild("PlayerMoveComplete")
 
 -- Golem Mind Mode events (viewer registration)
 local golemRegisterViewerEvent = PythonTD:WaitForChild("GolemRegisterViewer")
@@ -1312,6 +1314,58 @@ playAnimationEvent.OnClientEvent:Connect(function(animName, character)
 	if animName == "AxeSwing" then
 		Effects.playAxeSwing(character)
 	end
+end)
+
+-- Player move with woosh effect
+playerTeleportEvent.OnClientEvent:Connect(function(x, z)
+	local char = player.Character
+	if not char then
+		playerMoveCompleteEvent:FireServer()
+		return
+	end
+	local humanoid = char:FindFirstChild("Humanoid")
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not hrp then
+		playerMoveCompleteEvent:FireServer()
+		return
+	end
+
+	local startPos = hrp.Position
+	local endPos = Vector3.new(x, startPos.Y, z)
+
+	-- Woosh trail as we move
+	spawn(function()
+		while humanoid.MoveDirection.Magnitude > 0 or (hrp.Position - endPos).Magnitude > 2 do
+			local part = Instance.new("Part")
+			part.Size = Vector3.new(0.3, 1.5, 0.3)
+			part.Position = hrp.Position - Vector3.new(0, 1, 0)
+			part.Anchored = true
+			part.CanCollide = false
+			part.Material = Enum.Material.Neon
+			part.Color = Color3.fromRGB(100, 180, 255)
+			part.Transparency = 0.5
+			part.Parent = workspace
+
+			spawn(function()
+				for j = 1, 5 do
+					part.Transparency = 0.5 + (j * 0.1)
+					part.Size = part.Size * 0.8
+					wait(0.03)
+				end
+				part:Destroy()
+			end)
+
+			wait(0.05)
+			-- Stop if we reached destination or stopped moving
+			if (hrp.Position - endPos).Magnitude < 2 then break end
+		end
+	end)
+
+	-- Walk to destination, signal server when done
+	humanoid:MoveTo(endPos)
+	humanoid.MoveToFinished:Once(function()
+		playerMoveCompleteEvent:FireServer()
+	end)
 end)
 
 --============================================================================

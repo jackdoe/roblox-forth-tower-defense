@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local DragModule = require(script.Parent.DragModule)
 local ProgramLibrary = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("ProgramLibrary"))
+local HelpDatabase = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("HelpDatabase"))
 
 local EditorPanel = {}
 
@@ -68,8 +69,8 @@ function EditorPanel.create(parent, callbacks)
 	-- Main frame
 	local frame = Instance.new("Frame")
 	frame.Name = "EditorPanel"
-	frame.Size = UDim2.new(0, 480, 0, 235)
-	frame.Position = UDim2.new(0.5, -240, 1, -245)
+	frame.Size = UDim2.new(0, 480, 0, 260)  -- Taller to fit suggestion bar
+	frame.Position = UDim2.new(0.5, -240, 1, -270)
 	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 	frame.BorderSizePixel = 0
 	frame.Parent = parent
@@ -255,7 +256,7 @@ function EditorPanel.create(parent, callbacks)
 	-- Line numbers (inside its own scrolling frame to sync with code)
 	local lineScroll = Instance.new("ScrollingFrame")
 	lineScroll.Name = "LineScroll"
-	lineScroll.Size = UDim2.new(0, 30, 1, -60)
+	lineScroll.Size = UDim2.new(0, 30, 1, -85)  -- Room for suggestion bar
 	lineScroll.Position = UDim2.new(0, 5, 0, 40)
 	lineScroll.BackgroundTransparency = 1
 	lineScroll.BorderSizePixel = 0
@@ -281,7 +282,7 @@ function EditorPanel.create(parent, callbacks)
 	-- Code input container (ScrollingFrame for scrolling long programs)
 	local codeScroll = Instance.new("ScrollingFrame")
 	codeScroll.Name = "CodeScroll"
-	codeScroll.Size = UDim2.new(1, -45, 1, -60)
+	codeScroll.Size = UDim2.new(1, -45, 1, -85)  -- Room for suggestion bar
 	codeScroll.Position = UDim2.new(0, 40, 0, 40)
 	codeScroll.BackgroundTransparency = 1
 	codeScroll.BorderSizePixel = 0
@@ -314,6 +315,89 @@ function EditorPanel.create(parent, callbacks)
 	codeScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		lineScroll.CanvasPosition = Vector2.new(0, codeScroll.CanvasPosition.Y)
 	end)
+
+	-- Suggestion bar (autocomplete snippets)
+	local suggestBar = Instance.new("ScrollingFrame")
+	suggestBar.Name = "SuggestBar"
+	suggestBar.Size = UDim2.new(1, -10, 0, 22)
+	suggestBar.Position = UDim2.new(0, 5, 1, -40)
+	suggestBar.BackgroundColor3 = Color3.fromRGB(25, 30, 35)
+	suggestBar.BorderSizePixel = 0
+	suggestBar.ScrollBarThickness = 0
+	suggestBar.ScrollingDirection = Enum.ScrollingDirection.X
+	suggestBar.CanvasSize = UDim2.new(0, 0, 0, 0)
+	suggestBar.AutomaticCanvasSize = Enum.AutomaticSize.X
+	suggestBar.Parent = frame
+
+	local suggestCorner = Instance.new("UICorner")
+	suggestCorner.CornerRadius = UDim.new(0, 4)
+	suggestCorner.Parent = suggestBar
+
+	local suggestLayout = Instance.new("UIListLayout")
+	suggestLayout.FillDirection = Enum.FillDirection.Horizontal
+	suggestLayout.Padding = UDim.new(0, 4)
+	suggestLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	suggestLayout.Parent = suggestBar
+
+	local suggestPadding = Instance.new("UIPadding")
+	suggestPadding.PaddingLeft = UDim.new(0, 4)
+	suggestPadding.PaddingTop = UDim.new(0, 2)
+	suggestPadding.Parent = suggestBar
+
+	-- Pool of suggestion buttons
+	local MAX_SUGGESTIONS = 12
+	local suggestionBtns = {}
+	local suggestionConns = {}  -- Store click connections separately
+	for i = 1, MAX_SUGGESTIONS do
+		local btn = Instance.new("TextButton")
+		btn.Name = "Suggest" .. i
+		btn.Size = UDim2.new(0, 80, 0, 18)
+		btn.BackgroundColor3 = Color3.fromRGB(50, 60, 70)
+		btn.Text = ""
+		btn.TextColor3 = Color3.fromRGB(180, 200, 220)
+		btn.Font = Enum.Font.Code
+		btn.TextSize = 10
+		btn.AutomaticSize = Enum.AutomaticSize.X
+		btn.Visible = false
+		btn.LayoutOrder = i
+		btn.Parent = suggestBar
+
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 3)
+		btnCorner.Parent = btn
+
+		local btnPadding = Instance.new("UIPadding")
+		btnPadding.PaddingLeft = UDim.new(0, 6)
+		btnPadding.PaddingRight = UDim.new(0, 6)
+		btnPadding.Parent = btn
+
+		suggestionBtns[i] = btn
+		suggestionConns[i] = nil
+	end
+
+	-- Help tooltip (shows above suggestion bar when 1 match)
+	local helpTooltip = Instance.new("TextLabel")
+	helpTooltip.Name = "HelpTooltip"
+	helpTooltip.Size = UDim2.new(1, -10, 0, 16)
+	helpTooltip.Position = UDim2.new(0, 5, 1, -58)
+	helpTooltip.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
+	helpTooltip.BackgroundTransparency = 0.1
+	helpTooltip.BorderSizePixel = 0
+	helpTooltip.Text = ""
+	helpTooltip.TextColor3 = Color3.fromRGB(150, 200, 150)
+	helpTooltip.Font = Enum.Font.Code
+	helpTooltip.TextSize = 10
+	helpTooltip.TextXAlignment = Enum.TextXAlignment.Left
+	helpTooltip.Visible = false
+	helpTooltip.Parent = frame
+
+	local helpCorner = Instance.new("UICorner")
+	helpCorner.CornerRadius = UDim.new(0, 3)
+	helpCorner.Parent = helpTooltip
+
+	local helpPadding = Instance.new("UIPadding")
+	helpPadding.PaddingLeft = UDim.new(0, 6)
+	helpPadding.Parent = helpTooltip
 
 	-- Hints bar
 	local hintsBar = Instance.new("TextLabel")
@@ -379,6 +463,386 @@ function EditorPanel.create(parent, callbacks)
 	end
 
 	textBox:GetPropertyChangedSignal("Text"):Connect(updateCharCount)
+
+	-- =====================================================
+	-- AUTOCOMPLETE SYSTEM WITH HELP
+	-- Generated from actual API methods, uses trie for prefix matching
+	-- Each entry has: word, snippet, help (signature + description)
+	-- =====================================================
+
+	-- Keywords (no prefix needed)
+	local KEYWORDS = {
+		{word = "while", snippet = "while True:\n    ", help = "while condition: | Loop while true"},
+		{word = "if", snippet = "if :\n    ", help = "if condition: | Conditional branch"},
+		{word = "elif", snippet = "elif :\n    ", help = "elif condition: | Else-if branch"},
+		{word = "else", snippet = "else:\n    ", help = "else: | Default branch"},
+		{word = "for", snippet = "for i in range():\n    ", help = "for var in list: | Loop over items"},
+		{word = "def", snippet = "def ():\n    ", help = "def name(args): | Define function"},
+		{word = "return", snippet = "return ", help = "return value | Exit function"},
+		{word = "True", snippet = "True", help = "True | Boolean true"},
+		{word = "False", snippet = "False", help = "False | Boolean false"},
+		{word = "None", snippet = "None", help = "None | No value"},
+		{word = "and", snippet = "and ", help = "a and b | Both must be true"},
+		{word = "or", snippet = "or ", help = "a or b | Either can be true"},
+		{word = "not", snippet = "not ", help = "not a | Invert boolean"},
+		{word = "in", snippet = "in ", help = "x in list | Check membership"},
+	}
+
+	-- Global functions (no prefix needed)
+	local GLOBALS = {
+		{word = "print", snippet = "print()", help = "print(value, ...) | Output to console"},
+		{word = "len", snippet = "len()", help = "len(list) -> int | Get length"},
+		{word = "range", snippet = "range()", help = "range(n) or range(start,end) | Number sequence"},
+		{word = "abs", snippet = "abs()", help = "abs(x) -> num | Absolute value"},
+		{word = "min", snippet = "min()", help = "min(a, b, ...) -> num | Smallest value"},
+		{word = "max", snippet = "max()", help = "max(a, b, ...) -> num | Largest value"},
+		{word = "int", snippet = "int()", help = "int(x) -> int | Convert to integer"},
+		{word = "str", snippet = "str()", help = "str(x) -> str | Convert to string"},
+		{word = "wait", snippet = "wait(1)", help = "wait(seconds) | Pause execution"},
+	}
+
+	-- Golem-specific globals (turret mode only)
+	local GOLEM_GLOBALS = {
+		{word = "nearest", snippet = "nearest()", help = "nearest() -> enemy | Closest enemy"},
+		{word = "weakest", snippet = "weakest()", help = "weakest() -> enemy | Lowest HP enemy"},
+		{word = "strongest", snippet = "strongest()", help = "strongest() -> enemy | Highest HP enemy"},
+	}
+
+	-- Methods available on self/B1-B4/T1-T4 proxies
+	-- These get suggested when user types "self.", "B1.", "T1.", etc.
+	local BOT_METHODS = {
+		-- Movement (turtle style)
+		{word = "forward", snippet = "forward(10)", help = "forward(dist) | Move forward"},
+		{word = "backward", snippet = "backward(10)", help = "backward(dist) | Move backward"},
+		{word = "left", snippet = "left(90)", help = "left(degrees) | Turn left"},
+		{word = "right", snippet = "right(90)", help = "right(degrees) | Turn right"},
+		{word = "goto", snippet = "goto(T1)", help = "goto(target) | Move to T1/B1/pos"},
+		{word = "move", snippet = "move(0, 0)", help = "move(x, z) | Move to coords"},
+		{word = "stop", snippet = "stop()", help = "stop() | Cancel movement"},
+		{word = "flee", snippet = "flee()", help = "flee() | Run to core"},
+		{word = "go_home", snippet = "go_home()", help = "go_home() | Return to core"},
+		-- State queries
+		{word = "position", snippet = "position()", help = "position() -> [x,z] | Get location"},
+		{word = "cargo", snippet = "cargo()", help = "cargo() -> int | Scrap carried"},
+		{word = "max_cargo", snippet = "max_cargo()", help = "max_cargo() -> int | Max capacity"},
+		{word = "is_full", snippet = "is_full()", help = "is_full() -> bool | Inventory full?"},
+		{word = "is_idle", snippet = "is_idle()", help = "is_idle() -> bool | Not busy?"},
+		{word = "is_moving", snippet = "is_moving()", help = "is_moving() -> bool | Walking?"},
+		{word = "alive", snippet = "alive()", help = "alive() -> bool | Has HP?"},
+		{word = "exists", snippet = "exists()", help = "exists() -> bool | Unit exists?"},
+		{word = "hp", snippet = "hp()", help = "hp() -> int | Current health"},
+		{word = "status", snippet = "status()", help = "status() -> str | Current state"},
+		{word = "spot", snippet = "spot()", help = "spot() -> int | Spawn slot (1-4)"},
+		-- Collection & Supply
+		{word = "scraps", snippet = "scraps()", help = "scraps() -> list | All scrap, nearest first"},
+		{word = "collect", snippet = "collect(s[0])", help = "collect(scrap) | Pick up scrap"},
+		{word = "supply", snippet = "supply(T1)", help = "supply(turret) | Give ammo to turret"},
+		{word = "scan", snippet = "scan()", help = "scan() -> [x,z] | Find nearest scrap"},
+		-- Personality
+		{word = "say", snippet = "say('')", help = "say(msg) | Show chat bubble"},
+		{word = "color", snippet = "color('cyan')", help = "color(name) | red/blue/green/cyan/..."},
+		{word = "dance", snippet = "dance()", help = "dance() | Spin animation"},
+		{word = "jump", snippet = "jump()", help = "jump() | Hop animation"},
+		{word = "shake", snippet = "shake()", help = "shake() | Shiver animation"},
+		{word = "emote", snippet = "emote('happy')", help = "emote(type) | happy/panic/spin"},
+		-- Combat
+		{word = "shield", snippet = "shield()", help = "shield(sec) | Activate shield"},
+		{word = "shielded", snippet = "shielded()", help = "shielded() -> bool | Shield active?"},
+		{word = "shield_ready", snippet = "shield_ready()", help = "shield_ready() -> bool | Can shield?"},
+		{word = "zap", snippet = "zap()", help = "zap() | Shock nearby enemy"},
+		{word = "attack", snippet = "attack()", help = "attack() | Attack nearest"},
+		{word = "explode", snippet = "explode()", help = "explode() | Kamikaze! Bot dies"},
+		{word = "danger", snippet = "danger()", help = "danger() -> int | Dist to enemy"},
+		{word = "distance", snippet = "distance(T1)", help = "distance(target) -> int | Dist to target"},
+		-- Sensors
+		{word = "enemies_nearby", snippet = "enemies_nearby()", help = "enemies_nearby(range) -> int | Count enemies"},
+		{word = "scrap_nearby", snippet = "scrap_nearby()", help = "scrap_nearby(range) -> bool | Scrap in range?"},
+		-- Utility
+		{word = "wait", snippet = "wait(1)", help = "wait(sec) | Pause bot"},
+		{word = "methods", snippet = "methods()", help = "methods() -> list | List all methods"},
+	}
+
+	local TURRET_METHODS = {
+		-- State
+		{word = "exists", snippet = "exists()", help = "exists() -> bool | Turret exists?"},
+		{word = "alive", snippet = "alive()", help = "alive() -> bool | Has HP?"},
+		{word = "spot", snippet = "spot()", help = "spot() -> int | Slot number (1-4)"},
+		{word = "id", snippet = "id()", help = "id() -> str | Unique ID"},
+		{word = "position", snippet = "position()", help = "position() -> [x,z] | Location"},
+		{word = "ammo", snippet = "ammo()", help = "ammo() -> int | Current ammo"},
+		{word = "max_ammo", snippet = "max_ammo()", help = "max_ammo() -> int | Max ammo"},
+		{word = "hp", snippet = "hp()", help = "hp() -> int | Current health"},
+		{word = "range", snippet = "range()", help = "range() -> int | Attack range"},
+		{word = "is_empty", snippet = "is_empty()", help = "is_empty() -> bool | No ammo?"},
+		{word = "ammo_ratio", snippet = "ammo_ratio()", help = "ammo_ratio() -> float | 0.0-1.0"},
+		-- Commands
+		{word = "set_range", snippet = "set_range(30)", help = "set_range(10-60) | Low=damage, high=reach"},
+		{word = "scan", snippet = "scan()", help = "scan() -> list | Enemies in range"},
+		{word = "fire", snippet = "fire(BULLET)", help = "fire(type) | BULLET/ROCKET/LASER/ICE"},
+		{word = "danger", snippet = "danger()", help = "danger() -> int | Dist to enemy"},
+		{word = "methods", snippet = "methods()", help = "methods() -> list | List all methods"},
+	}
+
+	-- Player self methods (subset of bot methods)
+	local PLAYER_SELF_METHODS = {
+		{word = "forward", snippet = "forward(10)", help = "forward(dist) | Walk forward"},
+		{word = "backward", snippet = "backward(10)", help = "backward(dist) | Walk backward"},
+		{word = "left", snippet = "left(90)", help = "left(degrees) | Turn left"},
+		{word = "right", snippet = "right(90)", help = "right(degrees) | Turn right"},
+		{word = "goto", snippet = "goto(T1)", help = "goto(target) | Walk to T1/B1"},
+		{word = "position", snippet = "position()", help = "position() -> [x,z] | Your location"},
+		{word = "cargo", snippet = "cargo()", help = "cargo() -> int | Scrap carried"},
+		{word = "max_cargo", snippet = "max_cargo()", help = "max_cargo() -> int | Max capacity"},
+		{word = "is_full", snippet = "is_full()", help = "is_full() -> bool | Inventory full?"},
+		{word = "scraps", snippet = "scraps()", help = "scraps() -> list | All scrap"},
+		{word = "collect", snippet = "collect(s[0])", help = "collect(scrap) | Pick up scrap"},
+		{word = "supply", snippet = "supply(T1)", help = "supply(turret) | Give ammo"},
+		{word = "hit", snippet = "hit()", help = "hit() -> bool | Melee attack"},
+	}
+
+	-- Golem self methods (when editing turret code)
+	local GOLEM_SELF_METHODS = {
+		{word = "scan", snippet = "scan()", help = "scan() -> list | Enemies in range"},
+		{word = "fire", snippet = "fire(BULLET)", help = "fire(type) | BULLET/ROCKET/LASER/ICE"},
+		{word = "ammo", snippet = "ammo()", help = "ammo() -> int | Current ammo"},
+		{word = "max_ammo", snippet = "max_ammo()", help = "max_ammo() -> int | Max ammo"},
+		{word = "range", snippet = "range()", help = "range() -> int | Attack range"},
+		{word = "set_range", snippet = "set_range(30)", help = "set_range(10-60) | Low=damage, high=reach"},
+		{word = "is_empty", snippet = "is_empty()", help = "is_empty() -> bool | No ammo?"},
+		{word = "position", snippet = "position()", help = "position() -> [x,z] | Location"},
+		{word = "hp", snippet = "hp()", help = "hp() -> int | Current health"},
+		{word = "danger", snippet = "danger()", help = "danger() -> int | Dist to enemy"},
+	}
+
+	-- Valid object prefixes (what can come before the dot)
+	local OBJECT_PREFIXES = {"self", "B1", "B2", "B3", "B4", "T1", "T2", "T3", "T4", "CORE"}
+
+	-- Constants
+	local CONSTANTS = {
+		{word = "BULLET", snippet = "BULLET", help = "BULLET = 1 | Fast, cheap ammo"},
+		{word = "ROCKET", snippet = "ROCKET", help = "ROCKET = 2 | Slow, splash damage"},
+		{word = "LASER", snippet = "LASER", help = "LASER = 3 | High damage, fast"},
+		{word = "ICE", snippet = "ICE", help = "ICE = 4 | Slows enemies 60%"},
+		{word = "FREEZE", snippet = "FREEZE", help = "FREEZE = 5 | No damage, slows"},
+		{word = "T1", snippet = "T1", help = "T1 | Turret slot 1"},
+		{word = "T2", snippet = "T2", help = "T2 | Turret slot 2"},
+		{word = "T3", snippet = "T3", help = "T3 | Turret slot 3"},
+		{word = "T4", snippet = "T4", help = "T4 | Turret slot 4"},
+		{word = "B1", snippet = "B1", help = "B1 | Bot slot 1"},
+		{word = "B2", snippet = "B2", help = "B2 | Bot slot 2"},
+		{word = "B3", snippet = "B3", help = "B3 | Bot slot 3"},
+		{word = "B4", snippet = "B4", help = "B4 | Bot slot 4"},
+		{word = "CORE", snippet = "CORE", help = "CORE | Base to defend"},
+	}
+
+	-- Build a simple trie for prefix matching
+	local function buildTrie(items)
+		local trie = {children = {}, items = {}}
+		for _, item in ipairs(items) do
+			local node = trie
+			for i = 1, #item.word do
+				local c = item.word:sub(i, i):lower()
+				if not node.children[c] then
+					node.children[c] = {children = {}, items = {}}
+				end
+				node = node.children[c]
+			end
+			table.insert(node.items, item)
+		end
+		return trie
+	end
+
+	-- Search trie for all items matching prefix
+	local function searchTrie(trie, prefix)
+		local node = trie
+		for i = 1, #prefix do
+			local c = prefix:sub(i, i):lower()
+			if not node.children[c] then
+				return {}
+			end
+			node = node.children[c]
+		end
+		-- Collect all items in subtree
+		local results = {}
+		local function collect(n)
+			for _, item in ipairs(n.items) do
+				table.insert(results, item)
+			end
+			for _, child in pairs(n.children) do
+				collect(child)
+			end
+		end
+		collect(node)
+		return results
+	end
+
+	-- Build tries for each category
+	local keywordTrie = buildTrie(KEYWORDS)
+	local globalTrie = buildTrie(GLOBALS)
+	local golemGlobalTrie = buildTrie(GOLEM_GLOBALS)
+	local constantTrie = buildTrie(CONSTANTS)
+	local botMethodTrie = buildTrie(BOT_METHODS)
+	local turretMethodTrie = buildTrie(TURRET_METHODS)
+	local playerSelfTrie = buildTrie(PLAYER_SELF_METHODS)
+	local golemSelfTrie = buildTrie(GOLEM_SELF_METHODS)
+
+	-- Parse the current context from text
+	local function getCurrentContext(text)
+		-- Check for object.method pattern: self.for, B1.sc, T2.fi, etc.
+		local obj, word = text:match("([%w_]+)%.([%w_]*)$")
+		if obj then
+			-- Check if it's a valid object prefix
+			for _, prefix in ipairs(OBJECT_PREFIXES) do
+				if obj == prefix then
+					return obj, word:lower(), #obj + 1 + #word
+				end
+			end
+		end
+
+		-- Check for s[ pattern (list indexing)
+		local listVar, idx = text:match("([%w_]+)%[(%d*)$")
+		if listVar then
+			return "list[", idx, #listVar + 1 + #idx
+		end
+
+		-- No special prefix - just get last word
+		local lastWord = text:match("([%w_]+)$") or ""
+		return nil, lastWord:lower(), #lastWord
+	end
+
+	-- Get appropriate methods for an object
+	local function getMethodsForObject(obj)
+		if obj == "self" then
+			if currentMode == "golem" then
+				return golemSelfTrie
+			elseif currentMode == "player" then
+				return playerSelfTrie
+			else -- bot
+				return botMethodTrie
+			end
+		elseif obj:match("^B%d$") then
+			return botMethodTrie
+		elseif obj:match("^T%d$") then
+			return turretMethodTrie
+		elseif obj == "CORE" then
+			-- CORE only has position() and hp()
+			return buildTrie({{word = "position", snippet = "position()"}, {word = "hp", snippet = "hp()"}})
+		end
+		return nil
+	end
+
+	-- Update suggestions based on current input
+	local function updateSuggestions()
+		local text = textBox.Text
+		local obj, currentWord, totalLen = getCurrentContext(text)
+
+		-- Hide all buttons first
+		for i = 1, MAX_SUGGESTIONS do
+			suggestionBtns[i].Visible = false
+		end
+
+		-- Collect matches
+		local matches = {}
+
+		if obj then
+			-- Object.method context
+			if obj == "list[" then
+				-- List indexing - suggest 0]
+				if currentWord == "" or ("0"):sub(1, #currentWord) == currentWord then
+					table.insert(matches, {word = "0", snippet = "0]", prefix = obj, help = "list[0] | First item in list"})
+				end
+			else
+				-- Get methods for this object type
+				local methodTrie = getMethodsForObject(obj)
+				if methodTrie then
+					local results = searchTrie(methodTrie, currentWord)
+					for _, item in ipairs(results) do
+						table.insert(matches, {
+							word = item.word,
+							snippet = item.snippet,
+							help = item.help,
+							prefix = obj .. "."
+						})
+						if #matches >= MAX_SUGGESTIONS then break end
+					end
+				end
+			end
+		else
+			-- No object prefix - search keywords, globals, constants
+			if #currentWord >= 2 then
+				-- Keywords
+				for _, item in ipairs(searchTrie(keywordTrie, currentWord)) do
+					table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
+					if #matches >= MAX_SUGGESTIONS then break end
+				end
+				-- Globals
+				if #matches < MAX_SUGGESTIONS then
+					for _, item in ipairs(searchTrie(globalTrie, currentWord)) do
+						table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
+						if #matches >= MAX_SUGGESTIONS then break end
+					end
+				end
+				-- Golem-specific globals
+				if currentMode == "golem" and #matches < MAX_SUGGESTIONS then
+					for _, item in ipairs(searchTrie(golemGlobalTrie, currentWord)) do
+						table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
+						if #matches >= MAX_SUGGESTIONS then break end
+					end
+				end
+				-- Constants
+				if #matches < MAX_SUGGESTIONS then
+					for _, item in ipairs(searchTrie(constantTrie, currentWord)) do
+						table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
+						if #matches >= MAX_SUGGESTIONS then break end
+					end
+				end
+			end
+		end
+
+		-- Show matching buttons
+		for i, match in ipairs(matches) do
+			local btn = suggestionBtns[i]
+			local displayText = match.snippet:gsub("\n.*", "...")
+			if match.prefix then
+				displayText = match.prefix .. displayText
+			end
+			btn.Text = displayText
+			btn.Visible = true
+
+			-- Disconnect old handler and set new one
+			if suggestionConns[i] then suggestionConns[i]:Disconnect() end
+			suggestionConns[i] = btn.MouseButton1Click:Connect(function()
+				local beforeWord = text:sub(1, #text - totalLen)
+				local insertText = match.snippet
+				if match.prefix then
+					insertText = match.prefix .. insertText
+				end
+				textBox.Text = beforeWord .. insertText
+				textBox.CursorPosition = #textBox.Text + 1
+				textBox:CaptureFocus()
+			end)
+		end
+
+		-- Show help tooltip when there are few matches (1-3) with help text
+		if #matches >= 1 and #matches <= 3 then
+			local helpTexts = {}
+			for _, m in ipairs(matches) do
+				if m.help then
+					table.insert(helpTexts, m.help)
+				end
+			end
+			if #helpTexts > 0 then
+				helpTooltip.Text = table.concat(helpTexts, "  |  ")
+				helpTooltip.Visible = true
+			else
+				helpTooltip.Visible = false
+			end
+		else
+			helpTooltip.Visible = false
+		end
+	end
+
+	textBox:GetPropertyChangedSignal("Text"):Connect(updateSuggestions)
 
 	-- Button handlers
 	startBtn.MouseButton1Click:Connect(function()
