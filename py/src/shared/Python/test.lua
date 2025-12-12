@@ -1206,6 +1206,41 @@ test("Line numbers in bytecode", function()
     assertTrue(hasLineNumbers, "Bytecode should have line numbers")
 end)
 
+test("Line numbers correct with comment on first line", function()
+    -- This tests the bot default program pattern where a comment is first
+    local source = [[# Comment on line 1
+self.say("Ready!")
+self.color("cyan")
+
+while True:
+    if self.is_full():
+        self.say("Delivering!")
+]]
+    local compiled = compile(source)
+
+    -- Split source the same way ProgramPanel does
+    local tokens = {}
+    for line in (source .. "\n"):gmatch("(.-)\n") do
+        table.insert(tokens, line)
+    end
+
+    -- Verify source line 6 is "if self.is_full():"
+    assertTrue(tokens[6]:match("if self.is_full"),
+        "Source line 6 should be 'if self.is_full():' but got: " .. tokens[6])
+
+    -- Find LOAD_ATTR is_full instruction and check its line number
+    for i, instr in ipairs(compiled.code) do
+        if instr.op == Op.LOAD_ATTR and instr.arg == "is_full" then
+            assertEquals(6, instr.line,
+                "LOAD_ATTR is_full should be on line 6 (matching 'if self.is_full():')")
+            -- Verify the source line at this bytecode line matches
+            assertEquals("    if self.is_full():", tokens[instr.line],
+                "Bytecode line " .. instr.line .. " should match source")
+            break
+        end
+    end
+end)
+
 test("Jump targets are valid", function()
     local compiled = compile("if True:\n    x = 1\nelse:\n    x = 2")
 
@@ -1216,6 +1251,47 @@ test("Jump targets are valid", function()
                 "Jump target " .. target .. " should be valid (1 to " .. (#compiled.code + 1) .. ")")
         end
     end
+end)
+
+test("formatCode preserves comment and empty lines", function()
+    -- Test that EditorPanel.formatCode logic preserves structure
+    -- This mirrors the formatCode function from EditorPanel.luau
+    local function formatCode(source)
+        local lines = {}
+        for line in string.gmatch(source .. "\n", "([^\n]*)\n") do
+            local cleaned = string.gsub(line, "%s+$", "")
+            table.insert(lines, cleaned)
+        end
+        while #lines > 0 and lines[#lines] == "" do
+            table.remove(lines)
+        end
+        return table.concat(lines, "\n")
+    end
+
+    local source = [[# My helpful bot!
+self.say("Ready!")
+self.color("cyan")
+
+while True:
+    if self.is_full():
+        self.say("Delivering!")
+]]
+    local formatted = formatCode(source)
+
+    -- Split and verify line numbers match
+    local tokens = {}
+    for line in (formatted .. "\n"):gmatch("(.-)\n") do
+        table.insert(tokens, line)
+    end
+
+    -- Comment must be on line 1
+    assertEquals("# My helpful bot!", tokens[1], "Line 1 should be the comment")
+    -- Empty line must be preserved as line 4
+    assertEquals("", tokens[4], "Line 4 should be empty")
+    -- if statement must be on line 6
+    assertTrue(tokens[6]:match("if self.is_full"), "Line 6 should be 'if self.is_full():'")
+    -- Delivering must be on line 7
+    assertTrue(tokens[7]:match("Delivering"), "Line 7 should contain 'Delivering'")
 end)
 
 --============================================================================

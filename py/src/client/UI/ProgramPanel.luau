@@ -597,9 +597,10 @@ function ProgramPanel.create(parent)
 
 		-- Code display - show Python source with line numbers
 		-- Derive tokens from source, currentLine from bytecode[ip].line
+		-- Important: preserve empty lines so line numbers match bytecode
 		local source = state.source or ""
 		local tokens = {}
-		for line in source:gmatch("[^\n]+") do
+		for line in (source .. "\n"):gmatch("(.-)\n") do
 			table.insert(tokens, line)
 		end
 

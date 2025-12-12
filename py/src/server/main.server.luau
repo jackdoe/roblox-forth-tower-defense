@@ -472,11 +472,19 @@ runProgramEvent.OnServerEvent:Connect(function(player, source, interpreterTarget
 		interp.character = player.Character
 	end
 
-	if interp:load(source) then
-		interp.lastProgram = source
+	-- If paused with the same source, just unpause (resume)
+	-- Otherwise, load fresh and start
+	if interp.paused and interp.source == source then
+		-- Resume execution without reloading
+		interp.paused = false
+	else
+		-- Load new program and start fresh
+		if interp:load(source) then
+			interp.lastProgram = source
+		end
+		interp.paused = false
 	end
 
-	interp.paused = false
 	sendInterpreterState(player, interpreterTarget)
 end)
 
@@ -497,7 +505,8 @@ pauseProgramEvent.OnServerEvent:Connect(function(player, interpreterTarget)
 		if not interp then return end
 	end
 
-	interp.paused = not interp.paused
+	-- Pause always pauses (use RUN to resume)
+	interp.paused = true
 	sendInterpreterState(player, interpreterTarget)
 end)
 
