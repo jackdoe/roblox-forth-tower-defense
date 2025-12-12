@@ -29,9 +29,6 @@ local GolemRegistry = require(script.Parent.GolemRegistry)
 local ScrapManager = require(script.Parent.ScrapManager)
 local BotRegistry = require(script.Parent.BotRegistry)
 
--- Legacy modules
-local DayNightCycle = require(script.Parent.DayNightCycle)
-
 -- Load Arena map
 local ArenaMap = require(script.Parent.maps.Arena)
 
@@ -318,11 +315,6 @@ local function loadArenaMap()
 end
 
 loadArenaMap()
-
--- Start day/night cycle (if enabled)
-if Config.DAY_NIGHT_CYCLE.ENABLED then
-	DayNightCycle.start()
-end
 
 --============================================================================
 -- PLAYER SETUP
@@ -644,6 +636,9 @@ RunService.Heartbeat:Connect(function(dt)
 				local viewingBotId = playerViewingBot[userId]
 				local state
 
+				-- Check if player has IDE/panel open (viewing golem or bot)
+				local hasIDEOpen = viewingGolemId or viewingBotId
+
 				if viewingGolemId then
 					local golem = GolemRegistry.get(viewingGolemId)
 					if golem and golem.interpreter then
@@ -655,6 +650,7 @@ RunService.Heartbeat:Connect(function(dt)
 					else
 						state = interp:getDynamicState()
 						playerViewingGolem[userId] = nil
+						hasIDEOpen = false
 					end
 				elseif viewingBotId then
 					local bot = BotRegistry.get(viewingBotId)
@@ -666,9 +662,19 @@ RunService.Heartbeat:Connect(function(dt)
 					else
 						state = interp:getDynamicState()
 						playerViewingBot[userId] = nil
+						hasIDEOpen = false
 					end
 				else
 					state = interp:getDynamicState()
+				end
+
+				-- Strip heavy debug data when IDE is NOT open
+				-- When IDE is open, always send full data to avoid UI blinking
+				if not hasIDEOpen then
+					state.variables = nil
+					state.vm = nil
+					state.bytecode = nil
+					state.tokens = nil
 				end
 
 				-- Add player list

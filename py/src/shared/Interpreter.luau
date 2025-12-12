@@ -328,18 +328,4 @@ function Interpreter:getStaticState()
 	}
 end
 
--- Placeholder methods for API compatibility
-function Interpreter:findWordSlot(name) return nil, nil end
-function Interpreter:addWordToSlots(def) return nil end
-function Interpreter:clearWordSlot(idx) end
-function Interpreter:clearAllWordSlots() end
-function Interpreter:updateWordSlot(name, tokens) return false, "Not supported in Python" end
-function Interpreter:updateWordSlotFromSource(name, source) return false, "Not supported in Python" end
-
--- Build dictionary (for API compatibility - game words are injected differently)
-function Interpreter:buildDictionary(deps)
-	-- Python doesn't use a word dictionary
-	-- Game functions are injected as Python functions in the runtime environment
-end
-
 return Interpreter

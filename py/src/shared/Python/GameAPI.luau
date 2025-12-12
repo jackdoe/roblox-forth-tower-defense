@@ -260,8 +260,17 @@ local function createTurretProxy(spotId, deps, directGolem)
 		return GolemRegistry and GolemRegistry.getBySpotId and GolemRegistry.getBySpotId(spotId)
 	end
 
+	-- Check if golem exists AND is alive
+	local function isAlive()
+		local golem = getGolem()
+		if not golem then return false end
+		local hp = golem.interpreter and golem.interpreter.hp or 0
+		return hp > 0
+	end
+
 	-- Basic properties
 	proxy.exists = function() return getGolem() ~= nil end
+	proxy.alive = function() return isAlive() end
 	proxy.spot = function() return spotId end
 
 	proxy.id = function()
@@ -336,6 +345,8 @@ local function createTurretProxy(spotId, deps, directGolem)
 	proxy.fire = function(targetId, ammoType)
 		local golem = getGolem()
 		if not golem then return false end
+		-- Don't allow firing if dead (but not cleaned up yet)
+		if not isAlive() then return false end
 
 		ammoType = ammoType or 1
 		if targetId and golem.interpreter then
@@ -376,6 +387,13 @@ local function createBotProxy(spotId, deps, directBot)
 	local function getBot()
 		if directBot then return directBot end
 		return BotRegistry and BotRegistry.getBySpotId and BotRegistry.getBySpotId(spotId)
+	end
+
+	-- Check if bot exists AND is alive
+	local function isAlive()
+		local bot = getBot()
+		if not bot then return false end
+		return (bot.hp or 0) > 0
 	end
 
 	-- Basic properties
@@ -428,8 +446,7 @@ local function createBotProxy(spotId, deps, directBot)
 	end
 
 	proxy.alive = function()
-		local bot = getBot()
-		return bot and (bot.hp or 0) > 0
+		return isAlive()
 	end
 
 	proxy.status = function()
@@ -444,7 +461,9 @@ local function createBotProxy(spotId, deps, directBot)
 			x = x[1]
 		end
 		local bot = getBot()
-		if bot and BotRegistry.issueCommand and x and z then
+		-- Don't allow movement if dead (but not cleaned up yet)
+		if not bot or not isAlive() then return false end
+		if BotRegistry.issueCommand and x and z then
 			return BotRegistry.issueCommand(bot.id, "MOVE", { x = x, z = z })
 		end
 		return false
@@ -481,7 +500,8 @@ local function createBotProxy(spotId, deps, directBot)
 	-- Collection & Supply
 	proxy.supply = function(target)
 		local bot = getBot()
-		if not bot or not BotRegistry.issueCommand then return false end
+		-- Don't allow supply if dead
+		if not bot or not isAlive() or not BotRegistry.issueCommand then return false end
 
 		local targetSpotId = target
 		if type(target) == "table" and target.spot then
@@ -492,7 +512,9 @@ local function createBotProxy(spotId, deps, directBot)
 
 	proxy.collect = function(scrapId)
 		local bot = getBot()
-		if bot and BotRegistry.issueCommand then
+		-- Don't allow collection if dead
+		if not bot or not isAlive() then return false end
+		if BotRegistry.issueCommand then
 			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrapId })
 		end
 		return false
@@ -500,7 +522,8 @@ local function createBotProxy(spotId, deps, directBot)
 
 	proxy.collect_nearest = function()
 		local bot = getBot()
-		if not bot or not bot.character or not ScrapManager then return false end
+		-- Don't allow collection if dead
+		if not bot or not isAlive() or not bot.character or not ScrapManager then return false end
 
 		local x, z = getCharacterPos(bot.character)
 		local scrap = ScrapManager.findNearest(x, z)

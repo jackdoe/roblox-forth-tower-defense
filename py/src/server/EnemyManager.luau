@@ -24,6 +24,10 @@ local BotRegistry = nil  -- For hunter targeting
 local GRID_CELL_SIZE = 20  -- studs per grid cell
 local enemyGrid = {}       -- Key: "gx_gz", Value: table of enemy references
 
+-- Max search range for unbounded queries (map diagonal ~250 studs)
+-- This ensures spatial grid is ALWAYS used, avoiding O(n) full scans
+local MAX_SEARCH_RANGE = 300
+
 -- Base enemy type definitions (these get scaled per wave)
 -- Buffed for "Action Strategy" - more HP, more scrap, faster pace
 local EnemyTypes = {
@@ -741,20 +745,14 @@ function EnemyManager.count()
 end
 
 function EnemyManager.findNearest(x, z, maxRange)
-	local nearest = nil
-	local nearestDistSq = maxRange and (maxRange * maxRange) or math.huge
+	-- Cap range to MAX_SEARCH_RANGE to always use spatial grid
+	-- This prevents O(n) full scans on large enemy counts
+	local effectiveRange = math.min(maxRange or MAX_SEARCH_RANGE, MAX_SEARCH_RANGE)
+	local nearestDistSq = effectiveRange * effectiveRange
 
-	-- Use spatial grid for bounded searches, fallback to full scan for unbounded
-	local candidates
-	if maxRange and maxRange < math.huge then
-		candidates = getEnemiesNearPoint(x, z, maxRange)
-	else
-		-- Unbounded search - must check all enemies
-		candidates = {}
-		for _, enemy in pairs(enemies) do
-			table.insert(candidates, enemy)
-		end
-	end
+	-- Always use spatial grid for performance
+	local candidates = getEnemiesNearPoint(x, z, effectiveRange)
+	local nearest = nil
 
 	for _, enemy in ipairs(candidates) do
 		if enemy.hp > 0 and enemy.character then
@@ -776,20 +774,14 @@ function EnemyManager.findNearest(x, z, maxRange)
 end
 
 function EnemyManager.findWeakest(x, z, maxRange)
+	-- Cap range to MAX_SEARCH_RANGE to always use spatial grid
+	local effectiveRange = math.min(maxRange or MAX_SEARCH_RANGE, MAX_SEARCH_RANGE)
+	local effectiveRangeSq = effectiveRange * effectiveRange
+
+	-- Always use spatial grid for performance
+	local candidates = getEnemiesNearPoint(x, z, effectiveRange)
 	local weakest = nil
 	local lowestHp = math.huge
-	local effectiveRangeSq = maxRange and (maxRange * maxRange) or math.huge
-
-	-- Use spatial grid for bounded searches
-	local candidates
-	if maxRange and maxRange < math.huge then
-		candidates = getEnemiesNearPoint(x, z, maxRange)
-	else
-		candidates = {}
-		for _, enemy in pairs(enemies) do
-			table.insert(candidates, enemy)
-		end
-	end
 
 	for _, enemy in ipairs(candidates) do
 		if enemy.hp > 0 and enemy.character then
