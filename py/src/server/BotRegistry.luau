@@ -588,31 +588,52 @@ local function executeTask(bot, dt)
 		end
 
 	elseif task.type == "COLLECT" then
-		-- Move to scrap and collect
+		-- Move to scrap by ID and collect (legacy)
 		local scrapId = task.args.target
 		local ScrapManager = deps.ScrapManager
 		if not ScrapManager then return "FAILED" end
 
 		local scrap = ScrapManager.get(scrapId)
-		if not scrap or not scrap.position then
+		if not scrap or not scrap.part or not scrap.part.Parent then
 			bot.status = "IDLE"
 			return "FAILED"
 		end
 
-		-- Calculate distance
-		local dx = scrap.position.X - hrp.Position.X
-		local dz = scrap.position.Z - hrp.Position.Z
+		local sPos = scrap.part.Position
+		local dx = sPos.X - hrp.Position.X
+		local dz = sPos.Z - hrp.Position.Z
 		local dist = math.sqrt(dx * dx + dz * dz)
 
 		if dist <= (bot.pickupRange or 8) then
-			-- Close enough - collect and complete
 			BotRegistry.collectScrap(bot.id)
 			bot.status = "IDLE"
 			return "DONE"
 		else
-			-- Move towards scrap
-			bot.moveTargetX = scrap.position.X
-			bot.moveTargetZ = scrap.position.Z
+			bot.moveTargetX = sPos.X
+			bot.moveTargetZ = sPos.Z
+			bot.isMoving = true
+			bot.status = "COLLECTING"
+			return "RUNNING"
+		end
+
+	elseif task.type == "COLLECT_AT" then
+		-- Move to position and collect nearest scrap there
+		local targetX = task.args.x
+		local targetZ = task.args.z
+		if not targetX or not targetZ then return "FAILED" end
+
+		local dx = targetX - hrp.Position.X
+		local dz = targetZ - hrp.Position.Z
+		local dist = math.sqrt(dx * dx + dz * dz)
+
+		if dist <= (bot.pickupRange or 8) then
+			-- Close enough - try to collect nearest scrap
+			BotRegistry.collectScrap(bot.id)
+			bot.status = "IDLE"
+			return "DONE"
+		else
+			bot.moveTargetX = targetX
+			bot.moveTargetZ = targetZ
 			bot.isMoving = true
 			bot.status = "COLLECTING"
 			return "RUNNING"

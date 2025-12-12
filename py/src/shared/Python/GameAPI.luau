@@ -543,19 +543,17 @@ local function createBotProxy(spotId, deps, directBot)
 		return BotRegistry.issueCommand(bot.id, "SUPPLY", { target = targetSpotId }, true)
 	end
 
-	proxy.collect = function(scrap)
+	-- collect(pos) - Move to position [x,z] and collect nearest scrap there
+	proxy.collect = function(pos)
 		local bot = getBot()
-		-- Don't allow collection if dead
 		if not bot or not isAlive() then return false end
 
-		-- Handle scrap object from scraps() or raw id
-		local scrapId = scrap
-		if type(scrap) == "table" then
-			scrapId = scrap.id
-		end
-
-		if BotRegistry.issueCommand and scrapId then
-			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrapId }, true)
+		-- Accept [x, z] position from scraps()
+		if type(pos) == "table" and pos[1] and pos[2] then
+			local worldX, worldZ = toWorldCoords(pos[1], pos[2])
+			if BotRegistry.issueCommand then
+				return BotRegistry.issueCommand(bot.id, "COLLECT_AT", { x = worldX, z = worldZ }, true)
+			end
 		end
 		return false
 	end
@@ -566,9 +564,9 @@ local function createBotProxy(spotId, deps, directBot)
 
 		local x, z = getCharacterPos(bot.character)
 		local scrap = ScrapManager.findNearest(x, z)
-		if scrap and scrap.position then
+		if scrap and scrap.part and scrap.part.Parent then
 			-- Return user coords (relative to core)
-			local userX, userZ = toUserCoords(scrap.position.X, scrap.position.Z)
+			local userX, userZ = toUserCoords(scrap.part.Position.X, scrap.part.Position.Z)
 			return {userX, userZ}
 		end
 		return nil
@@ -737,7 +735,7 @@ local function createBotProxy(spotId, deps, directBot)
 	-- SCRAP COLLECTION
 	-- =========================================================
 
-	-- scraps() - Returns list of all scraps sorted by distance (closest first)
+	-- scraps() - Returns list of [x, z] positions sorted by distance (closest first)
 	proxy.scraps = function()
 		local bot = getBot()
 		if not bot or not bot.character or not ScrapManager then return {} end
@@ -746,23 +744,30 @@ local function createBotProxy(spotId, deps, directBot)
 		local allScraps = ScrapManager.getAll and ScrapManager.getAll() or {}
 
 		-- Build list with distances
-		local result = {}
+		local temp = {}
 		for _, scrap in pairs(allScraps) do
-			if scrap and scrap.position and scrap.id then
-				local dx = scrap.position.X - x
-				local dz = scrap.position.Z - z
+			if scrap and scrap.part and scrap.part.Parent then
+				local sPos = scrap.part.Position
+				local dx = sPos.X - x
+				local dz = sPos.Z - z
 				local dist = math.sqrt(dx * dx + dz * dz)
-				table.insert(result, {
-					id = scrap.id,
-					distance = dist,
-					x = scrap.position.X,
-					z = scrap.position.Z,
+				-- Convert to user coords (relative to core)
+				local userX, userZ = toUserCoords(sPos.X, sPos.Z)
+				table.insert(temp, {
+					pos = {math.floor(userX), math.floor(userZ)},
+					dist = dist,
 				})
 			end
 		end
 
 		-- Sort by distance (closest first)
-		table.sort(result, function(a, b) return a.distance < b.distance end)
+		table.sort(temp, function(a, b) return a.dist < b.dist end)
+
+		-- Return just the positions
+		local result = {}
+		for _, item in ipairs(temp) do
+			table.insert(result, item.pos)
+		end
 		return result
 	end
 
@@ -1067,9 +1072,10 @@ function GameAPI.createBotEnvironment(bot, deps)
 		if not hrp then return false end
 
 		local scrap = ScrapManager.findNearest(hrp.Position.X, hrp.Position.Z)
-		if scrap and scrap.position then
-			local dx = scrap.position.X - hrp.Position.X
-			local dz = scrap.position.Z - hrp.Position.Z
+		if scrap and scrap.part and scrap.part.Parent then
+			local sPos = scrap.part.Position
+			local dx = sPos.X - hrp.Position.X
+			local dz = sPos.Z - hrp.Position.Z
 			local dist = math.sqrt(dx * dx + dz * dz)
 			return dist <= (range or 50)
 		end
@@ -1225,47 +1231,62 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 	-- SCRAP & SUPPLY
 	-- =========================================================
 
-	-- self.scraps() - Get all scraps sorted by distance
+	-- self.scraps() - Get all scraps as [x, z] positions sorted by distance
 	env.self.scraps = function()
 		local x, z = getPlayerPos()
+		local coreX, coreZ = getCoreOffset()
 		local allScraps = ScrapManager and ScrapManager.getAll and ScrapManager.getAll() or {}
 
-		local result = {}
+		local temp = {}
 		for _, scrap in pairs(allScraps) do
-			if scrap and scrap.position and scrap.id then
-				local dx = scrap.position.X - x
-				local dz = scrap.position.Z - z
+			if scrap and scrap.part and scrap.part.Parent then
+				local sPos = scrap.part.Position
+				local dx = sPos.X - x
+				local dz = sPos.Z - z
 				local dist = math.sqrt(dx * dx + dz * dz)
-				table.insert(result, {
-					id = scrap.id,
-					distance = dist,
-					x = scrap.position.X,
-					z = scrap.position.Z,
+				-- Convert to user coords (relative to core)
+				table.insert(temp, {
+					pos = {math.floor(sPos.X - coreX), math.floor(sPos.Z - coreZ)},
+					dist = dist,
+					worldX = sPos.X,
+					worldZ = sPos.Z,
 				})
 			end
 		end
 
-		table.sort(result, function(a, b) return a.distance < b.distance end)
+		table.sort(temp, function(a, b) return a.dist < b.dist end)
+
+		-- Return just positions
+		local result = {}
+		for _, item in ipairs(temp) do
+			table.insert(result, item.pos)
+		end
 		return result
 	end
 
-	-- self.collect(scrap) - Collect a specific scrap (from scraps() list)
-	env.self.collect = function(scrap)
+	-- self.collect(pos) - Move to [x,z] position and collect nearest scrap
+	env.self.collect = function(pos)
 		if not ScrapManager then return 0 end
 
-		-- If scrap is from scraps() list, it has id field
-		local scrapId = scrap
-		if type(scrap) == "table" then
-			scrapId = scrap.id
-		end
+		-- Accept [x, z] position from scraps()
+		if type(pos) == "table" and pos[1] and pos[2] then
+			local coreX, coreZ = getCoreOffset()
+			local worldX = pos[1] + coreX
+			local worldZ = pos[2] + coreZ
 
-		-- Find the scrap
-		local target = ScrapManager.get and ScrapManager.get(scrapId)
-		if target and target.position then
-			-- Move to scrap
-			moveInternal(target.position.X, target.position.Z)
-			-- Collect it
-			return ScrapManager.collect(scrapId, interp) or 0
+			-- Move to position
+			moveInternal(worldX, worldZ)
+
+			-- Find and collect nearest scrap at that location
+			local nearest = ScrapManager.findNearest(worldX, worldZ)
+			if nearest and nearest.part then
+				local dx = nearest.part.Position.X - worldX
+				local dz = nearest.part.Position.Z - worldZ
+				local dist = math.sqrt(dx * dx + dz * dz)
+				if dist < 10 then
+					return ScrapManager.collect(nearest.id, interp) or 0
+				end
+			end
 		end
 		return 0
 	end
