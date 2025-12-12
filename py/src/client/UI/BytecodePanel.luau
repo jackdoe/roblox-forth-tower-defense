@@ -155,11 +155,12 @@ function BytecodePanel.create(parent)
 	local panel = {}
 	local currentTheme = "player"
 
-	-- Main frame
+	-- Main frame (anchored to bottom-right, grows upward)
 	local frame = Instance.new("Frame")
 	frame.Name = "BytecodePanel"
-	frame.Size = UDim2.new(0, 280, 0, 400)
-	frame.Position = UDim2.new(1, -640, 1, -410)  -- Left of ProgramPanel
+	frame.Size = UDim2.new(0, 280, 0, 250)  -- Initial size, will auto-resize
+	frame.AnchorPoint = Vector2.new(0, 1)  -- Anchor at bottom
+	frame.Position = UDim2.new(1, -640, 1, -10)  -- Left of ProgramPanel, 10px from bottom
 	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 	frame.BorderSizePixel = 0
 	frame.ClipsDescendants = true
@@ -226,11 +227,21 @@ function BytecodePanel.create(parent)
 	local currentBytecodeText = ""
 
 	-- ===== BYTECODE SECTION =====
-	local bcY = 34
+	-- Layout constants
+	local HEADER_HEIGHT = 28
+	local BC_HEADER_Y = 34
+	local BC_SCROLL_Y = BC_HEADER_Y + 18  -- 52
+	local LINE_HEIGHT = 14
+	local MIN_BC_HEIGHT = 100
+	local MAX_BC_HEIGHT = 400
+	local STACK_GAP = 8
+	local STACK_HEADER_HEIGHT = 16
+	local STACK_FRAME_HEIGHT = 80
+	local BOTTOM_PADDING = 10
 
 	local bcHeader = Instance.new("TextLabel")
 	bcHeader.Size = UDim2.new(1, -20, 0, 16)
-	bcHeader.Position = UDim2.new(0, 10, 0, bcY)
+	bcHeader.Position = UDim2.new(0, 10, 0, BC_HEADER_Y)
 	bcHeader.BackgroundTransparency = 1
 	bcHeader.Text = "INSTRUCTIONS"
 	bcHeader.TextColor3 = Color3.fromRGB(120, 120, 140)
@@ -241,8 +252,8 @@ function BytecodePanel.create(parent)
 
 	local bcScroll = Instance.new("ScrollingFrame")
 	bcScroll.Name = "BytecodeScroll"
-	bcScroll.Size = UDim2.new(1, -20, 0, 240)
-	bcScroll.Position = UDim2.new(0, 10, 0, bcY + 18)
+	bcScroll.Size = UDim2.new(1, -20, 0, MIN_BC_HEIGHT)
+	bcScroll.Position = UDim2.new(0, 10, 0, BC_SCROLL_Y)
 	bcScroll.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 	bcScroll.BorderSizePixel = 0
 	bcScroll.ScrollBarThickness = 4
@@ -271,11 +282,11 @@ function BytecodePanel.create(parent)
 	bcLabel.Parent = bcScroll
 
 	-- ===== STACK SECTION =====
-	local stackY = bcY + 265
+	-- Position will be updated dynamically based on bytecode height
 
 	local stackHeader = Instance.new("TextLabel")
-	stackHeader.Size = UDim2.new(1, -20, 0, 16)
-	stackHeader.Position = UDim2.new(0, 10, 0, stackY)
+	stackHeader.Size = UDim2.new(1, -20, 0, STACK_HEADER_HEIGHT)
+	stackHeader.Position = UDim2.new(0, 10, 0, 0)  -- Will be repositioned
 	stackHeader.BackgroundTransparency = 1
 	stackHeader.Text = "STACK"
 	stackHeader.TextColor3 = Color3.fromRGB(120, 120, 140)
@@ -286,8 +297,8 @@ function BytecodePanel.create(parent)
 
 	local stackFrame = Instance.new("Frame")
 	stackFrame.Name = "StackFrame"
-	stackFrame.Size = UDim2.new(1, -20, 0, 80)
-	stackFrame.Position = UDim2.new(0, 10, 0, stackY + 18)
+	stackFrame.Size = UDim2.new(1, -20, 0, STACK_FRAME_HEIGHT)
+	stackFrame.Position = UDim2.new(0, 10, 0, 0)  -- Will be repositioned
 	stackFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 	stackFrame.BorderSizePixel = 0
 	stackFrame.ClipsDescendants = true
@@ -410,11 +421,33 @@ function BytecodePanel.create(parent)
 			bcLabel.Text = table.concat(lines, "\n")
 			currentBytecodeText = table.concat(plainLines, "\n")
 
-			-- Update canvas size
-			bcScroll.CanvasSize = UDim2.new(0, 0, 0, #bytecode * 14 + 8)
+			-- Auto-resize to fit bytecode (no scrolling needed for most programs)
+			local contentHeight = #bytecode * LINE_HEIGHT + 8
+			local bcHeight = math.max(MIN_BC_HEIGHT, math.min(contentHeight, MAX_BC_HEIGHT))
+
+			-- Update bytecode area size
+			bcScroll.Size = UDim2.new(1, -20, 0, bcHeight)
+			bcScroll.CanvasSize = UDim2.new(0, 0, 0, contentHeight)
+
+			-- Reposition stack section below bytecode
+			local stackY = BC_SCROLL_Y + bcHeight + STACK_GAP
+			stackHeader.Position = UDim2.new(0, 10, 0, stackY)
+			stackFrame.Position = UDim2.new(0, 10, 0, stackY + STACK_HEADER_HEIGHT + 2)
+
+			-- Resize frame to fit everything
+			local totalHeight = stackY + STACK_HEADER_HEIGHT + 2 + STACK_FRAME_HEIGHT + BOTTOM_PADDING
+			frame.Size = UDim2.new(0, 280, 0, totalHeight)
 		else
 			bcLabel.Text = '<font color="#606080">No bytecode loaded</font>'
+			bcScroll.Size = UDim2.new(1, -20, 0, MIN_BC_HEIGHT)
 			bcScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+			-- Reset to minimum layout
+			local stackY = BC_SCROLL_Y + MIN_BC_HEIGHT + STACK_GAP
+			stackHeader.Position = UDim2.new(0, 10, 0, stackY)
+			stackFrame.Position = UDim2.new(0, 10, 0, stackY + STACK_HEADER_HEIGHT + 2)
+			local totalHeight = stackY + STACK_HEADER_HEIGHT + 2 + STACK_FRAME_HEIGHT + BOTTOM_PADDING
+			frame.Size = UDim2.new(0, 280, 0, totalHeight)
 		end
 
 		-- Build stack display
