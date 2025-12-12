@@ -140,31 +140,18 @@ function Interpreter:run(maxTicks, maxFreeSteps)
 	return self.status
 end
 
--- Step once (execute single step even when paused - for debugger)
+-- Step once (execute single bytecode instruction - for debugger)
+-- This steps through ONE instruction at a time, making the debugger
+-- show exactly which bytecode is executing. More educational!
 function Interpreter:stepOnce()
 	if self.status == "ERROR" or self.status == "DONE" then
 		return false
 	end
 
-	-- Temporarily unpause to run one step
-	local wasPaused = self.paused
-	self.paused = false
-
-	-- Also unpause the runtime
-	if self.runtime then
-		self.runtime.paused = false
-	end
-
-	-- Run one step
+	-- Run one bytecode instruction
 	local running = false
 	if self.runtime then
-		running = self.runtime:step()
-	end
-
-	-- Re-pause
-	self.paused = true
-	if self.runtime then
-		self.runtime.paused = true
+		running = self.runtime:stepOnce()
 	end
 
 	-- Check for errors
@@ -183,7 +170,7 @@ function Interpreter:stepOnce()
 	end
 
 	if running then
-		self.status = "PAUSED"  -- Still running but paused
+		self.status = "RUNNING"  -- Still running
 		return true
 	else
 		self.status = "DONE"

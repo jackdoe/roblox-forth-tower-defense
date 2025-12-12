@@ -65,6 +65,7 @@ Compiler.Op = {
 	FOR_ITER = "FOR_ITER",           -- Get next from iterator or jump
 
 	-- Special
+	NOP = "NOP",                     -- No operation
 	YIELD = "YIELD",                 -- Yield execution for time-slice
 	HALT = "HALT",                   -- End of program
 
@@ -489,6 +490,14 @@ function Compiler.compile(source)
 
 	-- Create compiler
 	local c = createCompiler()
+
+	-- WORKAROUND: Emit NOP as first instruction
+	-- This fixes a Roblox-specific issue where programs starting with certain
+	-- instructions (like LOAD_CONST for "while True:") fail to execute properly.
+	-- The issue does not reproduce in standard Lua 5.4 unit tests, suggesting
+	-- it's related to Roblox's Luau runtime or the Interpreter/Runtime wrapper.
+	-- The NOP provides a safe "landing" instruction that always executes correctly.
+	emit(c, Op.NOP, nil, 1)
 
 	-- Compile program
 	if ast.type == NT.PROGRAM then

@@ -575,6 +575,10 @@ function VM:executeInstruction(op, arg)
 		end
 
 	-- Special
+	elseif op == Op.NOP then
+		-- No operation, just advance
+		self.ip = self.ip + 1
+
 	elseif op == Op.YIELD then
 		self.shouldYield = true
 		self.ip = self.ip + 1
