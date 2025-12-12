@@ -701,9 +701,6 @@ function VM:getState()
 		end
 	end
 
-	-- Derive current line from bytecode - single source of truth
-	local currentLine = self.code[self.ip] and self.code[self.ip].line or 0
-
 	return {
 		ip = self.ip,
 		stack = self.stack,
@@ -713,7 +710,6 @@ function VM:getState()
 		halted = self.halted,
 		error = self.error,
 		output = self.output,
-		currentLine = currentLine,
 		code = self.code,
 	}
 end

@@ -45,10 +45,6 @@ function Interpreter.new(player, isMonster, deps)
 	self.target = nil
 	self.lastFireTime = 0
 
-	-- Memory (for compatibility)
-	self.memorySlots = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
-	self.sharedMemory = deps.GlobalMemory
-
 	return self
 end
 
@@ -192,24 +188,16 @@ function Interpreter:reset()
 	end
 end
 
--- Get tokens for UI display (Python doesn't have tokens, return source lines)
-function Interpreter:getTokens()
-	local tokens = {}
-	for line in self.source:gmatch("[^\n]+") do
-		table.insert(tokens, line)
-	end
-	return tokens
-end
-
 -- Get current token index (for UI highlighting)
--- Returns the current line number (1-indexed) being executed
 -- Derives from bytecode[ip].line - single source of truth
 function Interpreter:getCurrentTokenIndex()
 	if self.runtime then
 		local state = self.runtime:getState()
-		return state.currentLine
+		local bytecode = state.bytecode or {}
+		local ip = state.vm and state.vm.ip or 1
+		return bytecode[ip] and bytecode[ip].line or 0
 	end
-	return nil
+	return 0
 end
 
 -- Get state for client (API compatible)
@@ -261,57 +249,42 @@ function Interpreter:getDynamicState()
 		end
 	end
 
-	-- Get VM state for bytecode visualization
-	-- currentLine is derived from bytecode[ip].line by VM - single source of truth
+	-- Get VM state - client derives currentLine from bytecode[ip].line
 	local vmState = nil
 	local bytecode = {}
-	local currentLine = 0
 	if self.runtime then
 		local runtimeState = self.runtime:getState()
-		currentLine = runtimeState.currentLine or 0
-		if runtimeState.vm then
-			vmState = runtimeState.vm
-		end
-		if runtimeState.bytecode then
-			bytecode = runtimeState.bytecode
-		end
+		vmState = runtimeState.vm
+		bytecode = runtimeState.bytecode or {}
 	end
 
 	return {
-		-- Stack from VM (actual stack-based execution)
-		stack = vmState and vmState.stack or {},
-		rstack = {},
-		pc = vmState and vmState.ip or 0,
+		-- VM state (client derives currentLine from bytecode[ip].line)
+		vm = vmState,
+		bytecode = bytecode,
+
+		-- Interpreter state
 		status = self.status,
 		error = self.error,
 		output = output,
-		hp = self.hp,
-		maxHp = self.maxHp,
 		paused = self.paused,
 		dead = self.dead,
-		tokens = self:getTokens(),
-		currentTokenIdx = currentLine,  -- Line number being executed
-		currentLine = currentLine,       -- Also expose as currentLine
-		execContext = "MAIN",
-		callStackDepth = 0,
-		memorySlots = self.memorySlots,
-		sharedMemory = self.sharedMemory,
-		-- Golem-specific
+
+		-- Game state
+		hp = self.hp,
+		maxHp = self.maxHp,
 		ammo = self.ammo,
 		maxAmmo = self.maxAmmo,
 		dynamicRange = self.dynamicRange,
+
 		-- Python variables
 		variables = variables,
-		-- VM/Bytecode state for visualization
-		vm = vmState,
-		bytecode = bytecode,
 	}
 end
 
 -- Static state (changes rarely)
 function Interpreter:getStaticState()
 	return {
-		tokens = self:getTokens(),
 		source = self.source,
 		language = "Python",
 	}

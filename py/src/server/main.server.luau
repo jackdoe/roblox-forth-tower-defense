@@ -91,18 +91,6 @@ local function checkRateLimit(player, action, cooldown)
 end
 
 --============================================================================
--- SHARED MEMORY (for inter-unit communication - Machinist Architecture)
---============================================================================
--- Key-value store for broadcasting data between units
--- Usage: broadcast("DEFCON", 1) / listen("DEFCON")
-local GlobalMemory = {
-	-- Numeric channels for backward compatibility
-	[1] = 0, [2] = 0, [3] = 0, [4] = 0, [5] = 0,
-	[6] = 0, [7] = 0, [8] = 0, [9] = 0, [10] = 0,
-	-- String keys added dynamically: DEFCON, SECTOR_1_STATUS, etc.
-}
-
---============================================================================
 -- DEPENDENCIES
 --============================================================================
 local deps = {
@@ -119,9 +107,6 @@ local deps = {
 	GolemRegistry = nil,
 	ScrapManager = nil,
 	BotRegistry = nil,
-
-	-- Shared memory for co-op
-	GlobalMemory = GlobalMemory,
 }
 
 --============================================================================

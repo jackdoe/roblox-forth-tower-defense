@@ -228,22 +228,6 @@ local function addUtilities(env, interp)
 	env.str = function(x) return tostring(x) end
 end
 
--- Add global memory functions
-local function addGlobalMemory(env, deps)
-	env.set_global = function(key, value)
-		if deps.GlobalMemory then
-			deps.GlobalMemory[key] = value
-		end
-	end
-
-	env.get_global = function(key)
-		if deps.GlobalMemory then
-			return deps.GlobalMemory[key]
-		end
-		return nil
-	end
-end
-
 --============================================================================
 -- PROXY BUILDERS (Lazy lookups for T1-T4, B1-B4)
 --============================================================================
@@ -901,7 +885,6 @@ function GameAPI.createGolemEnvironment(golem, deps)
 	-- Add shared functionality
 	addConstants(env)
 	addUtilities(env, interp)
-	addGlobalMemory(env, deps)
 
 	return env
 end
@@ -1337,7 +1320,6 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 	-- Add all shared functionality
 	addConstants(env)
 	addUtilities(env, interp)
-	addGlobalMemory(env, deps)
 	addTurretProxies(env, deps)
 	addBotProxies(env, deps)
 	addCore(env, deps)

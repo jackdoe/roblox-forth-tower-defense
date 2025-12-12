@@ -187,14 +187,11 @@ function Runtime:getState()
 		source = self.source,
 		globals = allGlobals,
 		globalNames = self.globalNames,
-		-- currentLine derived from bytecode[ip] by VM - passed through for legacy compatibility
-		currentLine = vmState.currentLine,
 
-		-- VM-specific state for bytecode visualization
+		-- VM state: ip + bytecode. Client derives currentLine from bytecode[ip].line
 		vm = {
 			ip = vmState.ip,
 			stack = vmState.stack,
-			code = vmState.code,
 			halted = vmState.halted,
 		},
 		bytecode = self.compiled and self.compiled.code or {},

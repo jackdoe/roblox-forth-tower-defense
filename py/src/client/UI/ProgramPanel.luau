@@ -596,13 +596,18 @@ function ProgramPanel.create(parent)
 		end
 
 		-- Code display - show Python source with line numbers
-		local tokens = state.tokens  -- For Python, these are source lines
+		-- Derive tokens from source, currentLine from bytecode[ip].line
+		local source = state.source or ""
+		local tokens = {}
+		for line in source:gmatch("[^\n]+") do
+			table.insert(tokens, line)
+		end
 
-		-- Derive current line from bytecode[ip].line - single source of truth
 		local bytecode = state.bytecode or {}
 		local ip = state.vm and state.vm.ip or 1
 		local currentLine = bytecode[ip] and bytecode[ip].line or 0
-		if tokens and #tokens > 0 then
+
+		if #tokens > 0 then
 			local lines = {}
 			for i, line in ipairs(tokens) do
 				local lineNum = string.format("%2d", i)

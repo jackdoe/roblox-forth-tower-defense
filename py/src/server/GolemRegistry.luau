@@ -446,12 +446,10 @@ function GolemRegistry.create(x, z)
 
 	-- Set up Python game environment for this golem
 	if Python and Python.createGolemEnvironment then
-		-- Include WaveManager in deps for coordinate transformation
 		local envDeps = {
 			GolemRegistry = GolemRegistry,
 			EnemyManager = EnemyManager,
 			WaveManager = WaveManager,
-			GlobalMemory = deps.GlobalMemory,
 		}
 		local gameEnv = Python.createGolemEnvironment(golem, envDeps)
 		interp:setGameEnvironment(gameEnv)

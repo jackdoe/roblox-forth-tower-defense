@@ -254,7 +254,6 @@ function BotRegistry.create(x, z)
 				ScrapManager = deps.ScrapManager,
 				GolemRegistry = deps.GolemRegistry,
 				EnemyManager = deps.EnemyManager,
-				GlobalMemory = deps.GlobalMemory,
 				WaveManager = WaveManager,
 			})
 			bot.interpreter:setGameEnvironment(botEnv)
