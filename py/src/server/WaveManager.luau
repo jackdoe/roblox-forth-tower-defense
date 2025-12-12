@@ -609,16 +609,6 @@ function WaveManager.gameOver()
 	print("WaveManager: GAME OVER - Core destroyed!")
 end
 
-function WaveManager.victory()
-	state.phase = "VICTORY"
-	print("WaveManager: VICTORY - All waves defeated!")
-
-	-- Restart after delay
-	task.delay(15, function()
-		WaveManager.restart()
-	end)
-end
-
 function WaveManager.restart()
 	print("WaveManager: Restarting game...")
 

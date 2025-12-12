@@ -446,7 +446,14 @@ function GolemRegistry.create(x, z)
 
 	-- Set up Python game environment for this golem
 	if Python and Python.createGolemEnvironment then
-		local gameEnv = Python.createGolemEnvironment(golem, deps)
+		-- Include WaveManager in deps for coordinate transformation
+		local envDeps = {
+			GolemRegistry = GolemRegistry,
+			EnemyManager = EnemyManager,
+			WaveManager = WaveManager,
+			GlobalMemory = deps.GlobalMemory,
+		}
+		local gameEnv = Python.createGolemEnvironment(golem, envDeps)
 		interp:setGameEnvironment(gameEnv)
 	end
 
@@ -1276,8 +1283,8 @@ function GolemRegistry.getProgram(golemId)
 	local golem = golems[golemId]
 	if not golem then return nil end
 
-	-- Return the source code (tokens joined)
-	return table.concat(golem.interpreter.tokens or {}, " ")
+	-- Return the source code
+	return golem.interpreter.source or ""
 end
 
 --============================================================================
@@ -1545,7 +1552,7 @@ function GolemRegistry.sendGolemFullState(golemId, player)
 	state.golemId = golemId
 	state.spotId = golem.spotId
 	state.typeName = golem.typeData.name
-	state.programSource = table.concat(golem.interpreter.tokens or {}, " ")
+	state.programSource = golem.interpreter.source or ""
 
 	golemFullStateEvent:FireClient(player, state)
 end

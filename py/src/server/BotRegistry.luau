@@ -219,6 +219,7 @@ function BotRegistry.create(x, z)
 		-- Command Queue: Controlled by either self.program or Machinist
 		taskQueue = {},  -- { {type="SUPPLY", target=golemSpotId}, ... }
 		currentTask = nil,
+		waitingForTask = false,  -- When true, interpreter yields until task completes
 
 		-- Status for UI
 		status = "IDLE",
@@ -246,6 +247,7 @@ function BotRegistry.create(x, z)
 				GolemRegistry = deps.GolemRegistry,
 				EnemyManager = deps.EnemyManager,
 				GlobalMemory = deps.GlobalMemory,
+				WaveManager = WaveManager,
 			})
 			bot.interpreter:setGameEnvironment(botEnv)
 		end
@@ -506,7 +508,8 @@ end
 
 -- Issue a command to a bot (from Player mainframe script)
 -- Commands take priority over internal interpreter
-function BotRegistry.issueCommand(botId, commandType, args)
+-- If blocking=true, the bot's interpreter will yield until the task completes
+function BotRegistry.issueCommand(botId, commandType, args, blocking)
 	local bot = bots[botId]
 	if not bot then return false end
 
@@ -516,6 +519,12 @@ function BotRegistry.issueCommand(botId, commandType, args)
 		args = args or {},
 		startTime = tick(),
 	})
+
+	-- If blocking, tell interpreter to wait
+	if blocking then
+		bot.waitingForTask = true
+	end
+
 	return true
 end
 
@@ -717,22 +726,27 @@ function BotRegistry.update(dt)
 			* CFrame.Angles(lean, 0, -tilt)     -- Lean + waddle
 
 		-- BOT INTERPRETER (if bot has its own program running)
-		if bot.interpreter then
-			local status = bot.interpreter.status
-			if status == "RUNNING" or status == "READY" then
-				bot.interpreter:run(5)  -- Run 5 ticks per frame
-			end
-		end
-
 		-- COMMAND QUEUE (from either bot's own program or Machinist)
 		if not bot.currentTask and #bot.taskQueue > 0 then
 			bot.currentTask = table.remove(bot.taskQueue, 1)
 		end
 
 		if bot.currentTask then
-			local status = executeTask(bot, dt)
-			if status == "DONE" or status == "FAILED" then
+			local taskStatus = executeTask(bot, dt)
+			if taskStatus == "DONE" or taskStatus == "FAILED" then
 				bot.currentTask = nil
+				-- Clear waiting flag when task completes AND no more tasks pending
+				if #bot.taskQueue == 0 then
+					bot.waitingForTask = false
+				end
+			end
+		end
+
+		-- Run interpreter AFTER task processing, and only if not waiting for a task
+		if bot.interpreter and not bot.waitingForTask then
+			local status = bot.interpreter.status
+			if status == "RUNNING" or status == "READY" then
+				bot.interpreter:run(5)  -- Run 5 ticks per frame
 			end
 		end
 

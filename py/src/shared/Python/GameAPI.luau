@@ -253,7 +253,25 @@ end
 local function createTurretProxy(spotId, deps, directGolem)
 	local GolemRegistry = deps.GolemRegistry
 	local EnemyManager = deps.EnemyManager
+	local WaveManager = deps.WaveManager
 	local proxy = {}
+
+	-- Get core position for coordinate transformation (0,0 = core)
+	local function getCoreOffset()
+		if WaveManager and WaveManager.getCorePosition then
+			local corePos = WaveManager.getCorePosition()
+			if corePos then
+				return corePos.x or 150, corePos.z or 150
+			end
+		end
+		return 150, 150  -- Default core position
+	end
+
+	-- Transform world coords to user coords (relative to core)
+	local function toUserCoords(worldX, worldZ)
+		local coreX, coreZ = getCoreOffset()
+		return worldX - coreX, worldZ - coreZ
+	end
 
 	local function getGolem()
 		if directGolem then return directGolem end
@@ -281,8 +299,9 @@ local function createTurretProxy(spotId, deps, directGolem)
 	proxy.position = function()
 		local golem = getGolem()
 		if golem and golem.character then
-			local x, z = getCharacterPos(golem.character)
-			return {x, z}
+			local worldX, worldZ = getCharacterPos(golem.character)
+			local userX, userZ = toUserCoords(worldX, worldZ)
+			return {userX, userZ}
 		end
 		return {0, 0}
 	end
@@ -382,7 +401,31 @@ local function createBotProxy(spotId, deps, directBot)
 	local BotRegistry = deps.BotRegistry
 	local ScrapManager = deps.ScrapManager
 	local EnemyManager = deps.EnemyManager
+	local WaveManager = deps.WaveManager
 	local proxy = {}
+
+	-- Get core position for coordinate transformation (0,0 = core)
+	local function getCoreOffset()
+		if WaveManager and WaveManager.getCorePosition then
+			local corePos = WaveManager.getCorePosition()
+			if corePos then
+				return corePos.x or 150, corePos.z or 150
+			end
+		end
+		return 150, 150  -- Default core position
+	end
+
+	-- Transform world coords to user coords (relative to core)
+	local function toUserCoords(worldX, worldZ)
+		local coreX, coreZ = getCoreOffset()
+		return worldX - coreX, worldZ - coreZ
+	end
+
+	-- Transform user coords to world coords
+	local function toWorldCoords(userX, userZ)
+		local coreX, coreZ = getCoreOffset()
+		return userX + coreX, userZ + coreZ
+	end
 
 	local function getBot()
 		if directBot then return directBot end
@@ -408,8 +451,9 @@ local function createBotProxy(spotId, deps, directBot)
 	proxy.position = function()
 		local bot = getBot()
 		if bot and bot.character then
-			local x, z = getCharacterPos(bot.character)
-			return {x, z}
+			local worldX, worldZ = getCharacterPos(bot.character)
+			local userX, userZ = toUserCoords(worldX, worldZ)
+			return {userX, userZ}
 		end
 		return {0, 0}
 	end
@@ -454,7 +498,8 @@ local function createBotProxy(spotId, deps, directBot)
 		return bot and (bot.status or "IDLE") or "NONE"
 	end
 
-	-- Movement commands
+	-- Movement commands (blocking - interpreter waits until movement completes)
+	-- Coordinates are relative to core (0,0 = core position)
 	proxy.move = function(x, z)
 		if type(x) == "table" then
 			z = x[2]
@@ -464,7 +509,9 @@ local function createBotProxy(spotId, deps, directBot)
 		-- Don't allow movement if dead (but not cleaned up yet)
 		if not bot or not isAlive() then return false end
 		if BotRegistry.issueCommand and x and z then
-			return BotRegistry.issueCommand(bot.id, "MOVE", { x = x, z = z })
+			-- Transform user coords to world coords
+			local worldX, worldZ = toWorldCoords(x, z)
+			return BotRegistry.issueCommand(bot.id, "MOVE", { x = worldX, z = worldZ }, true)
 		end
 		return false
 	end
@@ -497,7 +544,7 @@ local function createBotProxy(spotId, deps, directBot)
 		return proxy.move(0, 0)
 	end
 
-	-- Collection & Supply
+	-- Collection & Supply (all blocking - interpreter waits until task completes)
 	proxy.supply = function(target)
 		local bot = getBot()
 		-- Don't allow supply if dead
@@ -507,7 +554,7 @@ local function createBotProxy(spotId, deps, directBot)
 		if type(target) == "table" and target.spot then
 			targetSpotId = target.spot()
 		end
-		return BotRegistry.issueCommand(bot.id, "SUPPLY", { target = targetSpotId })
+		return BotRegistry.issueCommand(bot.id, "SUPPLY", { target = targetSpotId }, true)
 	end
 
 	proxy.collect = function(scrapId)
@@ -515,7 +562,7 @@ local function createBotProxy(spotId, deps, directBot)
 		-- Don't allow collection if dead
 		if not bot or not isAlive() then return false end
 		if BotRegistry.issueCommand then
-			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrapId })
+			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrapId }, true)
 		end
 		return false
 	end
@@ -528,7 +575,7 @@ local function createBotProxy(spotId, deps, directBot)
 		local x, z = getCharacterPos(bot.character)
 		local scrap = ScrapManager.findNearest(x, z)
 		if scrap and BotRegistry.issueCommand then
-			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrap.id })
+			return BotRegistry.issueCommand(bot.id, "COLLECT", { target = scrap.id }, true)
 		end
 		return false
 	end
@@ -540,7 +587,9 @@ local function createBotProxy(spotId, deps, directBot)
 		local x, z = getCharacterPos(bot.character)
 		local scrap = ScrapManager.findNearest(x, z)
 		if scrap and scrap.position then
-			return {scrap.position.X, scrap.position.Z}
+			-- Return user coords (relative to core)
+			local userX, userZ = toUserCoords(scrap.position.X, scrap.position.Z)
+			return {userX, userZ}
 		end
 		return nil
 	end
