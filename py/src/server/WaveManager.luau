@@ -21,6 +21,7 @@ local GolemRegistry = nil
 
 -- Callbacks (set by main.server)
 local onWaveStartCallback = nil
+local onRestartCallback = nil
 
 -- Game state
 local state = {
@@ -130,6 +131,59 @@ local WaveDefinitions = {
 	},
 }
 
+
+--============================================================================
+-- WAVE PREVIEW
+--============================================================================
+
+-- Generate preview string for next wave
+-- Legend: . = Zombie, - = Runner, * = Tank, B = Boss
+function WaveManager.getWavePreview()
+	local nextWave = state.waveNumber + 1
+	local effectiveWave = nextWave
+	if nextWave > 8 then
+		effectiveWave = ((nextWave - 1) % 8) + 1
+	end
+
+	local waveDef = WaveDefinitions[effectiveWave]
+	if not waveDef then
+		waveDef = WaveManager.generateProceduralWave(effectiveWave)
+	end
+
+	-- Build preview string
+	local preview = ""
+	local symbols = {
+		Zombie = ".",
+		Runner = "-",
+		Tank = "*",
+		Boss = "B",
+	}
+
+	-- Flatten all groups into a single list ordered by spawn time
+	local allSpawns = {}
+	for _, group in ipairs(waveDef) do
+		for i = 1, group.count do
+			table.insert(allSpawns, {
+				type = group.type,
+				delay = (i - 1) * group.interval,
+			})
+		end
+	end
+
+	-- Sort by delay
+	table.sort(allSpawns, function(a, b) return a.delay < b.delay end)
+
+	-- Build preview (limit to 30 chars for display)
+	for i, spawn in ipairs(allSpawns) do
+		if i > 30 then
+			preview = preview .. "..."
+			break
+		end
+		preview = preview .. (symbols[spawn.type] or "?")
+	end
+
+	return preview
+end
 
 --============================================================================
 -- INITIALIZATION
@@ -393,6 +447,16 @@ function WaveManager.getCoreHp()
 	return state.coreHp, state.coreMaxHp
 end
 
+function WaveManager.resetCoreVisual()
+	if state.coreModel then
+		local core = state.coreModel:FindFirstChild("Core")
+		if core then
+			core.Color = Color3.fromRGB(0, 255, 255) -- Cyan
+			core.Transparency = 0.2
+		end
+	end
+end
+
 --============================================================================
 -- PHASE MANAGEMENT
 --============================================================================
@@ -439,6 +503,10 @@ function WaveManager.setOnWaveStart(callback)
 	onWaveStartCallback = callback
 end
 
+function WaveManager.setOnRestart(callback)
+	onRestartCallback = callback
+end
+
 function WaveManager.startWave()
 	state.waveNumber = state.waveNumber + 1
 
@@ -446,6 +514,10 @@ function WaveManager.startWave()
 	if onWaveStartCallback then
 		onWaveStartCallback(state.waveNumber)
 	end
+
+	-- Scale enemies based on player count (more players = more enemies)
+	local playerCount = #Players:GetPlayers()
+	local playerMultiplier = 1 + (playerCount - 1) * 0.5 -- +50% enemies per extra player
 
 	-- Check for NG+ transition (after wave 8, loop back with scaled HP)
 	local effectiveWave = state.waveNumber
@@ -464,14 +536,14 @@ function WaveManager.startWave()
 		end
 
 		print("WaveManager: NG+" .. state.ngPlusLevel .. " - Wave", state.waveNumber, "(effective wave",
-			effectiveWave .. ", multiplier: " .. string.format("%.1fx", ngMultiplier) .. ")")
+			effectiveWave .. ", multiplier: " .. string.format("%.1fx", ngMultiplier) .. ", " .. playerCount .. " players)")
 	else
 		-- Even in first cycle, add slight scaling per wave
 		local earlyMultiplier = 1 + (state.waveNumber - 1) * 0.1 -- +10% per wave
 		if EnemyManager then
 			EnemyManager.setNewGamePlusMultiplier(earlyMultiplier)
 		end
-		print("WaveManager: Starting wave", state.waveNumber)
+		print("WaveManager: Starting wave", state.waveNumber, "with", playerCount, "players")
 	end
 
 	-- Update gate unlock (waves 1-8 each unlock a gate)
@@ -492,14 +564,16 @@ function WaveManager.startWave()
 		waveDef = WaveManager.generateProceduralWave(effectiveWave)
 	end
 
-	-- Build spawn queue
+	-- Build spawn queue (scaled by player count)
 	state.spawnQueue = {}
 	state.enemiesToSpawn = 0
 	state.enemiesSpawned = 0
 	state.enemiesRemaining = 0
 
 	for _, group in ipairs(waveDef) do
-		for i = 1, group.count do
+		-- Scale enemy count based on player count
+		local scaledCount = math.ceil(group.count * playerMultiplier)
+		for i = 1, scaledCount do
 			table.insert(state.spawnQueue, {
 				type = group.type,
 				gate = group.gate,
@@ -633,6 +707,17 @@ function WaveManager.restart()
 
 	-- Reset scrap
 	state.scrap = deps.Config.STARTING_SCRAP or 200
+
+	-- Reset core visual
+	WaveManager.resetCoreVisual()
+
+	-- Call restart callback (spawns initial units)
+	if onRestartCallback then
+		onRestartCallback()
+	end
+
+	-- Broadcast updated state
+	WaveManager.broadcastState()
 end
 
 --============================================================================
@@ -693,6 +778,7 @@ function WaveManager.broadcastState()
 		totalPlayers = #Players:GetPlayers(),
 		ngPlusLevel = state.ngPlusLevel,
 		highestGateUnlocked = state.highestGateUnlocked,
+		wavePreview = WaveManager.getWavePreview(), -- Preview of next wave
 	}
 
 	-- Count ready players

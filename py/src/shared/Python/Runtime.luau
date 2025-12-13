@@ -57,7 +57,8 @@ function Runtime:compile(source)
 	end
 
 	self.compiled = compiled
-	return true
+	self.instructionCount = compiled.instructionCount or #(compiled.code or {})
+	return true, nil, self.instructionCount
 end
 
 -- Start execution

@@ -48,6 +48,7 @@ local playerMoveCompleteEvent = PythonTD:WaitForChild("PlayerMoveComplete")
 -- Golem Mind Mode events (viewer registration)
 local golemRegisterViewerEvent = PythonTD:WaitForChild("GolemRegisterViewer")
 local golemUnregisterViewerEvent = PythonTD:WaitForChild("GolemUnregisterViewer")
+local golemMoveEvent = PythonTD:WaitForChild("GolemMove")
 
 -- State request (client asks server for current state when ready)
 local requestStateEvent = PythonTD:WaitForChild("RequestState")
@@ -101,9 +102,29 @@ local editor, program
 local showHelp -- Forward declaration for help button callback
 local showBytecodePanel -- Forward declaration for step button callback
 
+-- Helper to show/hide IDE based on target type
+local function updateIDEVisibility()
+	local isPlayer = (currentInterpreterTarget.type == "player")
+	if editor and editor.frame then
+		editor.frame.Visible = not isPlayer
+	end
+	if program and program.frame then
+		program.frame.Visible = not isPlayer
+	end
+	if bytecodePanel then
+		bytecodePanel:setVisible(not isPlayer and bytecodeVisible)
+	end
+end
+
 -- Create UI panels with callbacks
 editor = EditorPanel.create(screenGui, {
 	onLoad = function(source)
+		-- Turrets are read-only, only bots can be programmed
+		if currentInterpreterTarget.type == "golem" then
+			print("Turrets are read-only - cannot upload program")
+			return
+		end
+		-- Upload to bot (or player if ever enabled)
 		runProgramEvent:FireServer(source, currentInterpreterTarget)
 	end,
 
@@ -129,6 +150,9 @@ editor = EditorPanel.create(screenGui, {
 
 program = ProgramPanel.create(screenGui)
 local bytecodePanel = BytecodePanel.create(screenGui)
+
+-- Hide IDE initially (player mode = no IDE)
+updateIDEVisibility()
 
 -- Bytecode panel toggle state
 -- Hidden by default, auto-opens when stepping through code
@@ -1405,15 +1429,16 @@ local function enterGolemMind(golemId)
 		spotId = golemData.spotId
 	}
 
-	print("Entered golem mind mode: Golem #" .. (golemData.spotId or "?"))
+	print("Entered golem mind mode: Golem #" .. (golemData.spotId or "?") .. " (READ-ONLY)")
 
 	-- Register as viewer
 	golemRegisterViewerEvent:FireServer(golemId)
 
-	-- Update UI
-	editor:setGolemMode(true, golemData.spotId)
+	-- Update UI (turret = read-only mode)
+	editor:setMode("golem", golemData.spotId)
 	program:setTheme("golem")
 	bytecodePanel:setTheme("golem")
+	updateIDEVisibility() -- Show IDE when in golem mind
 
 	-- Create range indicator ring
 	-- Find the golem character in workspace
@@ -1475,6 +1500,7 @@ local function exitGolemMind()
 	editor:setGolemMode(false, nil)
 	program:setTheme("player")
 	bytecodePanel:setTheme("player")
+	updateIDEVisibility() -- Hide IDE when back to player
 
 	-- Destroy range indicator ring
 	if golemMindRangeRing then
@@ -1501,6 +1527,50 @@ editor.onSellGolem = function()
 		golemSellEvent:FireServer(currentInterpreterTarget.golemId)
 	end
 end
+
+-- Wire up move button (enters placement mode for relocation)
+local isMovingGolem = false
+local movingGolemId = nil
+
+editor.onMoveGolem = function()
+	if currentInterpreterTarget.type == "golem" and currentInterpreterTarget.golemId then
+		isMovingGolem = true
+		movingGolemId = currentInterpreterTarget.golemId
+		print("Click on the map to move the turret...")
+		-- Could add visual indicator here
+	end
+end
+
+-- Handle move result
+golemMoveEvent.OnClientEvent:Connect(function(success, msg)
+	isMovingGolem = false
+	movingGolemId = nil
+	if success then
+		print("Turret moved successfully!")
+	else
+		print("Cannot move turret:", msg)
+	end
+end)
+
+-- Handle mouse clicks for moving turrets
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1 and isMovingGolem and movingGolemId then
+		-- Raycast to find where player clicked on the ground
+		local mouse = player:GetMouse()
+		local ray = workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y)
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		raycastParams.FilterDescendantsInstances = {player.Character}
+
+		local result = workspace:Raycast(ray.Origin, ray.Direction * 500, raycastParams)
+		if result then
+			local hitPos = result.Position
+			golemMoveEvent:FireServer(movingGolemId, hitPos.X, hitPos.Z)
+		end
+	end
+end)
 
 -- Golem sell result feedback (defined here after exitGolemMind exists)
 golemSellEvent.OnClientEvent:Connect(function(success, result)
@@ -1557,6 +1627,7 @@ local function enterBotMind(botId)
 	editor:setMode("bot", botData.spotId)
 	program:setTheme("bot")
 	bytecodePanel:setTheme("bot")
+	updateIDEVisibility() -- Show IDE when in bot mind
 
 	return true
 end
@@ -1585,6 +1656,7 @@ local function exitBotMind()
 	editor:setMode("player", nil)
 	program:setTheme("player")
 	bytecodePanel:setTheme("player")
+	updateIDEVisibility() -- Hide IDE when back to player
 
 	-- Restore player program
 	if savedPlayerProgram then

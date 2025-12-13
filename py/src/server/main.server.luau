@@ -66,12 +66,11 @@ local playerInterpreters = {}
 local nextPlayerId = 1
 
 -- Default program for player (Python!)
+-- Player uses WASD movement now, so program is just a NOP
 local DEFAULT_PLAYER_PROGRAM = [[
-# Control bot from player
-while True:
-    s = B1.scraps()
-    if len(s) > 0:
-        B1.collect(s[0])
+# Player controls: WASD to move, click to attack
+# Turrets and bots are programmed separately
+pass
 ]]
 
 -- Track which interpreter each player is viewing
@@ -115,6 +114,19 @@ local deps = {
 local spawnedGolems = {}
 local spawnedBots = {}
 local spawnUnitsForWave
+local spawnUnitsForPlayer  -- Forward declaration
+
+-- Reset spawn tracking and spawn wave 1 units (defined after spawnUnitsForWave)
+local function resetSpawnedUnits()
+	spawnedGolems = {}
+	spawnedBots = {}
+	-- Reset spot ID counters
+	nextGolemSpotId = 1
+	nextBotSpotId = 1
+	spawnUnitsForWave(1)
+	GolemRegistry.broadcastState()
+	BotRegistry.broadcastState()
+end
 
 --============================================================================
 -- INITIALIZE TOWER DEFENSE SYSTEMS
@@ -211,55 +223,109 @@ BotRegistry.startUpdateLoop()
 
 --============================================================================
 -- PROGRESSIVE UNIT SPAWNING (implementation)
+-- Each player gets their own set of units!
 --============================================================================
-spawnUnitsForWave = function(waveNumber)
+-- These are module-level so resetSpawnedUnits can access them
+nextGolemSpotId = 1
+nextBotSpotId = 1
+
+-- Spawn units for a specific player based on wave unlocks
+spawnUnitsForPlayer = function(player, waveNumber)
+	local userId = player.UserId
 	local golemsSpawned = 0
 	local botsSpawned = 0
 
-	-- Spawn golems unlocking at this wave
+	-- Spawn golems unlocking at this wave for this player
 	if ArenaMap.initialGolems then
 		for i, pos in ipairs(ArenaMap.initialGolems) do
 			local unlockWave = pos.unlockWave or 1
-			if unlockWave <= waveNumber and not spawnedGolems[i] then
-				local id = GolemRegistry.create(pos.x, pos.z)
+			-- Create unique key per player+slot
+			local key = userId .. "_golem_" .. i
+			if unlockWave <= waveNumber and not spawnedGolems[key] then
+				-- Offset position slightly per player to avoid stacking
+				local playerIndex = 0
+				for idx, p in ipairs(Players:GetPlayers()) do
+					if p.UserId == userId then
+						playerIndex = idx - 1
+						break
+					end
+				end
+				local offsetX = (playerIndex % 3) * 12 - 12  -- -12, 0, 12
+				local offsetZ = math.floor(playerIndex / 3) * 12
+
+				local id = GolemRegistry.create(pos.x + offsetX, pos.z + offsetZ)
 				if id then
 					local golem = GolemRegistry.get(id)
 					if golem then
-						golem.spotId = i
-						spawnedGolems[i] = id
+						golem.spotId = nextGolemSpotId
+						golem.ownerId = userId
+						nextGolemSpotId = nextGolemSpotId + 1
+						spawnedGolems[key] = id
 						golemsSpawned = golemsSpawned + 1
-						print("  NEW Golem #" .. i .. " deployed! (" .. pos.x .. ", " .. pos.z .. ")")
+						GolemRegistry.setGolemAttribute(golem)
+						print("  NEW Golem #" .. golem.spotId .. " for " .. player.Name .. "!")
 					end
 				end
 			end
 		end
 	end
 
-	-- Spawn bots unlocking at this wave
+	-- Spawn bots unlocking at this wave for this player
 	if ArenaMap.initialBots then
 		for i, pos in ipairs(ArenaMap.initialBots) do
 			local unlockWave = pos.unlockWave or 1
-			if unlockWave <= waveNumber and not spawnedBots[i] then
-				local id = BotRegistry.create(pos.x, pos.z)
+			local key = userId .. "_bot_" .. i
+			if unlockWave <= waveNumber and not spawnedBots[key] then
+				-- Offset position slightly per player
+				local playerIndex = 0
+				for idx, p in ipairs(Players:GetPlayers()) do
+					if p.UserId == userId then
+						playerIndex = idx - 1
+						break
+					end
+				end
+				local offsetX = (playerIndex % 3) * 10 - 10
+				local offsetZ = math.floor(playerIndex / 3) * 10
+
+				local id = BotRegistry.create(pos.x + offsetX, pos.z + offsetZ)
 				if id then
 					local bot = BotRegistry.get(id)
 					if bot then
-						bot.spotId = i
-						spawnedBots[i] = id
+						bot.spotId = nextBotSpotId
+						bot.ownerId = userId
+						nextBotSpotId = nextBotSpotId + 1
+						spawnedBots[key] = id
 						botsSpawned = botsSpawned + 1
-						print("  NEW Bot #" .. i .. " deployed! (" .. pos.x .. ", " .. pos.z .. ")")
+						print("  NEW Bot #" .. bot.spotId .. " for " .. player.Name .. "!")
 					end
 				end
 			end
 		end
 	end
 
-	if golemsSpawned > 0 or botsSpawned > 0 then
-		print("Wave " .. waveNumber .. " reinforcements: +" .. golemsSpawned .. " turrets, +" .. botsSpawned .. " bots")
+	return golemsSpawned, botsSpawned
+end
+
+spawnUnitsForWave = function(waveNumber)
+	local totalGolems = 0
+	local totalBots = 0
+
+	-- Spawn units for each player
+	for _, player in ipairs(Players:GetPlayers()) do
+		local g, b = spawnUnitsForPlayer(player, waveNumber)
+		totalGolems = totalGolems + g
+		totalBots = totalBots + b
+	end
+
+	if totalGolems > 0 or totalBots > 0 then
+		print("Wave " .. waveNumber .. " reinforcements: +" .. totalGolems .. " turrets, +" .. totalBots .. " bots total")
 		GolemRegistry.broadcastState()
 		BotRegistry.broadcastState()
 	end
 end
+
+-- Register restart callback
+WaveManager.setOnRestart(resetSpawnedUnits)
 
 --============================================================================
 -- LOAD ARENA MAP
@@ -272,6 +338,11 @@ local function loadArenaMap()
 
 	-- Set spawn gates for enemies
 	EnemyManager.setSpawnGates(ArenaMap.spawnGates)
+
+	-- Set enemy path waypoints
+	if ArenaMap.enemyPath then
+		EnemyManager.setEnemyPath(ArenaMap.enemyPath)
+	end
 
 	-- Create fancy gate visuals
 	WaveManager.createGateVisuals(ArenaMap.spawnGates)
@@ -371,14 +442,46 @@ local function onPlayerAdded(player)
 	if player.Character then
 		onCharacterAdded(player.Character)
 	end
+
+	-- Spawn units for this player based on current wave
+	local waveState = WaveManager.getState()
+	local currentWave = waveState.waveNumber or 0
+	if currentWave >= 1 then
+		-- Game is in progress, spawn units for this player
+		spawnUnitsForPlayer(player, currentWave)
+		GolemRegistry.broadcastState()
+		BotRegistry.broadcastState()
+	end
 end
 
 local function onPlayerRemoving(player)
-	local interp = playerInterpreters[player.UserId]
+	local userId = player.UserId
+
+	-- Remove player's interpreter
+	local interp = playerInterpreters[userId]
 	if interp then
 		EntityRegistry.unregister(interp.id)
-		playerInterpreters[player.UserId] = nil
+		playerInterpreters[userId] = nil
 	end
+
+	-- Remove player's turrets
+	for key, golemId in pairs(spawnedGolems) do
+		if string.match(key, "^" .. userId .. "_golem_") then
+			GolemRegistry.destroy(golemId)
+			spawnedGolems[key] = nil
+		end
+	end
+
+	-- Remove player's bots
+	for key, botId in pairs(spawnedBots) do
+		if string.match(key, "^" .. userId .. "_bot_") then
+			BotRegistry.destroy(botId)
+			spawnedBots[key] = nil
+		end
+	end
+
+	GolemRegistry.broadcastState()
+	BotRegistry.broadcastState()
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
@@ -406,6 +509,7 @@ end)
 -- PROGRAM EXECUTION HANDLERS
 --============================================================================
 local MAX_PROGRAM_LENGTH = 5000  -- Python programs can be longer
+local MAX_BOT_INSTRUCTIONS = 30  -- Bot programs limited to force specialization
 
 local function sendInterpreterState(player, interpreterTarget)
 	local interp, golem, bot
@@ -479,7 +583,18 @@ runProgramEvent.OnServerEvent:Connect(function(player, source, interpreterTarget
 		interp.paused = false
 	else
 		-- Load new program and start fresh
-		if interp:load(source) then
+		local loadSuccess, loadErr, instructionCount = interp:load(source)
+		if loadSuccess then
+			-- Check instruction limit for bots (forces specialization)
+			if interpreterTarget.type == "bot" then
+				instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
+				if instructionCount > MAX_BOT_INSTRUCTIONS then
+					interp.error = "PROGRAM TOO COMPLEX (" .. instructionCount .. "/" .. MAX_BOT_INSTRUCTIONS .. " instructions)"
+					interp.status = "ERROR"
+					sendInterpreterState(player, interpreterTarget)
+					return
+				end
+			end
 			interp.lastProgram = source
 		end
 		interp.paused = false
@@ -642,6 +757,36 @@ RunService.Heartbeat:Connect(function(dt)
 				-- Run interpreter
 				if not interp.paused and not interp.dead and (interp.status == "READY" or interp.status == "RUNNING") then
 					interp:run(Config.PLAYER_TICKS_PER_UPDATE or 1)
+				end
+
+				-- Auto scrap pickup (player walks near scrap)
+				if not interp.dead and player.Character then
+					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						local px, pz = hrp.Position.X, hrp.Position.Z
+						local pickupRange = 5 -- studs
+						local scrapsInRange = ScrapManager.findInRange(px, pz, pickupRange)
+						for _, scrap in ipairs(scrapsInRange) do
+							local capacity = (interp.maxCapacity or 50) - (interp.scrapInventory or 0)
+							if capacity > 0 then
+								local collected = ScrapManager.collect(scrap.id, interp)
+								if collected > 0 then
+									-- Visual feedback would go here
+								end
+							end
+						end
+
+						-- Auto deposit to core (player near core)
+						local coreX, coreZ = ArenaMap.core.x, ArenaMap.core.z
+						local distToCore = math.sqrt((px - coreX)^2 + (pz - coreZ)^2)
+						local depositRange = 10 -- studs
+						if distToCore <= depositRange and (interp.scrapInventory or 0) > 0 then
+							local toDeposit = interp.scrapInventory
+							WaveManager.addScrap(toDeposit)
+							interp.scrapInventory = 0
+							-- Visual feedback would go here
+						end
+					end
 				end
 
 				-- Build state for client

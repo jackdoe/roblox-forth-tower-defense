@@ -516,10 +516,11 @@ function Compiler.compile(source)
 		return nil, c.errors
 	end
 
-	-- Return compiled code
+	-- Return compiled code with instruction count
 	return {
 		code = c.code,
 		source = source,
+		instructionCount = #c.code,  -- For program size limits
 	}
 end
 

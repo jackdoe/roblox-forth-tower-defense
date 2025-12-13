@@ -25,59 +25,50 @@ return {
 		facingAngle = 0,
 	},
 
-	-- Enemy spawn gates
+	-- Single winding path for enemies
+	-- Enemies spawn at entrance and follow waypoints to core
+	enemyPath = {
+		{ x = 30,  z = 150 },   -- Entrance (west edge)
+		{ x = 60,  z = 150 },   -- Turn 1 (into first corridor)
+		{ x = 60,  z = 80 },    -- Turn 2 (north)
+		{ x = 120, z = 80 },    -- Turn 3 (east)
+		{ x = 120, z = 220 },   -- Turn 4 (south, long stretch)
+		{ x = 180, z = 220 },   -- Turn 5 (east)
+		{ x = 180, z = 120 },   -- Turn 6 (north)
+		{ x = 150, z = 120 },   -- Turn 7 (west, approach core)
+		{ x = 150, z = 150 },   -- Core position (final destination)
+	},
+
+	-- Single spawn gate (entrance to the path)
 	spawnGates = {
-		-- Cardinal gates
-		{ x = 150, z = 30,  name = "North",     direction = "south",     unlockWave = 1 },
-		{ x = 150, z = 270, name = "South",     direction = "north",     unlockWave = 2 },
-		{ x = 30,  z = 150, name = "West",      direction = "east",      unlockWave = 3 },
-		{ x = 270, z = 150, name = "East",      direction = "west",      unlockWave = 4 },
-		-- Diagonal gates
-		{ x = 50,  z = 50,  name = "NorthWest", direction = "southeast", unlockWave = 5 },
-		{ x = 250, z = 50,  name = "NorthEast", direction = "southwest", unlockWave = 6 },
-		{ x = 50,  z = 250, name = "SouthWest", direction = "northeast", unlockWave = 7 },
-		{ x = 250, z = 250, name = "SouthEast", direction = "northwest", unlockWave = 8 },
+		{ x = 30,  z = 150, name = "Entrance", direction = "east", unlockWave = 1 },
 	},
 
 	golemMinDistance = 8,
 
-	-- Restricted zones
-	-- UPDATED: Coordinates pushed closer to 150 (Core) to ensure overlap
+	-- Restricted zones (winding path layout)
 	restrictedZones = {
 		-- Core protection zone (circular)
-		{ type = "circle",   x = 150,     z = 150,            radius = 25, reason = "core" },
+		{ type = "circle",   x = 150,     z = 150,            radius = 20, reason = "core" },
 
-		-- Monster paths (rectangular lanes)
-		-- VISUAL FIX: Extended Z/X values to penetrate the Core circle (125 -> 140, 175 -> 160)
+		-- Winding snake path segments (matching enemyPath waypoints)
+		-- Segment 1: Entrance (30,150) to (60,150) - horizontal
+		{ type = "rect",     x1 = 20,     z1 = 140,           x2 = 70,     z2 = 160,       reason = "path" },
+		-- Segment 2: (60,150) to (60,80) - vertical north
+		{ type = "rect",     x1 = 50,     z1 = 70,            x2 = 70,     z2 = 160,       reason = "path" },
+		-- Segment 3: (60,80) to (120,80) - horizontal east
+		{ type = "rect",     x1 = 50,     z1 = 70,            x2 = 130,    z2 = 90,        reason = "path" },
+		-- Segment 4: (120,80) to (120,220) - vertical south (long)
+		{ type = "rect",     x1 = 110,    z1 = 70,            x2 = 130,    z2 = 230,       reason = "path" },
+		-- Segment 5: (120,220) to (180,220) - horizontal east
+		{ type = "rect",     x1 = 110,    z1 = 210,           x2 = 190,    z2 = 230,       reason = "path" },
+		-- Segment 6: (180,220) to (180,120) - vertical north
+		{ type = "rect",     x1 = 170,    z1 = 110,           x2 = 190,    z2 = 230,       reason = "path" },
+		-- Segment 7: (180,120) to (150,120) - horizontal west to core approach
+		{ type = "rect",     x1 = 140,    z1 = 110,           x2 = 190,    z2 = 130,       reason = "path" },
 
-		-- North path (ends deeper at z=140)
-		{ type = "rect",     x1 = 140,    z1 = 0,             x2 = 160,    z2 = 140,       reason = "path" },
-
-		-- South path (starts deeper at z=160)
-		{ type = "rect",     x1 = 140,    z1 = 160,           x2 = 160,    z2 = 300,       reason = "path" },
-
-		-- West path (ends deeper at x=140)
-		{ type = "rect",     x1 = 0,      z1 = 140,           x2 = 140,    z2 = 160,       reason = "path" },
-
-		-- East path (starts deeper at x=160)
-		{ type = "rect",     x1 = 160,    z1 = 140,           x2 = 300,    z2 = 160,       reason = "path" },
-
-		-- Diagonal paths
-		-- VISUAL FIX: Extended to reach 140/160 to touch core, extended outwards to cover gates
-		{ type = "line",     x1 = 40,     z1 = 40,            x2 = 140,    z2 = 140,       width = 15,     reason = "path" }, -- NW
-		{ type = "line",     x1 = 260,    z1 = 40,            x2 = 160,    z2 = 140,       width = 15,     reason = "path" }, -- NE
-		{ type = "line",     x1 = 40,     z1 = 260,           x2 = 140,    z2 = 160,       width = 15,     reason = "path" }, -- SW
-		{ type = "line",     x1 = 260,    z1 = 260,           x2 = 160,    z2 = 160,       width = 15,     reason = "path" }, -- SE
-
-		-- Gate spawn areas
-		{ type = "circle",   x = 150,     z = 30,             radius = 15, reason = "gate" },
-		{ type = "circle",   x = 150,     z = 270,            radius = 15, reason = "gate" },
+		-- Entrance gate spawn area
 		{ type = "circle",   x = 30,      z = 150,            radius = 15, reason = "gate" },
-		{ type = "circle",   x = 270,     z = 150,            radius = 15, reason = "gate" },
-		{ type = "circle",   x = 50,      z = 50,             radius = 15, reason = "gate" },
-		{ type = "circle",   x = 250,     z = 50,             radius = 15, reason = "gate" },
-		{ type = "circle",   x = 50,      z = 250,            radius = 15, reason = "gate" },
-		{ type = "circle",   x = 250,     z = 250,            radius = 15, reason = "gate" },
 
 		-- Map boundaries
 		{ type = "boundary", margin = 15, reason = "boundary" },
@@ -93,29 +84,18 @@ return {
 		golemBaseCost = 100,
 	},
 
-	-- PROGRESSIVE UNLOCKS: Start small, grow as gates open
-	-- Wave 1: 2 golems, 1 bot (starter)
-	-- By Wave 8: 8 golems, 4 bots (full army)
+	-- Starting turrets (more can be built with scrap)
 	initialGolems = {
-		-- Starter turrets (Wave 1)
-		{ x = 150, z = 120, unlockWave = 1 }, -- #1 North path
-		{ x = 150, z = 180, unlockWave = 1 }, -- #2 South path
-		-- Wave 2-4: Cardinal directions
-		{ x = 120, z = 150, unlockWave = 3 }, -- #3 West path
-		{ x = 180, z = 150, unlockWave = 4 }, -- #4 East path
-		-- Wave 5-8: Diagonal corners
-		{ x = 125, z = 125, unlockWave = 5 }, -- #5 NW diagonal
-		{ x = 175, z = 125, unlockWave = 6 }, -- #6 NE diagonal
-		{ x = 125, z = 175, unlockWave = 7 }, -- #7 SW diagonal
-		{ x = 175, z = 175, unlockWave = 8 }, -- #8 SE diagonal
+		{ x = 70,  z = 140, unlockWave = 1 }, -- #1
+		{ x = 70,  z = 160, unlockWave = 1 }, -- #2
 	},
 
-	-- Bots unlock progressively too
+	-- 4 bots per player (all from wave 1)
 	initialBots = {
-		{ x = 145, z = 145, unlockWave = 1 }, -- #1 Starter bot
-		{ x = 155, z = 145, unlockWave = 3 }, -- #2 Unlocks with West gate
-		{ x = 145, z = 155, unlockWave = 5 }, -- #3 Unlocks with NW diagonal
-		{ x = 155, z = 155, unlockWave = 7 }, -- #4 Unlocks with SW diagonal
+		{ x = 145, z = 145, unlockWave = 1 }, -- #1
+		{ x = 155, z = 145, unlockWave = 1 }, -- #2
+		{ x = 145, z = 155, unlockWave = 1 }, -- #3
+		{ x = 155, z = 155, unlockWave = 1 }, -- #4
 	},
 
 	-- Help tokens for teaching (adjusted for larger map)

@@ -338,24 +338,34 @@ local function createTurretProxy(spotId, deps, directGolem)
 
 		if EnemyManager and EnemyManager.findInRange then
 			local enemies = EnemyManager.findInRange(x, z, range)
-			local ids = {}
+			local results = {}
 			for _, e in ipairs(enemies) do
-				table.insert(ids, e.id)
+				-- Return enemy objects with id, type, hp, and status effects
+				table.insert(results, {
+					id = e.id,
+					type = e.typeName or "Zombie",  -- Enemy type (Zombie, Runner, Tank, Boss)
+					hp = e.hp or 0,
+					max_hp = e.maxHp or 1,
+					-- Status effects (for bot combos)
+					burning = e.burning or false,  -- From LASER
+					frozen = (e.slowAmount and e.slowAmount >= 0.5) or false,  -- From ICE (heavily slowed)
+					slowed = (e.slowAmount and e.slowAmount > 0) or false,  -- Any slow effect
+					oiled = e.oiled or false,  -- From ROCKET (for shock combo)
+				})
 			end
-			return ids
+			return results
 		end
 		return {}
 	end
 
-	proxy.fire = function(targetId, ammoType)
+	proxy.fire = function(enemy, ammoType)
 		local golem = getGolem()
 		if not golem then return false end
-		-- Don't allow firing if dead (but not cleaned up yet)
 		if not isAlive() then return false end
 
 		ammoType = ammoType or 1
-		if targetId and golem.interpreter then
-			golem.interpreter.target = targetId
+		if enemy and enemy.id and golem.interpreter then
+			golem.interpreter.target = enemy.id
 		end
 		if GolemRegistry and GolemRegistry.fire then
 			return GolemRegistry.fire(golem.id, ammoType)
@@ -645,15 +655,24 @@ local function createBotProxy(spotId, deps, directBot)
 		return true
 	end
 
-	-- Shock attack! Must be close to enemy. Combos with ROCKET (oiled) and LASER (burning)
-	-- BLOCKING: Bot is stunned for 2 seconds after shocking.
-	-- Returns true if shock was executed, false if failed (too far, invalid enemy, etc.)
-	proxy.shock = function(enemyId)
+	-- Shock attack! Moves to enemy, then shocks. Combos with ROCKET (oiled) and LASER (burning)
+	-- BLOCKING: Bot moves to enemy, shocks, then is stunned for 2 seconds.
+	-- Accepts: enemy object from scan() (has .id), or raw enemy ID
+	-- Returns true if shock was executed, false if failed
+	proxy.shock = function(target)
 		local bot = getBot()
 		if not bot or not isAlive() then return false end
 		if not BotRegistry or not BotRegistry.issueCommand then return false end
 
-		-- Issue SHOCK command (blocking - waits for stun to end)
+		-- Extract enemy ID from target object or use directly
+		local enemyId = target
+		if type(target) == "table" and target.id then
+			enemyId = target.id
+		end
+		if not enemyId then return false end
+
+		-- Issue SHOCK command - includes move-to-enemy + shock + stun
+		-- The BotRegistry handles the movement and shocking sequence
 		return BotRegistry.issueCommand(bot.id, "SHOCK", { enemyId = enemyId }, true)
 	end
 
@@ -882,54 +901,53 @@ function GameAPI.createGolemEnvironment(golem, deps)
 	end
 
 	-- Enemy targeting utilities (turret-specific helpers)
+	-- These now work with enemy objects from scan() which have {id, type, hp, max_hp}
 	env.nearest = function(enemyList)
 		enemyList = enemyList or selfObj.scan()
 		if #enemyList == 0 then return nil end
 
 		local gx, gz = getGolemPos()
-		local nearestId, nearestDist = nil, math.huge
+		local nearestEnemy, nearestDist = nil, math.huge
 
-		for _, enemyId in ipairs(enemyList) do
-			local ex, ez = getEnemyPos(enemyId)
+		for _, enemy in ipairs(enemyList) do
+			local ex, ez = getEnemyPos(enemy.id)
 			if ex then
 				local dist = calcDistance(gx, gz, ex, ez)
 				if dist < nearestDist then
 					nearestDist = dist
-					nearestId = enemyId
+					nearestEnemy = enemy
 				end
 			end
 		end
-		return nearestId
+		return nearestEnemy
 	end
 
 	env.weakest = function(enemyList)
 		enemyList = enemyList or selfObj.scan()
 		if #enemyList == 0 then return nil end
 
-		local weakestId, lowestHp = nil, math.huge
-		for _, enemyId in ipairs(enemyList) do
-			local enemy = EnemyManager.get(enemyId)
-			if enemy and enemy.hp < lowestHp then
+		local weakestEnemy, lowestHp = nil, math.huge
+		for _, enemy in ipairs(enemyList) do
+			if enemy.hp < lowestHp then
 				lowestHp = enemy.hp
-				weakestId = enemyId
+				weakestEnemy = enemy
 			end
 		end
-		return weakestId
+		return weakestEnemy
 	end
 
 	env.strongest = function(enemyList)
 		enemyList = enemyList or selfObj.scan()
 		if #enemyList == 0 then return nil end
 
-		local strongestId, highestHp = nil, 0
-		for _, enemyId in ipairs(enemyList) do
-			local enemy = EnemyManager.get(enemyId)
-			if enemy and enemy.hp > highestHp then
+		local strongestEnemy, highestHp = nil, 0
+		for _, enemy in ipairs(enemyList) do
+			if enemy.hp > highestHp then
 				highestHp = enemy.hp
-				strongestId = enemyId
+				strongestEnemy = enemy
 			end
 		end
-		return strongestId
+		return strongestEnemy
 	end
 
 	-- Add shared functionality
@@ -1326,29 +1344,7 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 		return 0
 	end
 
-	-- self.supply(turret) - Supply ammo to a turret
-	env.self.supply = function(target)
-		if not GolemRegistry then return 0 end
-
-		local spotId = target
-		if type(target) == "table" and target.spot then
-			spotId = target.spot()
-		end
-
-		local golem = GolemRegistry.getBySpotId(spotId)
-		if golem then
-			-- Move to golem first
-			if golem.character then
-				local gx, gz = getCharacterPos(golem.character)
-				moveInternal(gx, gz)
-			end
-			-- Supply
-			local amount = GolemRegistry.refillAmmo(golem.id, interp.scrapInventory or 0)
-			interp.scrapInventory = (interp.scrapInventory or 0) - amount
-			return amount
-		end
-		return 0
-	end
+	-- NOTE: Turrets auto-reload from core stockpile (no manual supply needed)
 
 	-- =========================================================
 	-- COMBAT

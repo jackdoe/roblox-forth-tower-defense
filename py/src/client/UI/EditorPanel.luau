@@ -6,11 +6,15 @@ local UserInputService = game:GetService("UserInputService")
 local DragModule = require(script.Parent.DragModule)
 local ProgramLibrary = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("ProgramLibrary"))
 local HelpDatabase = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("HelpDatabase"))
+local Python = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("Python"))
 
 local EditorPanel = {}
 
 -- Character limit for Machinist programs (forces concise code)
 local MAX_CHARS = 300
+
+-- Bytecode instruction limit for bots (forces specialization)
+local MAX_BOT_INSTRUCTIONS = 30
 
 -- Clean up Python code (preserve indentation, just trim trailing whitespace)
 local function formatCode(source)
@@ -155,6 +159,29 @@ function EditorPanel.create(parent, callbacks)
 	sellGolemBtn.MouseButton1Click:Connect(function()
 		if panel.onSellGolem then
 			panel.onSellGolem()
+		end
+	end)
+
+	-- Move button (for turret relocation)
+	local moveBtn = Instance.new("TextButton")
+	moveBtn.Name = "MoveBtn"
+	moveBtn.Size = UDim2.new(0, 50, 0, 26)
+	moveBtn.Position = UDim2.new(0, 435, 0, 4)
+	moveBtn.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
+	moveBtn.Text = "MOVE"
+	moveBtn.TextColor3 = Color3.fromRGB(150, 180, 255)
+	moveBtn.Font = Enum.Font.GothamBold
+	moveBtn.TextSize = 10
+	moveBtn.Visible = false
+	moveBtn.Parent = topBar
+
+	local moveCorner = Instance.new("UICorner")
+	moveCorner.CornerRadius = UDim.new(0, 4)
+	moveCorner.Parent = moveBtn
+
+	moveBtn.MouseButton1Click:Connect(function()
+		if panel.onMoveGolem then
+			panel.onMoveGolem()
 		end
 	end)
 
@@ -399,6 +426,24 @@ function EditorPanel.create(parent, callbacks)
 	helpPadding.PaddingLeft = UDim.new(0, 6)
 	helpPadding.Parent = helpTooltip
 
+	-- Program memory indicator (for bots - shows instruction count)
+	local memoryLabel = Instance.new("TextLabel")
+	memoryLabel.Name = "MemoryLabel"
+	memoryLabel.Size = UDim2.new(0, 80, 0, 18)
+	memoryLabel.Position = UDim2.new(1, -85, 1, -38)
+	memoryLabel.BackgroundColor3 = Color3.fromRGB(30, 40, 50)
+	memoryLabel.BackgroundTransparency = 0.3
+	memoryLabel.Text = "RAM: 0/30"
+	memoryLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+	memoryLabel.Font = Enum.Font.Code
+	memoryLabel.TextSize = 11
+	memoryLabel.Visible = false  -- Only visible in bot mode
+	memoryLabel.Parent = frame
+
+	local memoryCorner = Instance.new("UICorner")
+	memoryCorner.CornerRadius = UDim.new(0, 4)
+	memoryCorner.Parent = memoryLabel
+
 	-- Hints bar
 	local hintsBar = Instance.new("TextLabel")
 	hintsBar.Name = "HintsBar"
@@ -463,6 +508,42 @@ function EditorPanel.create(parent, callbacks)
 	end
 
 	textBox:GetPropertyChangedSignal("Text"):Connect(updateCharCount)
+
+	-- Update instruction count for bot memory display
+	local lastInstructionCount = 0
+	local function updateInstructionCount()
+		if currentMode ~= "bot" then return end
+
+		local source = textBox.Text
+		if source == "" then
+			lastInstructionCount = 0
+			panel:setMemoryUsage(0, MAX_BOT_INSTRUCTIONS)
+			return
+		end
+
+		-- Try to compile to get instruction count
+		local success, result = pcall(function()
+			return Python.compile(source)
+		end)
+
+		if success and result and result.instructionCount then
+			lastInstructionCount = result.instructionCount
+			panel:setMemoryUsage(result.instructionCount, MAX_BOT_INSTRUCTIONS)
+		end
+	end
+
+	-- Debounce the instruction count update (don't compile on every keystroke)
+	local instructionUpdatePending = false
+	local function scheduleInstructionUpdate()
+		if instructionUpdatePending then return end
+		instructionUpdatePending = true
+		task.delay(0.5, function()
+			instructionUpdatePending = false
+			updateInstructionCount()
+		end)
+	end
+
+	textBox:GetPropertyChangedSignal("Text"):Connect(scheduleInstructionUpdate)
 
 	-- =====================================================
 	-- AUTOCOMPLETE SYSTEM WITH HELP
@@ -1276,23 +1357,38 @@ function EditorPanel.create(parent, callbacks)
 
 		frame.BackgroundColor3 = theme.frameBg
 		topBar.BackgroundColor3 = theme.topBarBg
-		startBtn.BackgroundColor3 = theme.startBtn
 
 		if currentMode == "player" then
+			-- Player mode: hidden (no programming)
 			modeIndicator.Visible = false
 			exitGolemBtn.Visible = false
 			sellGolemBtn.Visible = false
+			moveBtn.Visible = false
+			startBtn.Visible = false
+			pauseBtn.Visible = false
+			stepBtn.Visible = false
+			memoryLabel.Visible = false
+			textBox.TextEditable = true
 			hintsBar.Text = "^Q: Unfocus  |  ^1: Run  |  ^2: Pause  |  ^3: Step"
 		elseif currentMode == "golem" then
-			modeIndicator.Text = "GOLEM #" .. (spotId or "?")
+			-- Turret mode: READ-ONLY (view code, can't edit)
+			modeIndicator.Text = "TURRET #" .. (spotId or "?") .. " (READ-ONLY)"
 			modeIndicator.TextColor3 = theme.modeColor
 			modeIndicator.BackgroundColor3 = theme.topBarBg
 			modeIndicator.Visible = true
 			exitGolemBtn.Visible = true
 			sellGolemBtn.Visible = true
 			sellGolemBtn.Text = "SELL"
-			hintsBar.Text = "CONTROLLING GOLEM  |  ^1: Upload  |  SELL: Reclaim 75% scrap"
+			moveBtn.Visible = true
+			-- Hide run/pause/step - turrets are read-only
+			startBtn.Visible = false
+			pauseBtn.Visible = false
+			stepBtn.Visible = true  -- Allow stepping to see bytecode execution
+			memoryLabel.Visible = false
+			textBox.TextEditable = false  -- READ-ONLY
+			hintsBar.Text = "READ-ONLY  |  MOVE: Relocate  |  SELL: Reclaim scrap"
 		elseif currentMode == "bot" then
+			-- Bot mode: FULL PROGRAMMING
 			modeIndicator.Text = "BOT #" .. (spotId or "?")
 			modeIndicator.TextColor3 = theme.modeColor
 			modeIndicator.BackgroundColor3 = theme.topBarBg
@@ -1300,7 +1396,14 @@ function EditorPanel.create(parent, callbacks)
 			exitGolemBtn.Visible = true
 			sellGolemBtn.Visible = true
 			sellGolemBtn.Text = "SELL"
-			hintsBar.Text = "CONTROLLING BOT  |  ^1: Upload  |  SELL: Reclaim 50% + cargo"
+			moveBtn.Visible = false
+			startBtn.Visible = true
+			startBtn.BackgroundColor3 = theme.startBtn
+			pauseBtn.Visible = true
+			stepBtn.Visible = true
+			memoryLabel.Visible = true  -- Show memory usage for bots
+			textBox.TextEditable = true
+			hintsBar.Text = "BOT PROGRAMMING  |  ^1: Run  |  ^2: Pause  |  ^3: Step"
 		end
 	end
 
@@ -1325,9 +1428,27 @@ function EditorPanel.create(parent, callbacks)
 		return currentMode
 	end
 
-	-- Callbacks for golem mode
+	-- Update memory display (instruction count)
+	function panel:setMemoryUsage(used, max)
+		max = max or 30
+		used = used or 0
+		memoryLabel.Text = "RAM: " .. used .. "/" .. max
+
+		-- Color based on usage
+		local ratio = used / max
+		if ratio > 1 then
+			memoryLabel.TextColor3 = Color3.fromRGB(255, 80, 80)  -- Red: over limit
+		elseif ratio > 0.8 then
+			memoryLabel.TextColor3 = Color3.fromRGB(255, 200, 80)  -- Yellow: near limit
+		else
+			memoryLabel.TextColor3 = Color3.fromRGB(100, 200, 255)  -- Cyan: OK
+		end
+	end
+
+	-- Callbacks for golem/bot mode
 	panel.onExitGolem = nil
 	panel.onSellGolem = nil
+	panel.onMoveGolem = nil
 
 	return panel
 end

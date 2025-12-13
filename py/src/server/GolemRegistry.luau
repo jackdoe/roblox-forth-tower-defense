@@ -104,6 +104,7 @@ local golemSellEvent = nil    -- Sell/delete golem
 local golemFullStateEvent = nil
 local golemRegisterViewerEvent = nil
 local golemUnregisterViewerEvent = nil
+local golemMoveEvent = nil         -- Move turret during BUILD
 
 -- Viewer management for Golem Mind Mode
 local golemViewers = {} -- {golemId -> {player1, player2, ...}}
@@ -182,6 +183,17 @@ function GolemRegistry.init(dependencies, interpreterModule)
 				end
 			end
 		end
+	end)
+
+	-- Create move event
+	golemMoveEvent = Instance.new("RemoteEvent")
+	golemMoveEvent.Name = "GolemMove"
+	golemMoveEvent.Parent = PythonTD
+
+	-- Handle move requests (only during BUILD phase)
+	golemMoveEvent.OnServerEvent:Connect(function(player, golemId, newX, newZ)
+		local success, msg = GolemRegistry.moveGolem(player, golemId, newX, newZ)
+		golemMoveEvent:FireClient(player, success, msg)
 	end)
 
 	print("GolemRegistry: Initialized")
@@ -318,6 +330,23 @@ end
 -- Maximum turrets per player
 local MAX_TURRETS = 10
 
+-- Turret cost scaling: each turret costs more
+-- Cost = BASE_COST * (COST_MULTIPLIER ^ turretCount)
+-- Example: 100, 150, 225, 337, 506, 759... (exponential)
+local TURRET_BASE_COST = 100
+local TURRET_COST_MULTIPLIER = 1.5
+
+-- Calculate cost for next turret based on how many player owns
+function GolemRegistry.getNextTurretCost(player)
+	local myTurretCount = 0
+	for _, golem in pairs(golems) do
+		if golem.ownerId == player.UserId then
+			myTurretCount = myTurretCount + 1
+		end
+	end
+	return math.floor(TURRET_BASE_COST * (TURRET_COST_MULTIPLIER ^ myTurretCount))
+end
+
 -- Place golem at any valid position
 function GolemRegistry.tryPlaceAt(player, x, z)
 	-- 1. CAP CHECK: Count how many golems this player owns
@@ -338,15 +367,16 @@ function GolemRegistry.tryPlaceAt(player, x, z)
 		return false, reason
 	end
 
-	-- 3. Check player has enough scrap
+	-- 3. Check player has enough scrap (cost scales with turret count)
+	local cost = math.floor(TURRET_BASE_COST * (TURRET_COST_MULTIPLIER ^ myTurretCount))
 	if WaveManager then
 		local scrap = WaveManager.getScrap()
-		if scrap < GolemStats.cost then
-			return false, "Not enough scrap (" .. scrap .. "/" .. GolemStats.cost .. ")"
+		if scrap < cost then
+			return false, "Not enough scrap (" .. scrap .. "/" .. cost .. ")"
 		end
 
 		-- Deduct cost
-		WaveManager.removeScrap(GolemStats.cost)
+		WaveManager.removeScrap(cost)
 	end
 
 	-- 4. Create the golem
@@ -395,6 +425,50 @@ function GolemRegistry.sellGolem(player, golemId)
 	GolemRegistry.broadcastState()
 
 	return true, refund
+end
+
+-- Move a golem to a new position (only during BUILD phase)
+function GolemRegistry.moveGolem(player, golemId, newX, newZ)
+	local golem = golems[golemId]
+	if not golem then return false, "Golem not found" end
+
+	-- Check ownership
+	if golem.ownerId ~= player.UserId then
+		return false, "You don't own this golem"
+	end
+
+	-- Check phase (only during BUILD)
+	if WaveManager then
+		local phase = WaveManager.getPhase()
+		if phase ~= "BUILD" and phase ~= "LOBBY" then
+			return false, "Can only move during BUILD phase"
+		end
+	end
+
+	-- Validate new position
+	-- Check restricted zones
+	local inZone, zoneReason = GolemRegistry.isInRestrictedZone(newX, newZ)
+	if inZone then
+		return false, "Cannot place here: " .. (zoneReason or "restricted area")
+	end
+
+	-- Check distance from other golems (excluding self)
+	if GolemRegistry.isTooCloseToOtherGolem(newX, newZ, golemId) then
+		return false, "Too close to another turret"
+	end
+
+	-- Move the model
+	if golem.character then
+		local hrp = golem.character:FindFirstChild("HumanoidRootPart") or golem.character.PrimaryPart
+		if hrp then
+			golem.character:PivotTo(CFrame.new(newX, GROUND_Y + 3, newZ))
+		end
+	end
+
+	print("GolemRegistry: Moved golem", golemId, "to", newX, newZ)
+	GolemRegistry.broadcastState()
+
+	return true, "Moved successfully"
 end
 
 function GolemRegistry.create(x, z)
@@ -1556,28 +1630,36 @@ end
 --============================================================================
 
 -- Returns current state data (used by RequestState)
+-- Each player only sees their own turrets in the list panel
 function GolemRegistry.getStateForPlayer(player)
 	local golemList = {}
+	local playerId = player and player.UserId or nil
+
 	for id, golem in pairs(golems) do
 		local interp = golem.interpreter
-		table.insert(golemList, {
-			id = id,
-			spotId = golem.spotId,
-			typeName = golem.typeData.name,
-			hp = interp.hp,
-			maxHp = interp.maxHp,
-			ammo = interp.ammo,
-			maxAmmo = interp.maxAmmo,
-			dynamicRange = interp.dynamicRange or 40,
-			status = interp.ammo <= 0 and "EMPTY" or (interp.target and "FIRING" or "IDLE"),
-		})
+		-- Only include turrets owned by this player
+		if playerId == nil or golem.ownerId == playerId then
+			table.insert(golemList, {
+				id = id,
+				spotId = golem.spotId,
+				typeName = golem.typeData.name,
+				hp = interp.hp,
+				maxHp = interp.maxHp,
+				ammo = interp.ammo,
+				maxAmmo = interp.maxAmmo,
+				dynamicRange = interp.dynamicRange or 40,
+				status = interp.ammo <= 0 and "EMPTY" or (interp.target and "FIRING" or "IDLE"),
+				ownerId = golem.ownerId,
+			})
+		end
 	end
 	return { golems = golemList }
 end
 
 function GolemRegistry.broadcastState()
-	local data = GolemRegistry.getStateForPlayer(nil)
+	-- Send each player only their own turrets
 	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		local data = GolemRegistry.getStateForPlayer(player)
 		golemStateEvent:FireClient(player, data)
 	end
 end

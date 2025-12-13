@@ -85,6 +85,9 @@ local newGamePlusMultiplier = 1  -- Doubles after all 8 gates unlocked
 -- Spawn gates (set from map)
 local spawnGates = {}
 
+-- Enemy path waypoints (set from map)
+local enemyPath = {}
+
 --============================================================================
 -- INITIALIZATION
 --============================================================================
@@ -102,6 +105,11 @@ end
 function EnemyManager.setSpawnGates(gates)
 	spawnGates = gates
 	print("EnemyManager: Set", #gates, "spawn gates")
+end
+
+function EnemyManager.setEnemyPath(path)
+	enemyPath = path or {}
+	print("EnemyManager: Set enemy path with", #enemyPath, "waypoints")
 end
 
 function EnemyManager.setWave(wave)
@@ -261,6 +269,7 @@ function EnemyManager.spawn(typeName, gateIndex, dependencies)
 		id = id,
 		character = character,
 		typeData = enemyType,
+		typeName = typeName, -- Store type name for wave preview
 		hp = enemyType.hp,
 		maxHp = enemyType.hp,
 		speed = enemyType.speed,
@@ -271,6 +280,9 @@ function EnemyManager.spawn(typeName, gateIndex, dependencies)
 		targetPos = nil,      -- Will be set to Core position
 		velocityX = 0,
 		velocityZ = 0,
+
+		-- Waypoint pathfinding
+		currentWaypoint = 1,  -- Index into enemyPath
 
 		-- Animation
 		time = math.random() * 10,
@@ -921,7 +933,33 @@ function EnemyManager.update(dt)
 		local targetX, targetZ = corePos.x, corePos.z
 		local isAttackingBot = false
 
-		-- HUNTER LOGIC: Target bots instead of core
+		-- WAYPOINT PATHFINDING: Follow the path instead of beelining to core
+		if #enemyPath > 0 and enemy.currentWaypoint then
+			local waypoint = enemyPath[enemy.currentWaypoint]
+			if waypoint then
+				targetX, targetZ = waypoint.x, waypoint.z
+
+				-- Check if reached current waypoint (within 3 studs)
+				local waypointDx = targetX - myX
+				local waypointDz = targetZ - myZ
+				local waypointDistSq = waypointDx * waypointDx + waypointDz * waypointDz
+				if waypointDistSq < 9 then -- 3^2 = 9
+					-- Move to next waypoint
+					enemy.currentWaypoint = enemy.currentWaypoint + 1
+					if enemy.currentWaypoint > #enemyPath then
+						-- Reached end of path, target core directly
+						targetX, targetZ = corePos.x, corePos.z
+					else
+						local nextWp = enemyPath[enemy.currentWaypoint]
+						if nextWp then
+							targetX, targetZ = nextWp.x, nextWp.z
+						end
+					end
+				end
+			end
+		end
+
+		-- HUNTER LOGIC: Target bots instead of core (overrides waypoints)
 		if enemy.isHunter and BotRegistry then
 			local bot, botDist = BotRegistry.findNearest(myX, myZ, 40)
 

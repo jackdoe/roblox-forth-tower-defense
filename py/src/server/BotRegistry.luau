@@ -1,12 +1,12 @@
 -- BotRegistry.luau
--- Manages mobile Supply Bots for Tower Defense
--- Bots are "dumb workers" - they have no internal program.
--- They are controlled entirely by the Machinist (player's Python script).
+-- Manages programmable Combat Bots for Tower Defense
+-- Each bot has its own Python program with limited instruction count.
+-- Bots COMBO with turrets (shock burning enemies, explode on bosses, etc.)
 --
 -- GAMEPLAY CONCEPT:
--- Bots collect physical scrap dropped by enemies and deliver it to turrets.
--- The player's Machinist script orchestrates all bot behavior from a central location.
--- Commands: bot.supply(turret), bot.collect(scrap_id), bot.move(x,z)
+-- Bots are specialized "micro-programs" that complement turret behavior.
+-- Limited bytecode forces specialized roles (one bot can't do everything).
+-- Commands: self.shock(enemy), self.explode(), self.collect(), self.goto()
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -672,28 +672,38 @@ local function executeTask(bot, dt)
 		return "RUNNING"
 
 	elseif task.type == "SHOCK" then
-		-- Shock attack with stun duration
-		-- Phase 1: Execute shock (once)
-		-- Phase 2: Wait for stun to end
+		-- Shock attack: Move to enemy -> Shock -> Stun
+		-- Phase 1: Move to enemy
+		-- Phase 2: Execute shock (once)
+		-- Phase 3: Wait for stun to end
+		local enemyId = task.args.enemyId
+		local EnemyManager = deps.EnemyManager
+		if not EnemyManager then return "FAILED" end
+
+		local enemy = EnemyManager.get(enemyId)
+		if not enemy or not enemy.character then return "FAILED" end
+
+		local enemyHrp = enemy.character:FindFirstChild("HumanoidRootPart")
+		if not enemyHrp then return "FAILED" end
+
+		-- Phase 1: Move toward enemy
 		if not task.shockExecuted then
-			-- Execute the shock
-			local enemyId = task.args.enemyId
-			local EnemyManager = deps.EnemyManager
-			if not EnemyManager then return "FAILED" end
-
-			local enemy = EnemyManager.get(enemyId)
-			if not enemy or not enemy.character then return "FAILED" end
-
-			-- Check range
-			local enemyHrp = enemy.character:FindFirstChild("HumanoidRootPart")
-			if not enemyHrp then return "FAILED" end
-
 			local dist = (enemyHrp.Position - hrp.Position).Magnitude
+
 			if dist > SHOCK_RANGE then
-				return "FAILED"  -- Too far
+				-- Move toward enemy
+				bot.status = "MOVING"
+				local targetPos = enemyHrp.Position
+				local dir = (targetPos - hrp.Position).Unit
+				local moveSpeed = bot.speed or 20
+				local newPos = hrp.Position + dir * math.min(moveSpeed * dt, dist - SHOCK_RANGE + 1)
+
+				hrp.CFrame = CFrame.new(newPos.X, hrp.Position.Y, newPos.Z) *
+					CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
+				return "RUNNING"
 			end
 
-			-- Do the shock!
+			-- In range - do the shock!
 			local damageDealt = EnemyManager.shock(enemyId, SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z)
 			task.damageDealt = damageDealt
 			task.shockExecuted = true
@@ -704,7 +714,7 @@ local function executeTask(bot, dt)
 			bot.status = "SHOCKING"
 			return "RUNNING"
 		else
-			-- Wait for stun to end
+			-- Phase 3: Wait for stun to end
 			bot.status = "STUNNED"
 			if tick() >= task.stunEndTime then
 				bot.status = "IDLE"
@@ -1402,43 +1412,33 @@ end
 --============================================================================
 
 function BotRegistry.broadcastState()
-	local botList = {}
-	for id, bot in pairs(bots) do
-		table.insert(botList, {
-			id = id,
-			spotId = bot.spotId,
-			ownerId = bot.ownerId,
-			scrapInventory = bot.scrapInventory or 0,
-			maxCapacity = bot.maxCapacity or 50,
-			hp = bot.hp,
-			maxHp = bot.maxHp,
-			status = bot.status or "IDLE",
-		})
-	end
-
-	local data = {
-		bots = botList,
-	}
-
+	-- Send each player only their own bots
 	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		local data = BotRegistry.getStateForPlayer(player)
 		botStateEvent:FireClient(player, data)
 	end
 end
 
 -- Get state for a specific player (called when client requests state)
+-- Each player only sees their own bots
 function BotRegistry.getStateForPlayer(player)
 	local botList = {}
+	local playerId = player and player.UserId or nil
+
 	for id, bot in pairs(bots) do
-		table.insert(botList, {
-			id = id,
-			spotId = bot.spotId,
-			ownerId = bot.ownerId,
-			scrapInventory = bot.scrapInventory or 0,
-			maxCapacity = bot.maxCapacity or 50,
-			hp = bot.hp,
-			maxHp = bot.maxHp,
-			status = bot.status or "IDLE",
-		})
+		-- Only include bots owned by this player
+		if playerId == nil or bot.ownerId == playerId then
+			table.insert(botList, {
+				id = id,
+				spotId = bot.spotId,
+				ownerId = bot.ownerId,
+				scrapInventory = bot.scrapInventory or 0,
+				maxCapacity = bot.maxCapacity or 50,
+				hp = bot.hp,
+				maxHp = bot.maxHp,
+				status = bot.status or "IDLE",
+			})
+		end
 	end
 	return { bots = botList }
 end
