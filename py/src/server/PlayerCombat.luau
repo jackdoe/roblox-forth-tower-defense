@@ -1,25 +1,27 @@
--- PlayerCombat.luau
--- Handles player ranged combat (shooting projectiles)
-
 local TweenService = game:GetService("TweenService")
+local ProjectileEffects = require(script.Parent.ProjectileEffects)
 
 local PlayerCombat = {}
 
 -- Dependencies (set via init)
 local EnemyManager = nil
 local Config = nil
+local WaveManager = nil
 
--- Ammo stats (same as turrets but with player-specific adjustments)
+-- Ammo stats for player (2x scrap cost compared to turret ammoCost)
+-- Turret costs: BULLET=1, ROCKET=4, LASER=2, ICE=2, GRENADE=5
 local AmmoStats = {
 	[1] = { -- BULLET
 		damage = 15,
 		fireRate = 0.3,
+		scrapCost = 2,  -- 2x turret cost (1*2)
 		color = Color3.fromRGB(255, 255, 150),
 		name = "Bullet",
 	},
 	[2] = { -- ROCKET
 		damage = 40,
 		fireRate = 1.0,
+		scrapCost = 8,  -- 2x turret cost (4*2)
 		splashRadius = 8,
 		color = Color3.fromRGB(255, 100, 50),
 		name = "Rocket",
@@ -27,12 +29,14 @@ local AmmoStats = {
 	[3] = { -- LASER
 		damage = 25,
 		fireRate = 0.5,
+		scrapCost = 4,  -- 2x turret cost (2*2)
 		color = Color3.fromRGB(255, 50, 50),
 		name = "Laser",
 	},
 	[4] = { -- ICE
 		damage = 10,
 		fireRate = 0.4,
+		scrapCost = 4,  -- 2x turret cost (2*2)
 		slowAmount = 0.5,
 		slowDuration = 3,
 		color = Color3.fromRGB(100, 200, 255),
@@ -41,6 +45,7 @@ local AmmoStats = {
 	[5] = { -- GRENADE
 		damage = 60,
 		fireRate = 1.5,
+		scrapCost = 10,  -- 2x turret cost (5*2)
 		splashRadius = 12,
 		isGrenade = true,  -- Special flag for arc trajectory
 		color = Color3.fromRGB(100, 255, 100),
@@ -54,6 +59,13 @@ local playerCooldowns = {}
 function PlayerCombat.init(deps)
 	EnemyManager = deps.EnemyManager
 	Config = deps.Config
+	WaveManager = deps.WaveManager
+end
+
+-- Get the scrap cost for a weapon type
+function PlayerCombat.getScrapCost(ammoType)
+	local stats = AmmoStats[ammoType] or AmmoStats[1]
+	return stats.scrapCost or 2
 end
 
 function PlayerCombat.fire(interp, enemy, ammoType)
@@ -80,6 +92,17 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 	if now - lastFire < stats.fireRate then
 		return false
 	end
+
+	-- Check and deduct scrap cost
+	local scrapCost = stats.scrapCost or 2
+	if WaveManager then
+		local currentScrap = WaveManager.getScrap()
+		if currentScrap < scrapCost then
+			return false  -- Not enough scrap to fire
+		end
+		WaveManager.removeScrap(scrapCost)
+	end
+
 	playerCooldowns[playerId] = now
 
 	-- Check distance (max range 50)
@@ -123,209 +146,9 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 		EnemyManager.applyBurning(enemy.id, 3, 5)
 	end
 
-	-- Create visual effect
-	PlayerCombat.createProjectileEffect(hrp.Position, enemyHrp.Position, stats)
+	ProjectileEffects.shot(hrp.Position, enemyHrp.Position, stats)
 
 	return true
-end
-
-function PlayerCombat.createProjectileEffect(origin, targetPos, stats)
-	task.spawn(function()
-		local color = stats.color or Color3.fromRGB(255, 255, 150)
-
-		-- Grenade has arc trajectory
-		if stats.isGrenade then
-			PlayerCombat.createGrenadeEffect(origin, targetPos, stats)
-			return
-		end
-
-		-- Muzzle flash
-		local flash = Instance.new("Part")
-		flash.Shape = Enum.PartType.Ball
-		flash.Size = Vector3.new(0.5, 0.5, 0.5)
-		flash.Position = origin
-		flash.Anchored = true
-		flash.CanCollide = false
-		flash.Material = Enum.Material.Neon
-		flash.Color = color
-		flash.Transparency = 0.3
-		flash.Parent = workspace
-
-		local flashTween = TweenService:Create(flash, TweenInfo.new(0.1), {
-			Size = Vector3.new(2, 2, 2),
-			Transparency = 1
-		})
-		flashTween:Play()
-		flashTween.Completed:Wait()
-		flash:Destroy()
-
-		-- Beam/tracer
-		local dist = (targetPos - origin).Magnitude
-		local midPoint = (origin + targetPos) / 2
-		local direction = (targetPos - origin).Unit
-
-		local beam = Instance.new("Part")
-		beam.Name = "PlayerBeam"
-		beam.Size = Vector3.new(0.3, 0.3, dist)
-		beam.CFrame = CFrame.lookAt(midPoint, targetPos)
-		beam.Anchored = true
-		beam.CanCollide = false
-		beam.Material = Enum.Material.Neon
-		beam.Color = color
-		beam.Transparency = 0.3
-		beam.Parent = workspace
-
-		-- Impact flash
-		local impact = Instance.new("Part")
-		impact.Shape = Enum.PartType.Ball
-		impact.Size = Vector3.new(1, 1, 1)
-		impact.Position = targetPos
-		impact.Anchored = true
-		impact.CanCollide = false
-		impact.Material = Enum.Material.Neon
-		impact.Color = color
-		impact.Transparency = 0.3
-		impact.Parent = workspace
-
-		-- Fade out
-		local beamTween = TweenService:Create(beam, TweenInfo.new(0.15), { Transparency = 1 })
-		local impactTween = TweenService:Create(impact, TweenInfo.new(0.2), {
-			Size = Vector3.new(3, 3, 3),
-			Transparency = 1
-		})
-
-		beamTween:Play()
-		impactTween:Play()
-
-		task.wait(0.2)
-		beam:Destroy()
-		impact:Destroy()
-	end)
-end
-
--- Grenade effect with arc trajectory and explosion
-function PlayerCombat.createGrenadeEffect(origin, targetPos, stats)
-	local color = stats.color or Color3.fromRGB(100, 255, 100)
-	local dist = (targetPos - origin).Magnitude
-	local flightTime = math.min(0.6, dist / 50)  -- Faster for closer targets
-	local arcHeight = math.min(dist * 0.3, 10)   -- Arc height based on distance
-
-	-- Create grenade projectile
-	local grenade = Instance.new("Part")
-	grenade.Name = "Grenade"
-	grenade.Shape = Enum.PartType.Ball
-	grenade.Size = Vector3.new(0.8, 0.8, 0.8)
-	grenade.Position = origin + Vector3.new(0, 1, 0)
-	grenade.Anchored = true
-	grenade.CanCollide = false
-	grenade.Material = Enum.Material.Metal
-	grenade.Color = Color3.fromRGB(60, 80, 60)
-	grenade.Parent = workspace
-
-	-- Add glow indicator
-	local glow = Instance.new("PointLight")
-	glow.Color = color
-	glow.Brightness = 2
-	glow.Range = 4
-	glow.Parent = grenade
-
-	-- Arc trajectory animation
-	local startPos = origin + Vector3.new(0, 1, 0)
-	local endPos = targetPos
-	local steps = math.floor(flightTime / 0.02)
-
-	task.spawn(function()
-		for i = 1, steps do
-			local t = i / steps
-			-- Parabolic arc: lerp horizontal, add sin curve for height
-			local currentPos = startPos:Lerp(endPos, t)
-			local heightOffset = math.sin(t * math.pi) * arcHeight
-			grenade.Position = currentPos + Vector3.new(0, heightOffset, 0)
-
-			-- Spin the grenade
-			grenade.CFrame = grenade.CFrame * CFrame.Angles(0.3, 0.2, 0.1)
-
-			task.wait(0.02)
-		end
-
-		-- EXPLOSION at target
-		grenade:Destroy()
-
-		-- Explosion flash
-		local explosion = Instance.new("Part")
-		explosion.Shape = Enum.PartType.Ball
-		explosion.Size = Vector3.new(2, 2, 2)
-		explosion.Position = endPos
-		explosion.Anchored = true
-		explosion.CanCollide = false
-		explosion.Material = Enum.Material.Neon
-		explosion.Color = Color3.fromRGB(255, 200, 50)
-		explosion.Transparency = 0
-		explosion.Parent = workspace
-
-		-- Explosion ring
-		local ring = Instance.new("Part")
-		ring.Name = "ExplosionRing"
-		ring.Size = Vector3.new(2, 0.3, 2)
-		ring.Position = endPos
-		ring.Anchored = true
-		ring.CanCollide = false
-		ring.Material = Enum.Material.Neon
-		ring.Color = Color3.fromRGB(255, 150, 50)
-		ring.Transparency = 0.3
-		ring.Parent = workspace
-
-		-- Expand explosion
-		local explosionTween = TweenService:Create(explosion, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = Vector3.new(stats.splashRadius or 12, stats.splashRadius or 12, stats.splashRadius or 12),
-			Transparency = 1,
-			Color = Color3.fromRGB(255, 100, 50)
-		})
-
-		local ringTween = TweenService:Create(ring, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = Vector3.new((stats.splashRadius or 12) * 2, 0.1, (stats.splashRadius or 12) * 2),
-			Transparency = 1
-		})
-
-		explosionTween:Play()
-		ringTween:Play()
-
-		-- Debris particles
-		for i = 1, 12 do
-			local debris = Instance.new("Part")
-			debris.Size = Vector3.new(0.3, 0.3, 0.3)
-			debris.Position = endPos
-			debris.Anchored = true
-			debris.CanCollide = false
-			debris.Material = Enum.Material.Neon
-			debris.Color = Color3.fromRGB(255, 150 + math.random(50), 50)
-			debris.Transparency = 0
-			debris.Parent = workspace
-
-			local angle = (i / 12) * math.pi * 2
-			local spread = (stats.splashRadius or 12) * 0.8
-			local debrisTarget = endPos + Vector3.new(
-				math.cos(angle) * spread,
-				math.random() * 4,
-				math.sin(angle) * spread
-			)
-
-			local debrisTween = TweenService:Create(debris, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Position = debrisTarget,
-				Size = Vector3.new(0.1, 0.1, 0.1),
-				Transparency = 1
-			})
-			debrisTween:Play()
-
-			task.delay(0.5, function()
-				debris:Destroy()
-			end)
-		end
-
-		task.wait(0.5)
-		explosion:Destroy()
-		ring:Destroy()
-	end)
 end
 
 return PlayerCombat

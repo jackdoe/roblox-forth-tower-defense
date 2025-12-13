@@ -534,4 +534,199 @@ function Effects.playAxeSwing(character)
 	end)
 end
 
+--============================================================================
+-- UPGRADE EFFECTS
+--============================================================================
+
+-- Turret upgrade effect - dramatic transformation visuals
+-- Industrial Military Theme: Orange for Tier 2 (Arachnid), Yellow for Tier 3 (Dreadnought)
+function Effects.turretUpgrade(position, tier, color)
+	if not position then return end
+
+	tier = tier or 2
+	-- Industrial color scheme based on tier
+	if not color then
+		if tier >= 3 then
+			color = Color3.fromRGB(255, 220, 50)   -- Hazard Yellow for Dreadnought
+		else
+			color = Color3.fromRGB(255, 150, 0)    -- Industrial Orange for Arachnid
+		end
+	end
+
+	-- 1. MASSIVE Energy Pillar (Sci-Fi Beam shooting to sky)
+	task.spawn(function()
+		local pillar = getPooledPart()
+		pillar.Name = "UpgradePillar"
+		pillar.Shape = Enum.PartType.Cylinder
+		pillar.Size = Vector3.new(1, 80, 80)  -- Start huge
+		pillar.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
+		pillar.Material = Enum.Material.Neon
+		pillar.Color = color
+		pillar.Transparency = 0.2
+
+		-- Quick flash then shrink width rapidly (beam going to sky effect)
+		local tween = TweenService:Create(pillar, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.new(100, 0.1, 0.1),  -- Very tall, very thin
+			Transparency = 1
+		})
+		tween:Play()
+		recyclePart(pillar, 0.7)
+	end)
+
+	-- 2. Rising Scanner Rings (3 rings that rise and shrink)
+	task.spawn(function()
+		for i = 1, 3 do
+			local ring = getPooledPart()
+			ring.Shape = Enum.PartType.Cylinder
+			ring.Size = Vector3.new(0.3, 14, 14)
+			ring.CFrame = CFrame.new(position - Vector3.new(0, 4, 0)) * CFrame.Angles(0, 0, math.rad(90))
+			ring.Material = Enum.Material.Neon
+			ring.Color = color
+			ring.Transparency = 0
+
+			local tween = TweenService:Create(ring, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				CFrame = CFrame.new(position + Vector3.new(0, 18, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+				Size = Vector3.new(0.2, 0.5, 0.5),  -- Shrink as it rises
+				Transparency = 1
+			})
+			tween:Play()
+			recyclePart(ring, 1.1)
+			task.wait(0.12)
+		end
+	end)
+
+	-- 3. Sparkle particles rising upward (more dramatic)
+	task.spawn(function()
+		local particleCount = 20 + tier * 8  -- More particles for higher tiers
+		for i = 1, particleCount do
+			task.delay(i * 0.015, function()
+				local spark = getPooledPart()
+				spark.Name = "UpgradeSpark"
+				spark.Shape = Enum.PartType.Ball
+				spark.Size = Vector3.new(0.5, 0.5, 0.5)
+				spark.Material = Enum.Material.Neon
+				spark.Color = color
+				spark.Transparency = 0
+
+				-- Random starting position around the turret
+				local angle = math.random() * math.pi * 2
+				local radius = math.random() * 3
+				local startPos = position + Vector3.new(
+					math.cos(angle) * radius,
+					math.random() * 2 - 1,
+					math.sin(angle) * radius
+				)
+				spark.CFrame = CFrame.new(startPos)
+
+				-- Rise upward with spiral
+				local endPos = startPos + Vector3.new(
+					math.cos(angle + math.pi * 2) * 1,
+					10 + math.random() * 6,
+					math.sin(angle + math.pi * 2) * 1
+				)
+
+				local sparkTween = TweenService:Create(spark, TweenInfo.new(0.5 + math.random() * 0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					CFrame = CFrame.new(endPos),
+					Size = Vector3.new(0.05, 0.05, 0.05),
+					Transparency = 1
+				})
+				sparkTween:Play()
+				recyclePart(spark, 1)
+			end)
+		end
+	end)
+
+	-- 4. Ground shockwave (expanding circle)
+	task.spawn(function()
+		local wave = getPooledPart()
+		wave.Shape = Enum.PartType.Ball
+		wave.Size = Vector3.new(2, 2, 2)
+		wave.CFrame = CFrame.new(position)
+		wave.Material = Enum.Material.Neon
+		wave.Color = color
+		wave.Transparency = 0.4
+
+		local size = tier >= 3 and 35 or 25
+		local waveTween = TweenService:Create(wave, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.new(size, size, size),
+			Transparency = 1
+		})
+		waveTween:Play()
+		recyclePart(wave, 0.6)
+	end)
+
+	-- 5. Extra shockwave ring for tier 3
+	if tier >= 3 then
+		task.spawn(function()
+			task.wait(0.15)
+			local wave2 = getPooledPart()
+			wave2.Shape = Enum.PartType.Cylinder
+			wave2.Size = Vector3.new(0.2, 5, 5)
+			wave2.CFrame = CFrame.new(position.X, position.Y + 0.5, position.Z) * CFrame.Angles(0, 0, math.rad(90))
+			wave2.Material = Enum.Material.Neon
+			wave2.Color = color
+			wave2.Transparency = 0.3
+
+			local wave2Tween = TweenService:Create(wave2, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.05, 45, 45),
+				Transparency = 1
+			})
+			wave2Tween:Play()
+			recyclePart(wave2, 0.8)
+		end)
+	end
+
+	-- 6. Floating tier text (pop in and float up)
+	task.spawn(function()
+		local anchor = Instance.new("Part")
+		anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+		anchor.CFrame = CFrame.new(position + Vector3.new(0, 5, 0))
+		anchor.Anchored = true
+		anchor.CanCollide = false
+		anchor.Transparency = 1
+		anchor.Parent = workspace
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Size = UDim2.new(0, 200, 0, 60)
+		billboard.AlwaysOnTop = true
+		billboard.Parent = anchor
+
+		local tierNames = {"", "ARACHNID", "DREADNOUGHT"}
+		local text = Instance.new("TextLabel")
+		text.Size = UDim2.new(1, 0, 1, 0)
+		text.BackgroundTransparency = 1
+		text.Text = tierNames[tier] or ("TIER " .. tier)
+		text.TextColor3 = color
+		text.TextStrokeTransparency = 0
+		text.TextStrokeColor3 = Color3.new(0, 0, 0)
+		text.Font = Enum.Font.GothamBlack
+		text.TextSize = 0  -- Start at 0 for pop effect
+		text.TextScaled = false
+		text.Parent = billboard
+
+		-- Pop in effect
+		local popTween = TweenService:Create(text, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			TextSize = 32
+		})
+		popTween:Play()
+
+		-- Float up
+		local floatTween = TweenService:Create(anchor, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = anchor.CFrame + Vector3.new(0, 10, 0)
+		})
+		floatTween:Play()
+
+		-- Fade out after a delay
+		task.delay(0.8, function()
+			local fadeTween = TweenService:Create(text, TweenInfo.new(0.5), {
+				TextTransparency = 1,
+				TextStrokeTransparency = 1
+			})
+			fadeTween:Play()
+		end)
+
+		Debris:AddItem(anchor, 2)
+	end)
+end
+
 return Effects

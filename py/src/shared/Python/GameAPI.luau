@@ -235,6 +235,82 @@ end
 -- PROXY BUILDERS (Lazy lookups for T1-T4, B1-B4)
 --============================================================================
 
+-- Create an enemy entity proxy (returned by T[n].target() for rich enemy info)
+-- Allows code like: if T1.target().is_boss: self.teleport(T1.target())
+local function createEnemyProxy(enemy, deps)
+	if not enemy then return nil end
+
+	local EnemyManager = deps.EnemyManager
+	local WaveManager = deps.WaveManager
+
+	-- Get core position for coordinate transformation
+	local function getCoreOffset()
+		if WaveManager and WaveManager.getCorePosition then
+			local corePos = WaveManager.getCorePosition()
+			if corePos then
+				return corePos.x or 150, corePos.z or 150
+			end
+		end
+		return 150, 150
+	end
+
+	local proxy = {
+		__type = "Entity",  -- For type checking in teleport
+		id = enemy.id,
+
+		-- Properties (Python-style: is_boss, is_tank, etc.)
+		is_boss = (enemy.typeName == "Boss"),
+		is_tank = (enemy.typeName == "Tank"),
+		is_runner = (enemy.typeName == "Runner"),
+		type = enemy.typeName or "Zombie",
+		hp = enemy.hp or 0,
+		max_hp = enemy.maxHp or 1,
+
+		-- Status effects
+		burning = enemy.burning or false,
+		frozen = (enemy.slowAmount and enemy.slowAmount >= 0.5) or false,
+		slowed = (enemy.slowAmount and enemy.slowAmount > 0) or false,
+		oiled = enemy.oiled or false,
+	}
+
+	-- position as property (world coords, returns {x, z})
+	local function getPosition()
+		-- Refresh enemy data
+		local e = EnemyManager and EnemyManager.get and EnemyManager.get(enemy.id)
+		if e and e.character then
+			local hrp = e.character:FindFirstChild("HumanoidRootPart") or e.character.PrimaryPart
+			if hrp then
+				local coreX, coreZ = getCoreOffset()
+				return {hrp.Position.X - coreX, hrp.Position.Z - coreZ}
+			end
+		end
+		return {0, 0}
+	end
+
+	-- Make position a function call for consistency
+	proxy.position = getPosition
+
+	-- world_position returns absolute coords (for internal use)
+	proxy.world_position = function()
+		local e = EnemyManager and EnemyManager.get and EnemyManager.get(enemy.id)
+		if e and e.character then
+			local hrp = e.character:FindFirstChild("HumanoidRootPart") or e.character.PrimaryPart
+			if hrp then
+				return {hrp.Position.X, hrp.Position.Z}
+			end
+		end
+		return {0, 0}
+	end
+
+	-- alive() - check if enemy is still alive
+	proxy.alive = function()
+		local e = EnemyManager and EnemyManager.get and EnemyManager.get(enemy.id)
+		return e and e.hp and e.hp > 0
+	end
+
+	return proxy
+end
+
 -- Create a turret proxy (used by bot/player environments for T1-T4, and for turret's self)
 -- If directGolem is provided, uses that instead of looking up by spotId
 local function createTurretProxy(spotId, deps, directGolem)
@@ -375,6 +451,25 @@ local function createTurretProxy(spotId, deps, directGolem)
 			if enemy then return dist end
 		end
 		return 9999
+	end
+
+	-- Get current target as an entity proxy
+	-- Returns an enemy proxy with is_boss, position(), hp, etc.
+	-- Usage: target = T1.target(); if target and target.is_boss: ...
+	proxy.target = function()
+		local golem = getGolem()
+		if not golem or not golem.interpreter then return nil end
+
+		local targetId = golem.interpreter.target
+		if not targetId then return nil end
+
+		if EnemyManager and EnemyManager.get then
+			local enemy = EnemyManager.get(targetId)
+			if enemy and enemy.hp and enemy.hp > 0 then
+				return createEnemyProxy(enemy, deps)
+			end
+		end
+		return nil
 	end
 
 	proxy.methods = function()
@@ -544,7 +639,15 @@ local function createBotProxy(spotId, deps, directBot)
 		if BotRegistry.issueCommand and x and z then
 			-- Transform user coords to world coords
 			local worldX, worldZ = toWorldCoords(x, z)
-			return BotRegistry.issueCommand(bot.id, "MOVE", { x = worldX, z = worldZ }, true)
+			local success = BotRegistry.issueCommand(bot.id, "MOVE", { x = worldX, z = worldZ }, true)
+			-- Block the VM until movement completes
+			if success and bot.interpreter then
+				local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
+				if vm and vm.block then
+					vm:block()
+				end
+			end
+			return success
 		end
 		return false
 	end
@@ -577,17 +680,79 @@ local function createBotProxy(spotId, deps, directBot)
 		return proxy.move(0, 0)
 	end
 
-	-- collect(pos) - Move to position [x,z], collect nearest scrap, return to core to deposit
+	-- collect(pos) - Move to position [x,z], collect ANY scrap in pickup range, return to core to deposit
+	-- BLOCKING: VM waits until entire collect cycle completes (go to area -> pick up nearby -> return -> deposit)
+	-- If the specific scrap is gone, will still pick up any other scrap in the area
 	proxy.collect = function(pos)
 		local bot = getBot()
 		if not bot or not isAlive() then return false end
 
-		-- Accept [x, z] position from scraps()
+		-- Accept [x, z] position from scraps() - this is a hint for where to go
 		if type(pos) == "table" and pos[1] and pos[2] then
 			local worldX, worldZ = toWorldCoords(pos[1], pos[2])
 			if BotRegistry.issueCommand then
-				return BotRegistry.issueCommand(bot.id, "COLLECT_AT", { x = worldX, z = worldZ }, true)
+				local success = BotRegistry.issueCommand(bot.id, "COLLECT_AREA", { x = worldX, z = worldZ }, true)
+				-- Block the VM until collect task completes
+				if success and bot.interpreter then
+					local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
+					if vm and vm.block then
+						vm:block()
+					end
+				end
+				return success
 			end
+		end
+		return false
+	end
+
+	-- collect_nearest() - Find and collect the nearest scrap (does NOT return to core)
+	-- BLOCKING: VM waits until bot reaches scrap and picks it up
+	-- Use supply(CORE) separately to deposit, or explode() to use as fuel
+	proxy.collect_nearest = function()
+		local bot = getBot()
+		if not bot or not isAlive() then return false end
+
+		-- Find nearest scrap from bot's current position
+		local hrp = bot.character and bot.character:FindFirstChild("HumanoidRootPart")
+		if not hrp then return false end
+
+		local scrap = ScrapManager and ScrapManager.findNearest(hrp.Position.X, hrp.Position.Z)
+		if not scrap or not scrap.part then return false end
+
+		-- Go to that scrap's position and pick it up
+		local worldX, worldZ = scrap.part.Position.X, scrap.part.Position.Z
+		if BotRegistry.issueCommand then
+			local success = BotRegistry.issueCommand(bot.id, "COLLECT_AREA", { x = worldX, z = worldZ }, true)
+			-- Block the VM until collect task completes
+			if success and bot.interpreter then
+				local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
+				if vm and vm.block then
+					vm:block()
+				end
+			end
+			return success
+		end
+		return false
+	end
+
+	-- supply(CORE) - Go to core and deposit all carried scrap
+	-- BLOCKING: VM waits until bot reaches core and deposits
+	proxy.supply = function(target)
+		local bot = getBot()
+		if not bot or not isAlive() then return false end
+
+		-- For now, only CORE is supported as target
+		-- target can be the CORE constant or nil (defaults to core)
+		if BotRegistry.issueCommand then
+			local success = BotRegistry.issueCommand(bot.id, "SUPPLY_CORE", {}, true)
+			-- Block the VM until supply task completes
+			if success and bot.interpreter then
+				local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
+				if vm and vm.block then
+					vm:block()
+				end
+			end
+			return success
 		end
 		return false
 	end
@@ -660,6 +825,34 @@ local function createBotProxy(spotId, deps, directBot)
 		-- Issue SHOCK command - includes move-to-enemy + shock + stun
 		-- The BotRegistry handles the movement and shocking sequence
 		return BotRegistry.issueCommand(bot.id, "SHOCK", { enemyId = enemyId }, true)
+	end
+
+	-- Explode! Use carried scrap as fuel for AOE damage
+	-- BLOCKING: Bot explodes, deals damage to all enemies in range, loses cargo
+	-- Damage = cargo * 2, Range = 15 studs
+	-- Requires at least 10 scrap to explode
+	-- Bot survives but is stunned briefly after exploding
+	proxy.explode = function()
+		local bot = getBot()
+		if not bot or not isAlive() then return false end
+		if not BotRegistry or not BotRegistry.issueCommand then return false end
+
+		-- Check if we have enough scrap
+		local cargo = bot.scrapInventory or 0
+		if cargo < 10 then
+			return false
+		end
+
+		-- Issue EXPLODE command
+		local success = BotRegistry.issueCommand(bot.id, "EXPLODE", {}, true)
+		-- Block the VM until explode completes (including stun)
+		if success and bot.interpreter then
+			local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
+			if vm and vm.block then
+				vm:block()
+			end
+		end
+		return success
 	end
 
 	proxy.distance = function(target)
@@ -826,13 +1019,47 @@ local function createBotProxy(spotId, deps, directBot)
 	return proxy
 end
 
--- Add T1-T4 turret proxies to an environment
-local function addTurretProxies(env, deps)
-	env.T1 = createTurretProxy(1, deps)
-	env.T2 = createTurretProxy(2, deps)
-	env.T3 = createTurretProxy(3, deps)
-	env.T4 = createTurretProxy(4, deps)
+-- Add lazy-loaded T[n] turret proxies (T1-T30) using metatable
+-- Instead of creating 30 proxies upfront, we create them on-demand when accessed
+-- This saves memory when only a few turrets are used
+local function addLazyTurretProxies(env, deps)
+	-- Cache for already-created proxies
+	local turretProxyCache = {}
+
+	-- Set metatable for lazy loading
+	local mt = getmetatable(env) or {}
+	local oldIndex = mt.__index
+
+	mt.__index = function(t, key)
+		-- Check for T[n] pattern (T1, T2, ... T30)
+		local spotId = string.match(key, "^T(%d+)$")
+		if spotId then
+			local num = tonumber(spotId)
+			if num and num >= 1 and num <= 30 then
+				-- Return cached proxy or create new one
+				if not turretProxyCache[num] then
+					turretProxyCache[num] = createTurretProxy(num, deps)
+				end
+				return turretProxyCache[num]
+			end
+		end
+
+		-- Fall back to previous __index if it exists
+		if oldIndex then
+			if type(oldIndex) == "function" then
+				return oldIndex(t, key)
+			else
+				return oldIndex[key]
+			end
+		end
+		return nil
+	end
+
+	setmetatable(env, mt)
 end
+
+-- Alias for clarity
+local addTurretProxies = addLazyTurretProxies
 
 -- Add B1-B4 bot proxies to an environment
 local function addBotProxies(env, deps)
@@ -1060,6 +1287,56 @@ function GameAPI.createBotEnvironment(bot, deps)
 	env.self.wait = function(seconds)
 		if BotRegistry and BotRegistry.issueCommand then
 			return BotRegistry.issueCommand(bot.id, "IDLE", { duration = seconds or 1 }, true)
+		end
+		return false
+	end
+
+	-- self.teleport(target) - Instant teleport to target
+	-- target can be: entity proxy (T1.target()), turret proxy (T1), or {x, z} coords
+	-- Usage: self.teleport(T1.target())  -- teleport to enemy
+	--        self.teleport(T1)           -- teleport to turret position
+	--        self.teleport({10, 20})     -- teleport to coordinates
+	env.self.teleport = function(target)
+		if not target then return false end
+		if not BotRegistry or not BotRegistry.issueCommand then return false end
+
+		-- Handle different target types
+		if type(target) == "table" then
+			-- Entity proxy with world_position (from T1.target())
+			if target.__type == "Entity" then
+				return BotRegistry.issueCommand(bot.id, "TELEPORT", { target = target }, true)
+			-- Turret/bot proxy with position function
+			elseif target.position and type(target.position) == "function" then
+				local pos = target.position()
+				if pos then
+					local coreX, coreZ = 150, 150
+					if WaveManager and WaveManager.getCorePosition then
+						local corePos = WaveManager.getCorePosition()
+						if corePos then
+							coreX = corePos.x or 150
+							coreZ = corePos.z or 150
+						end
+					end
+					return BotRegistry.issueCommand(bot.id, "TELEPORT", {
+						x = pos[1] + coreX,
+						z = pos[2] + coreZ
+					}, true)
+				end
+			-- Raw coordinates {x, z}
+			elseif #target == 2 then
+				local coreX, coreZ = 150, 150
+				if WaveManager and WaveManager.getCorePosition then
+					local corePos = WaveManager.getCorePosition()
+					if corePos then
+						coreX = corePos.x or 150
+						coreZ = corePos.z or 150
+					end
+				end
+				return BotRegistry.issueCommand(bot.id, "TELEPORT", {
+					x = target[1] + coreX,
+					z = target[2] + coreZ
+				}, true)
+			end
 		end
 		return false
 	end

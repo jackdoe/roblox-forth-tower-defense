@@ -49,6 +49,9 @@ local playerMoveCompleteEvent = PythonTD:WaitForChild("PlayerMoveComplete")
 local golemRegisterViewerEvent = PythonTD:WaitForChild("GolemRegisterViewer")
 local golemUnregisterViewerEvent = PythonTD:WaitForChild("GolemUnregisterViewer")
 local golemMoveEvent = PythonTD:WaitForChild("GolemMove")
+local golemUpgradeEvent = PythonTD:WaitForChild("GolemUpgrade")
+local golemAmmoChangeEvent = PythonTD:WaitForChild("GolemAmmoChange")
+local golemFullStateEvent = PythonTD:WaitForChild("GolemFullState")
 
 -- State request (client asks server for current state when ready)
 local requestStateEvent = PythonTD:WaitForChild("RequestState")
@@ -128,13 +131,11 @@ end
 -- Create UI panels with callbacks
 editor = EditorPanel.create(screenGui, {
 	onLoad = function(source)
-		-- Turrets are read-only, only bots can be programmed
-		if currentInterpreterTarget.type == "golem" then
-			print("Turrets are read-only - cannot upload program")
-			return
-		end
-		-- Upload to bot (or player if ever enabled)
+		-- Both turrets and bots can be programmed via runProgramEvent
 		runProgramEvent:FireServer(source, currentInterpreterTarget)
+		if currentInterpreterTarget.type == "golem" then
+			print("Uploaded program to turret #" .. (currentInterpreterTarget.spotId or "?"))
+		end
 	end,
 
 	onStep = function(source)
@@ -234,8 +235,19 @@ hud = HUD.create(screenGui, {
 		hud.deselect()
 	end,
 	onUpgrade = function(id, unitType)
-		-- TODO: Implement upgrade system
-		print("Upgrade not yet implemented for", unitType, id)
+		if unitType == "golem" then
+			-- Fire upgrade request to server
+			golemUpgradeEvent:FireServer(id)
+		else
+			print("Upgrade not available for", unitType)
+		end
+	end,
+	onAmmoChange = function(golemId, ammoType, ammoName)
+		-- Change the turret's program to fire the selected ammo type
+		if golemId and ammoType then
+			golemAmmoChangeEvent:FireServer(golemId, ammoType)
+			print("Changed turret", golemId, "ammo to", ammoName)
+		end
 	end,
 	onReady = function()
 		playerReadyEvent:FireServer()
@@ -249,6 +261,29 @@ hud = HUD.create(screenGui, {
 		if loadWeaponProgram then
 			loadWeaponProgram(weaponIndex)
 		end
+	end,
+	-- Bot party frame callback
+	onBotSelect = function(slotNum)
+		-- Find bot with this spotId
+		for botId, botData in pairs(botStates) do
+			if botData.spotId == slotNum then
+				-- Select this bot and enter mind mode
+				hud.select({
+					id = botId,
+					type = "bot",
+					name = "BOT #" .. slotNum,
+					spotId = slotNum,
+					status = botData.status or "IDLE",
+					cargo = botData.scrapInventory or 0,
+				})
+				-- Use wrapper (forward declared) to enter bot mind mode
+				if enterBotMindWrapper then
+					enterBotMindWrapper(botId)
+				end
+				return
+			end
+		end
+		print("No bot in slot", slotNum)
 	end,
 })
 
@@ -274,7 +309,18 @@ local currentPhase = "LOBBY"
 --============================================================================
 
 -- Weapon programs (loaded into player's Python VM)
+-- Index 0 = passive (no shooting), 1-4 = weapons
 local WEAPON_PROGRAMS = {
+	[0] = {
+		name = "PASSIVE",
+		color = Color3.fromRGB(120, 120, 140),
+		fireRate = 0,
+		source = [[# PASSIVE - Save scrap
+c = 0
+while True:
+    c += 1
+]]
+	},
 	[1] = {
 		name = "BULLET",
 		color = Color3.fromRGB(255, 255, 150),
@@ -328,7 +374,7 @@ local RELOAD_DURATION = 2.0  -- 2 seconds to switch weapons
 
 -- Load a weapon program (always updates player's weapon, even when in bot/golem mind)
 function loadWeaponProgram(weaponIndex)
-	if weaponIndex < 1 or weaponIndex > 5 then return end
+	if weaponIndex < 0 or weaponIndex > 4 then return end
 	if isReloading then return end
 	if currentWeapon == weaponIndex then return end  -- Already loaded
 
@@ -632,6 +678,16 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		end
 		hud.updatePhase(phase, buildTimer)
 
+		-- Update enemy minimap with live positions
+		if state.enemyMinimap then
+			hud.updateEnemyMinimap(state.enemyMinimap, state.pathLength)
+		end
+
+		-- Update next wave preview
+		if state.nextWavePreview and state.nextWaveNumber then
+			hud.updateNextWave(state.nextWaveNumber, state.nextWavePreview)
+		end
+
 		-- Track scrap for economy updates
 		currentScrap = state.scrap or 0
 
@@ -757,6 +813,9 @@ golemStateEvent.OnClientEvent:Connect(function(data)
 				maxAmmo = golemData.maxAmmo or 300,
 				dynamicRange = golemData.dynamicRange or 40,
 				status = golemData.paused and "PAUSED" or "ACTIVE",
+				tier = golemData.tier or 1,
+				tierName = golemData.tierName or "Basic",
+				upgradeCost = golemData.upgradeCost,
 			})
 		end
 	end
@@ -790,6 +849,9 @@ botStateEvent.OnClientEvent:Connect(function(data)
 			})
 		end
 	end
+
+	-- Update bot party frame
+	hud.updateBotParty(botStates)
 end)
 
 -- Golem placement result feedback
@@ -929,8 +991,7 @@ local function enterGolemMind(golemId)
 	-- Register as viewer
 	golemRegisterViewerEvent:FireServer(golemId)
 
-	-- Update UI (turret = read-only mode)
-	editor:setMode("golem", golemData.spotId)
+	editor:setMode("golem", golemData.spotId, golemData.maxBytecode)
 	program:setTheme("golem")
 	bytecodePanel:setTheme("golem")
 	updateIDEVisibility() -- Show IDE when in golem mind
@@ -1099,6 +1160,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 						maxAmmo = golemData.maxAmmo or 300,
 						dynamicRange = golemData.dynamicRange or 40,
 						status = golemData.paused and "PAUSED" or "ACTIVE",
+						tier = golemData.tier or 1,
+						tierName = golemData.tierName or "Basic",
+						upgradeCost = golemData.upgradeCost,
 					})
 					-- Auto-enter golem mind mode (shows IDE with read-only code)
 					enterGolemMind(golemId)
@@ -1146,6 +1210,84 @@ golemSellEvent.OnClientEvent:Connect(function(success, result)
 	end
 end)
 
+-- Golem upgrade result feedback
+golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
+	if success then
+		local tier = result.tier or 2
+		local tierName = result.tierName or "Enhanced"
+		local unlockedAmmo = result.unlockedAmmo
+		print("Turret upgraded to", tierName, "(Tier " .. tier .. ")!")
+
+		-- Find the turret position for the upgrade effect
+		local golemId = currentInterpreterTarget.type == "golem" and currentInterpreterTarget.golemId
+		if golemId and golemStates[golemId] then
+			local golemData = golemStates[golemId]
+			-- Find the model in workspace
+			for _, model in ipairs(workspace:GetDescendants()) do
+				if model:IsA("Model") and model:GetAttribute("GolemId") == golemId then
+					local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+					if hrp then
+						-- Play upgrade effect (Industrial Military colors)
+						local tierColors = {
+							[2] = Color3.fromRGB(255, 150, 0),    -- Industrial Orange (Arachnid)
+							[3] = Color3.fromRGB(255, 220, 50),   -- Hazard Yellow (Dreadnought)
+						}
+						Effects.turretUpgrade(hrp.Position, tier, tierColors[tier])
+					end
+					break
+				end
+			end
+		end
+
+		-- Refresh the selection to update the inspector panel
+		if hud.selection and hud.selection.type == "golem" then
+			-- Re-select to update tier display
+			local golemData = golemStates[hud.selection.id]
+			if golemData then
+				hud.select({
+					id = hud.selection.id,
+					type = "golem",
+					name = "TURRET #" .. (golemData.spotId or "?"),
+					spotId = golemData.spotId,
+					ammo = golemData.ammo,
+					maxAmmo = golemData.maxAmmo,
+					dynamicRange = golemData.dynamicRange,
+					status = golemData.paused and "PAUSED" or "ACTIVE",
+					tier = tier,
+					tierName = tierName,
+					upgradeCost = golemData.upgradeCost,
+					unlockedAmmo = unlockedAmmo,
+				})
+			end
+		end
+	else
+		print("Cannot upgrade turret:", result)
+	end
+end)
+
+-- Golem full state update (when ammo type changes, program changes, etc.)
+golemFullStateEvent.OnClientEvent:Connect(function(state)
+	if not state then return end
+
+	-- Check if we're currently viewing this golem
+	if currentInterpreterTarget.type == "golem" and state.golemId == currentInterpreterTarget.golemId then
+		-- Force reload the program source in the editor
+		if state.programSource and state.programSource ~= "" then
+			editor:setTextFormatted(state.programSource)
+			print("Golem program updated:", state.golemId)
+		end
+
+		-- Also update the program panel with new state
+		if state.source then
+			editor:setTextFormatted(state.source)
+		end
+
+		-- Update interpreter display
+		program:update(state)
+		bytecodePanel:update(state)
+	end
+end)
+
 --============================================================================
 -- BOT MIND MODE HELPERS
 --============================================================================
@@ -1184,8 +1326,7 @@ local function enterBotMind(botId)
 	-- Register as viewer
 	botRegisterViewerEvent:FireServer(botId)
 
-	-- Update UI - use bot mode
-	editor:setMode("bot", botData.spotId)
+	editor:setMode("bot", botData.spotId, botData.maxBytecode)
 	program:setTheme("bot")
 	bytecodePanel:setTheme("bot")
 	updateIDEVisibility() -- Show IDE when in bot mind
@@ -1553,6 +1694,68 @@ game:GetService("RunService").RenderStepped:Connect(function()
 	end
 end)
 
+-- Client-side bot waddle animation (visual polish without network overhead)
+local botAnimStates = {} -- Track per-bot animation state locally
+game:GetService("RunService").RenderStepped:Connect(function(dt)
+	-- Find all bot models in workspace
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		local botId = obj:GetAttribute("BotId")
+		if not botId or not obj:IsA("Model") then continue end
+
+		local hrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+		if not hrp then continue end
+
+		-- Initialize animation state for this bot
+		if not botAnimStates[botId] then
+			botAnimStates[botId] = { animSpeed = 0, walkCycle = 0 }
+		end
+		local animState = botAnimStates[botId]
+
+		-- Read server-set attributes
+		local isMoving = obj:GetAttribute("IsMoving") or false
+		local emoteType = obj:GetAttribute("EmoteType") or ""
+		local emoteEndTime = obj:GetAttribute("EmoteEndTime") or 0
+		local baseY = obj:GetAttribute("BaseY") or 2.5
+		local facingAngle = obj:GetAttribute("FacingAngle") or 0
+
+		-- Smooth animation speed transition (client-side)
+		local targetSpeed = isMoving and 12 or 0
+		animState.animSpeed = animState.animSpeed + (targetSpeed - animState.animSpeed) * 5 * dt
+
+		-- Increment walk cycle
+		animState.walkCycle = animState.walkCycle + animState.animSpeed * dt
+
+		-- Procedural waddle animation
+		local bounce = math.abs(math.sin(animState.walkCycle)) * 0.25  -- Vertical hop
+		local tilt = math.sin(animState.walkCycle * 0.5) * 0.12        -- Side-to-side waddle
+		local lean = isMoving and -0.08 or 0                           -- Forward lean
+
+		-- Emote animations (spin, jump, shake)
+		local emoteRotation = 0
+		local emoteYOffset = 0
+		local emoteTilt = 0
+
+		if emoteType ~= "" and tick() < emoteEndTime then
+			local emoteDuration = 2  -- Matches server
+			local emoteProgress = 1 - ((emoteEndTime - tick()) / emoteDuration)
+
+			if emoteType == "spin" then
+				emoteRotation = emoteProgress * math.pi * 8  -- 4 full rotations
+			elseif emoteType == "jump" then
+				emoteYOffset = math.sin(emoteProgress * math.pi) * 3
+			elseif emoteType == "shake" then
+				emoteTilt = math.sin(tick() * 30) * 0.3
+			end
+		end
+
+		-- Apply visual animation on top of server position
+		local serverPos = hrp.Position
+		hrp.CFrame = CFrame.new(serverPos.X, baseY + bounce + emoteYOffset, serverPos.Z)
+			* CFrame.Angles(0, facingAngle + emoteRotation, 0)
+			* CFrame.Angles(lean, emoteTilt, -tilt)
+	end
+end)
+
 -- Right-click to cancel placement mode (standard RTS behavior)
 mouse.Button2Down:Connect(function()
 	if placementMode then
@@ -1729,8 +1932,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	-- Other shortcuts only work when NOT typing in a TextBox
 	if gameProcessed then return end
 
-	-- Action bar hotkeys (1-6): 1-4 load weapon programs, 5-6 build
-	if input.KeyCode == Enum.KeyCode.One then
+	-- Action bar hotkeys (0-6): 0=passive, 1-4 load weapon programs, 5-6 build
+	if input.KeyCode == Enum.KeyCode.Zero then
+		-- 0: Load Passive program (save scrap)
+		loadWeaponProgram(0)
+		return
+	elseif input.KeyCode == Enum.KeyCode.One then
 		-- 1: Load Bullet program
 		loadWeaponProgram(1)
 		return
@@ -1743,7 +1950,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		loadWeaponProgram(3)
 		return
 	elseif input.KeyCode == Enum.KeyCode.Four then
-		-- 4: Load Ice program
+		-- 4: Load Grenade program
 		loadWeaponProgram(4)
 		return
 	elseif input.KeyCode == Enum.KeyCode.Five then
@@ -1832,6 +2039,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 							maxAmmo = golemData.maxAmmo or 300,
 							dynamicRange = golemData.dynamicRange or 40,
 							status = golemData.paused and "PAUSED" or "ACTIVE",
+							tier = golemData.tier or 1,
+							tierName = golemData.tierName or "Basic",
+							upgradeCost = golemData.upgradeCost,
 						})
 						enterGolemMind(nearestId)
 					elseif nearestType == "bot" then

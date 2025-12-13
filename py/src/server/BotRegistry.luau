@@ -1,76 +1,104 @@
--- BotRegistry.luau
--- Manages programmable Combat Bots for Tower Defense
--- Each bot has its own Python program with limited instruction count.
--- Bots COMBO with turrets (shock burning enemies, explode on bosses, etc.)
---
--- GAMEPLAY CONCEPT:
--- Bots are specialized "micro-programs" that complement turret behavior.
--- Limited bytecode forces specialized roles (one bot can't do everything).
--- Commands: self.shock(enemy), self.explode(), self.collect(), self.goto()
-
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
+local BotStats = require(script.Parent.BotStats)
+local BotModel = require(script.Parent.BotModel)
+local Pathfinding = require(script.Parent.Pathfinding)
 
 local BotRegistry = {}
 
--- Ground level Y coordinate
-local GROUND_Y = Config.PLATFORM_Y
+local GROUND_Y = BotStats.GROUND_Y
+local BOT_RADIUS = BotStats.BOT_RADIUS
+local TURRET_RADIUS = BotStats.TURRET_RADIUS
 
 local bots = {}
 local deps = nil
 local WaveManager = nil
-local InterpreterModule = nil  -- For bot programs
-local GameAPI = nil            -- For bot environment
+local InterpreterModule = nil
+local GameAPI = nil
 
 local nextBotNumber = 1
 
--- Default program for new bots (Python!)
--- Kid-friendly with visual feedback and easy commands
--- collect() now auto-returns to core to deposit scrap
-local DEFAULT_PROGRAM = [[
-# My helpful bot!
-self.say("Ready!")
-
-while True:
-    s = self.scraps()
-    if len(s) > 0:
-        self.collect(s[0])
-]]
-
--- Bot stats (bots don't have HP - they're invulnerable)
-local BotStats = {
-	name = "SupplyBot",
-	speed = 14,
-	maxCapacity = 50, -- Can carry 50 scrap
-	pickupRange = 10, -- Range to suck up scraps
-	transferRange = 10,
-	cost = 75, -- Scrap cost to build
-}
-
--- Remote events
 local botStateEvent = nil
 local botBuildEvent = nil
 local botSellEvent = nil
 local botRegisterViewerEvent = nil
 local botUnregisterViewerEvent = nil
 
---============================================================================
--- INITIALIZATION
---============================================================================
+local function recomputeBotPath(bot, goalX, goalZ)
+	local character = bot.character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return nil end
+
+	local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
+	local goalPos = Vector3.new(goalX, GROUND_Y, goalZ)
+
+	return Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
+end
+
+local function getBotObstacles()
+	local obstacles = {}
+	for id, bot in pairs(bots) do
+		if bot.character then
+			local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				table.insert(obstacles, {
+					id = id,
+					x = hrp.Position.X,
+					z = hrp.Position.Z,
+					radius = BOT_RADIUS * 2,
+				})
+			end
+		end
+	end
+	return obstacles
+end
+
+local function getTurretObstacles()
+	if not deps or not deps.GolemRegistry then return {} end
+	local golems = deps.GolemRegistry.getAll and deps.GolemRegistry.getAll() or {}
+	local obstacles = {}
+	for id, golem in pairs(golems) do
+		if golem.character then
+			local hrp = golem.character:FindFirstChild("HumanoidRootPart") or golem.character.PrimaryPart
+			if hrp then
+				table.insert(obstacles, {
+					id = "turret_" .. id,
+					x = hrp.Position.X,
+					z = hrp.Position.Z,
+					radius = TURRET_RADIUS + BOT_RADIUS,
+				})
+			end
+		end
+	end
+	return obstacles
+end
+
+local function getCoreObstacle()
+	if not WaveManager then return {} end
+	local corePos = WaveManager.getCorePosition and WaveManager.getCorePosition()
+	if not corePos then return {} end
+	return {{
+		id = "core",
+		x = corePos.x,
+		z = corePos.z,
+		radius = 8,
+	}}
+end
 
 function BotRegistry.init(dependencies, interpreterModule)
 	deps = dependencies
 	InterpreterModule = interpreterModule
 
-	-- Load GameAPI for bot environment (shared modules are in ReplicatedStorage)
 	local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 	GameAPI = require(PythonTD.Python.GameAPI)
 
-	-- Create remote events
+	Pathfinding.registerObstacleGetter("bots", getBotObstacles)
+	Pathfinding.registerObstacleGetter("turrets", getTurretObstacles)
+	Pathfinding.registerObstacleGetter("core", getCoreObstacle)
+
 	botStateEvent = Instance.new("RemoteEvent")
 	botStateEvent.Name = "BotState"
 	botStateEvent.Parent = PythonTD
@@ -83,7 +111,6 @@ function BotRegistry.init(dependencies, interpreterModule)
 	botSellEvent.Name = "BotSell"
 	botSellEvent.Parent = PythonTD
 
-	-- Viewer events kept for compatibility but bots are no longer programmable
 	botRegisterViewerEvent = Instance.new("RemoteEvent")
 	botRegisterViewerEvent.Name = "BotRegisterViewer"
 	botRegisterViewerEvent.Parent = PythonTD
@@ -92,13 +119,11 @@ function BotRegistry.init(dependencies, interpreterModule)
 	botUnregisterViewerEvent.Name = "BotUnregisterViewer"
 	botUnregisterViewerEvent.Parent = PythonTD
 
-	-- Handle build requests
 	botBuildEvent.OnServerEvent:Connect(function(player, x, z)
 		local success, result = BotRegistry.tryBuild(player, x, z)
 		botBuildEvent:FireClient(player, success, result)
 	end)
 
-	-- Handle sell requests
 	botSellEvent.OnServerEvent:Connect(function(player, botId)
 		local success, result = BotRegistry.sellBot(player, botId)
 		botSellEvent:FireClient(player, success, result)
@@ -119,14 +144,7 @@ function BotRegistry.get(botId)
 	return bots[botId]
 end
 
---============================================================================
--- BOT CREATION
---============================================================================
-
-local MAX_BOTS_PER_PLAYER = 5
-
 function BotRegistry.tryBuild(player, x, z)
-	-- Count player's bots
 	local myBotCount = 0
 	for _, bot in pairs(bots) do
 		if bot.ownerId == player.UserId then
@@ -134,27 +152,25 @@ function BotRegistry.tryBuild(player, x, z)
 		end
 	end
 
-	if myBotCount >= MAX_BOTS_PER_PLAYER then
-		return false, "Max bots reached (" .. MAX_BOTS_PER_PLAYER .. ")"
+	if myBotCount >= BotStats.MAX_BOTS_PER_PLAYER then
+		return false, "Max bots reached (" .. BotStats.MAX_BOTS_PER_PLAYER .. ")"
 	end
 
-	-- Check scrap
 	if WaveManager then
 		local scrap = WaveManager.getScrap()
-		if scrap < BotStats.cost then
-			return false, "Not enough scrap (" .. scrap .. "/" .. BotStats.cost .. ")"
+		if scrap < BotStats.BASE.cost then
+			return false, "Not enough scrap (" .. scrap .. "/" .. BotStats.BASE.cost .. ")"
 		end
-		WaveManager.removeScrap(BotStats.cost)
+		WaveManager.removeScrap(BotStats.BASE.cost)
 	end
 
-	-- Create the bot
 	local botId = BotRegistry.create(x, z)
 	if botId then
 		bots[botId].ownerId = player.UserId
 		bots[botId].spotId = nextBotNumber
 		nextBotNumber = nextBotNumber + 1
 
-		print("BotRegistry: Player", player.Name, "built bot", myBotCount + 1, "/", MAX_BOTS_PER_PLAYER)
+		print("BotRegistry: Player", player.Name, "built bot", myBotCount + 1, "/", BotStats.MAX_BOTS_PER_PLAYER)
 		BotRegistry.broadcastState()
 		return true, botId
 	end
@@ -172,8 +188,7 @@ function BotRegistry.sellBot(player, botId)
 		return false, "You don't own this bot"
 	end
 
-	-- Refund: 50% cost + any scrap the bot is carrying
-	local refund = math.floor(BotStats.cost * 0.5)
+	local refund = math.floor(BotStats.BASE.cost * 0.5)
 	local carryingScrap = bot.scrapInventory or 0
 	refund = refund + carryingScrap
 
@@ -190,56 +205,45 @@ function BotRegistry.sellBot(player, botId)
 end
 
 function BotRegistry.create(x, z)
-	-- Create model
-	local character = BotRegistry.createModel(x, z)
+	local character = BotModel.create(x, z)
 	if not character then return nil end
 
-	-- Generate ID
 	local id = game:GetService("HttpService"):GenerateGUID()
 
-	-- Create bot data
 	local bot = {
 		id = id,
 		character = character,
 		spotId = nil,
 		ownerId = nil,
 
-		-- Bot state (no HP - bots are invulnerable)
 		scrapInventory = 0,
-		maxCapacity = BotStats.maxCapacity,
-		speed = BotStats.speed,
-		pickupRange = BotStats.pickupRange,
-		transferRange = BotStats.transferRange,
+		maxCapacity = BotStats.BASE.maxCapacity,
+		speed = BotStats.BASE.speed,
+		pickupRange = BotStats.BASE.pickupRange,
+		transferRange = BotStats.BASE.transferRange,
 
-		-- Movement state
 		moveTargetX = nil,
 		moveTargetZ = nil,
 		isMoving = false,
 
-		-- Command Queue: Controlled by either self.program or Machinist
-		taskQueue = {},  -- { {type="COLLECT_AT", x=num, z=num}, ... }
+		taskQueue = {},
 		currentTask = nil,
-		waitingForTask = false,  -- When true, interpreter yields until task completes
+		waitingForTask = false,
 
-		-- Status for UI
 		status = "IDLE",
 
-		-- Interpreter for bot programs (optional - can also be controlled by Machinist)
 		interpreter = nil,
 
-		-- Shield system
 		shieldActive = false,
 		shieldCooldownUntil = 0,
 	}
 
 	bots[id] = bot
 
-	-- Create interpreter for bot programs
 	if InterpreterModule then
-		bot.interpreter = InterpreterModule.new(nil, true, deps)  -- isMonster=true means no player
+		bot.interpreter = InterpreterModule.new(nil, true, deps)
 		bot.interpreter.character = character
 
-		-- Set up bot game environment
 		if GameAPI and GameAPI.createBotEnvironment then
 			local botEnv = GameAPI.createBotEnvironment(bot, {
 				BotRegistry = BotRegistry,
@@ -251,15 +255,12 @@ function BotRegistry.create(x, z)
 			bot.interpreter:setGameEnvironment(botEnv)
 		end
 
-		-- Load default program
-		bot.interpreter:load(DEFAULT_PROGRAM)
-		bot.interpreter.lastProgram = DEFAULT_PROGRAM
+		bot.interpreter:load(BotStats.DEFAULT_PROGRAM)
+		bot.interpreter.lastProgram = BotStats.DEFAULT_PROGRAM
 	end
 
-	-- Set BotId attribute on model (for client click detection)
 	character:SetAttribute("BotId", id)
 
-	-- Register with EntityRegistry
 	if deps.EntityRegistry then
 		deps.EntityRegistry.register({
 			id = id,
@@ -268,256 +269,22 @@ function BotRegistry.create(x, z)
 		})
 	end
 
-	-- Create billboard
-	BotRegistry.createBillboard(bot)
+	BotModel.createBillboard(bot)
 
 	print("BotRegistry: Created bot at", x, z)
 	return id
 end
 
--- Color Palette for Scrappy Bot
-local COLORS = {
-	RUST_ORANGE = Color3.fromRGB(215, 135, 70),
-	DARK_METAL  = Color3.fromRGB(45, 50, 55),
-	JOINT_GREY  = Color3.fromRGB(80, 85, 90),
-	NEON_CYAN   = Color3.fromRGB(0, 255, 255),
-	GOLD_SCRAP  = Color3.fromRGB(255, 215, 0),
-}
-
-function BotRegistry.createModel(x, z)
-	local model = Instance.new("Model")
-	model.Name = "ScrappyBot"
-
-	-- Helper for creating blocky parts
-	local function makePart(name, size, color, mat, parent, posOffset)
-		local p = Instance.new("Part")
-		p.Name = name
-		p.Size = size
-		p.Color = color
-		p.Material = mat or Enum.Material.Plastic
-		p.Anchored = false
-		p.CanCollide = false
-		p.BottomSurface = Enum.SurfaceType.Smooth
-		p.TopSurface = Enum.SurfaceType.Smooth
-		p.Parent = model
-
-		-- Weld to parent
-		if parent then
-			p.CFrame = parent.CFrame * posOffset
-			local w = Instance.new("WeldConstraint")
-			w.Part0 = parent
-			w.Part1 = p
-			w.Parent = parent
-		end
-		return p
-	end
-
-	-- 1. Main Root (invisible, anchored - we move this)
-	local hrp = Instance.new("Part")
-	hrp.Name = "HumanoidRootPart"
-	hrp.Size = Vector3.new(2, 2, 2)
-	hrp.Position = Vector3.new(x, GROUND_Y + 2.5, z)
-	hrp.Transparency = 1
-	hrp.Anchored = true
-	hrp.CanCollide = false
-	hrp.Parent = model
-	model.PrimaryPart = hrp
-
-	-- 2. Torso (The Orange Block)
-	local torso = makePart("Torso", Vector3.new(2.2, 1.8, 1.5), COLORS.RUST_ORANGE, Enum.Material.Metal, hrp, CFrame.new(0, 0, 0))
-
-	-- Torso Vent Detail
-	makePart("Vent", Vector3.new(1.4, 0.8, 0.1), COLORS.DARK_METAL, Enum.Material.DiamondPlate, torso, CFrame.new(0, -0.2, -0.76))
-
-	-- 3. Head (Chunky, sitting on top)
-	local head = makePart("Head", Vector3.new(2.4, 1.6, 1.6), COLORS.RUST_ORANGE, Enum.Material.Metal, torso, CFrame.new(0, 1.7, 0))
-
-	-- Faceplate (Dark area)
-	makePart("Faceplate", Vector3.new(2.0, 1.2, 0.1), COLORS.DARK_METAL, Enum.Material.Plastic, head, CFrame.new(0, 0, -0.8))
-
-	-- Eyes (Glowing Cyan)
-	makePart("LeftEye", Vector3.new(0.5, 0.6, 0.1), COLORS.NEON_CYAN, Enum.Material.Neon, head, CFrame.new(-0.5, 0.1, -0.86))
-	makePart("RightEye", Vector3.new(0.5, 0.6, 0.1), COLORS.NEON_CYAN, Enum.Material.Neon, head, CFrame.new(0.5, 0.1, -0.86))
-
-	-- Antenna
-	makePart("AntennaStem", Vector3.new(0.1, 0.8, 0.1), COLORS.DARK_METAL, Enum.Material.Plastic, head, CFrame.new(0.5, 1.0, 0))
-	makePart("AntennaBulb", Vector3.new(0.3, 0.3, 0.3), COLORS.GOLD_SCRAP, Enum.Material.Neon, head, CFrame.new(0.5, 1.5, 0))
-
-	-- 4. Arms (Stubby industrial)
-	local leftShoulder = makePart("LeftShoulder", Vector3.new(0.5, 0.5, 0.5), COLORS.JOINT_GREY, Enum.Material.Plastic, torso, CFrame.new(-1.35, 0.5, 0))
-	local rightShoulder = makePart("RightShoulder", Vector3.new(0.5, 0.5, 0.5), COLORS.JOINT_GREY, Enum.Material.Plastic, torso, CFrame.new(1.35, 0.5, 0))
-
-	makePart("LeftArm", Vector3.new(0.4, 1.2, 0.8), COLORS.RUST_ORANGE, Enum.Material.Metal, leftShoulder, CFrame.new(-0.1, -0.8, 0))
-	makePart("RightArm", Vector3.new(0.4, 1.2, 0.8), COLORS.RUST_ORANGE, Enum.Material.Metal, rightShoulder, CFrame.new(0.1, -0.8, 0))
-
-	-- 5. Feet (Chunky boots)
-	makePart("LeftFoot", Vector3.new(0.8, 0.6, 1.2), COLORS.DARK_METAL, Enum.Material.DiamondPlate, torso, CFrame.new(-0.6, -1.5, 0))
-	makePart("RightFoot", Vector3.new(0.8, 0.6, 1.2), COLORS.DARK_METAL, Enum.Material.DiamondPlate, torso, CFrame.new(0.6, -1.5, 0))
-
-	-- 6. Backpack (Cargo Container)
-	local backpack = makePart("Backpack", Vector3.new(1.8, 1.2, 0.8), COLORS.DARK_METAL, Enum.Material.Plastic, torso, CFrame.new(0, 0.2, 0.9))
-
-	-- Scrap Pile (grows based on cargo)
-	local scrapPile = makePart("ScrapPile", Vector3.new(1.6, 0.1, 0.6), COLORS.GOLD_SCRAP, Enum.Material.Foil, backpack, CFrame.new(0, 0.65, 0))
-	scrapPile.Transparency = 1 -- Hidden initially
-
-	-- 7. Chat Bubble Anchor
-	local chatPart = Instance.new("Part")
-	chatPart.Name = "ChatHead"
-	chatPart.Transparency = 1
-	chatPart.Size = Vector3.new(0.1, 0.1, 0.1)
-	chatPart.Anchored = false
-	chatPart.CanCollide = false
-	chatPart.CFrame = head.CFrame * CFrame.new(0, 1.5, 0)
-	chatPart.Parent = model
-
-	local chatWeld = Instance.new("WeldConstraint")
-	chatWeld.Part0 = head
-	chatWeld.Part1 = chatPart
-	chatWeld.Parent = head
-
-	local bg = Instance.new("BillboardGui")
-	bg.Name = "ChatBubble"
-	bg.Size = UDim2.new(0, 120, 0, 40)
-	bg.StudsOffset = Vector3.new(0, 0.5, 0)
-	bg.AlwaysOnTop = true
-	bg.Parent = chatPart
-
-	local bubble = Instance.new("Frame")
-	bubble.Name = "Bubble"
-	bubble.Size = UDim2.new(1, 0, 1, 0)
-	bubble.BackgroundColor3 = Color3.new(1, 1, 1)
-	bubble.BackgroundTransparency = 1
-	bubble.Parent = bg
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.3, 0)
-	corner.Parent = bubble
-
-	local chatText = Instance.new("TextLabel")
-	chatText.Name = "Text"
-	chatText.Size = UDim2.new(1, -10, 1, -6)
-	chatText.Position = UDim2.new(0, 5, 0, 3)
-	chatText.BackgroundTransparency = 1
-	chatText.Text = ""
-	chatText.TextColor3 = Color3.new(0.2, 0.2, 0.2)
-	chatText.TextScaled = true
-	chatText.Font = Enum.Font.GothamBold
-	chatText.TextTransparency = 1
-	chatText.Parent = bubble
-
-	model.Parent = workspace
-
-	-- Animation state
-	model:SetAttribute("WalkCycle", 0)
-	model:SetAttribute("AnimSpeed", 0)
-	model:SetAttribute("BaseY", GROUND_Y + 2.5)
-	model:SetAttribute("FacingAngle", 0)
-	model:SetAttribute("ChatExpiry", 0)
-
-	return model
-end
-
-function BotRegistry.createBillboard(bot)
-	local character = bot.character
-	local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
-	if not hrp then return end
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "BotBillboard"
-	billboard.Size = UDim2.new(0, 80, 0, 40)
-	billboard.StudsOffset = Vector3.new(0, 3, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = hrp
-
-	-- Background
-	local bg = Instance.new("Frame")
-	bg.Size = UDim2.new(1, 0, 1, 0)
-	bg.BackgroundColor3 = Color3.fromRGB(20, 30, 40)
-	bg.BackgroundTransparency = 0.3
-	bg.BorderSizePixel = 0
-	bg.Parent = billboard
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = bg
-
-	-- Bot ID
-	local idLabel = Instance.new("TextLabel")
-	idLabel.Name = "IdLabel"
-	idLabel.Size = UDim2.new(0.4, 0, 0.5, 0)
-	idLabel.Position = UDim2.new(0, 4, 0, 2)
-	idLabel.BackgroundTransparency = 1
-	idLabel.Text = "B" .. (bot.spotId or "?")
-	idLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-	idLabel.Font = Enum.Font.GothamBold
-	idLabel.TextSize = 14
-	idLabel.TextXAlignment = Enum.TextXAlignment.Left
-	idLabel.Parent = bg
-
-	-- Cargo amount
-	local cargoLabel = Instance.new("TextLabel")
-	cargoLabel.Name = "CargoLabel"
-	cargoLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
-	cargoLabel.Position = UDim2.new(0.4, 0, 0, 2)
-	cargoLabel.BackgroundTransparency = 1
-	cargoLabel.Text = "0/50"
-	cargoLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-	cargoLabel.Font = Enum.Font.Code
-	cargoLabel.TextSize = 12
-	cargoLabel.TextXAlignment = Enum.TextXAlignment.Right
-	cargoLabel.Parent = bg
-
-	-- Cargo bar
-	local cargoBarBg = Instance.new("Frame")
-	cargoBarBg.Name = "CargoBarBg"
-	cargoBarBg.Size = UDim2.new(0.9, 0, 0.2, 0)
-	cargoBarBg.Position = UDim2.new(0.05, 0, 0.55, 0)
-	cargoBarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	cargoBarBg.BorderSizePixel = 0
-	cargoBarBg.Parent = bg
-
-	local cargoBar = Instance.new("Frame")
-	cargoBar.Name = "CargoBar"
-	cargoBar.Size = UDim2.new(0, 0, 1, 0)
-	cargoBar.BackgroundColor3 = Color3.fromRGB(255, 200, 100)
-	cargoBar.BorderSizePixel = 0
-	cargoBar.Parent = cargoBarBg
-
-	-- Status
-	local statusLabel = Instance.new("TextLabel")
-	statusLabel.Name = "StatusLabel"
-	statusLabel.Size = UDim2.new(1, 0, 0.25, 0)
-	statusLabel.Position = UDim2.new(0, 0, 0.75, 0)
-	statusLabel.BackgroundTransparency = 1
-	statusLabel.Text = "IDLE"
-	statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-	statusLabel.Font = Enum.Font.Code
-	statusLabel.TextSize = 9
-	statusLabel.Parent = bg
-
-	bot.billboard = billboard
-end
-
---============================================================================
--- COMMAND QUEUE SYSTEM (Machinist Architecture)
---============================================================================
-
--- Issue a command to a bot (from Player mainframe script)
--- Commands take priority over internal interpreter
--- If blocking=true, the bot's interpreter will yield until the task completes
 function BotRegistry.issueCommand(botId, commandType, args, blocking)
 	local bot = bots[botId]
 	if not bot then return false end
 
-	-- Add to task queue
 	table.insert(bot.taskQueue, {
 		type = commandType,
 		args = args or {},
 		startTime = tick(),
 	})
 
-	-- If blocking, tell interpreter to wait
 	if blocking then
 		bot.waitingForTask = true
 	end
@@ -525,7 +292,6 @@ function BotRegistry.issueCommand(botId, commandType, args, blocking)
 	return true
 end
 
--- Clear all commands from a bot
 function BotRegistry.clearCommands(botId)
 	local bot = bots[botId]
 	if not bot then return end
@@ -535,7 +301,6 @@ function BotRegistry.clearCommands(botId)
 	bot.isMoving = false
 end
 
--- Execute current task (returns: "RUNNING", "DONE", or "FAILED")
 local function executeTask(bot, dt)
 	local task = bot.currentTask
 	if not task then return "DONE" end
@@ -545,7 +310,6 @@ local function executeTask(bot, dt)
 	if not hrp then return "FAILED" end
 
 	if task.type == "COLLECT" then
-		-- Move to scrap by ID and collect (legacy)
 		local scrapId = task.args.target
 		local ScrapManager = deps.ScrapManager
 		if not ScrapManager then return "FAILED" end
@@ -557,6 +321,9 @@ local function executeTask(bot, dt)
 		end
 
 		local sPos = scrap.part.Position
+		bot.finalGoalX = sPos.X
+		bot.finalGoalZ = sPos.Z
+
 		local dx = sPos.X - hrp.Position.X
 		local dz = sPos.Z - hrp.Position.Z
 		local dist = math.sqrt(dx * dx + dz * dz)
@@ -573,88 +340,167 @@ local function executeTask(bot, dt)
 			return "RUNNING"
 		end
 
-	elseif task.type == "COLLECT_AT" then
-		-- Phase-based collection: go to scrap -> pick up -> return to core -> deposit
-		-- Phase 1: GOTO_SCRAP, Phase 2: RETURN_TO_CORE
-		task.phase = task.phase or "GOTO_SCRAP"
+	elseif task.type == "COLLECT_AT" or task.type == "COLLECT_AREA" then
+		local targetX = task.args.x
+		local targetZ = task.args.z
+		if not targetX or not targetZ then return "FAILED" end
 
-		if task.phase == "GOTO_SCRAP" then
-			local targetX = task.args.x
-			local targetZ = task.args.z
-			if not targetX or not targetZ then return "FAILED" end
+		bot.finalGoalX = targetX
+		bot.finalGoalZ = targetZ
 
-			local dx = targetX - hrp.Position.X
-			local dz = targetZ - hrp.Position.Z
-			local dist = math.sqrt(dx * dx + dz * dz)
+		if not task.path then
+			local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
+			local goalPos = Vector3.new(targetX, GROUND_Y, targetZ)
+			task.path = Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
+			task.pathIndex = 1
+		end
 
-			-- Move close to the target position (within 2 studs)
-			if dist <= 2 then
-				-- Arrived - collect all scraps in pickup range (10 studs)
-				local collected = BotRegistry.collectScrap(bot.id)
-				-- Now go to core to deposit (even if we got nothing)
-				task.phase = "RETURN_TO_CORE"
-				bot.status = "DELIVERING"
-				return "RUNNING"
-			else
-				bot.moveTargetX = targetX
-				bot.moveTargetZ = targetZ
-				bot.isMoving = true
-				bot.status = "COLLECTING"
-				return "RUNNING"
+		local waypoint = task.path[task.pathIndex]
+		if not waypoint then
+			local collected = BotRegistry.collectScrap(bot.id)
+			bot.status = "IDLE"
+			bot.isMoving = false
+			return "DONE"
+		end
+
+		local dx = waypoint.x - hrp.Position.X
+		local dz = waypoint.z - hrp.Position.Z
+		local dist = math.sqrt(dx * dx + dz * dz)
+
+		local finalDx = targetX - hrp.Position.X
+		local finalDz = targetZ - hrp.Position.Z
+		local finalDist = math.sqrt(finalDx * finalDx + finalDz * finalDz)
+		local pickupRange = bot.pickupRange or 20
+
+		if finalDist <= pickupRange then
+			local collected = BotRegistry.collectScrap(bot.id)
+			bot.status = "IDLE"
+			bot.isMoving = false
+			return "DONE"
+		elseif dist < 2 then
+			task.pathIndex = task.pathIndex + 1
+			waypoint = task.path[task.pathIndex]
+			if waypoint then
+				bot.moveTargetX = waypoint.x
+				bot.moveTargetZ = waypoint.z
 			end
+			bot.isMoving = true
+			bot.status = "COLLECTING"
+			return "RUNNING"
+		else
+			bot.moveTargetX = waypoint.x
+			bot.moveTargetZ = waypoint.z
+			bot.isMoving = true
+			bot.status = "COLLECTING"
+			return "RUNNING"
+		end
 
-		elseif task.phase == "RETURN_TO_CORE" then
-			-- Get core position
-			local coreX, coreZ = 150, 150
-			if WaveManager and WaveManager.getCorePosition then
-				local corePos = WaveManager.getCorePosition()
-				if corePos then
-					coreX = corePos.x or 150
-					coreZ = corePos.z or 150
-				end
-			end
-
-			local dx = coreX - hrp.Position.X
-			local dz = coreZ - hrp.Position.Z
-			local dist = math.sqrt(dx * dx + dz * dz)
-
-			if dist <= (bot.transferRange or 10) then
-				-- Close enough to core - deposit
-				print("BotRegistry: Bot at core (dist=" .. math.floor(dist) .. "), depositing...")
-				BotRegistry.depositToCore(bot.id)
-				bot.status = "IDLE"
-				return "DONE"
-			else
-				bot.moveTargetX = coreX
-				bot.moveTargetZ = coreZ
-				bot.isMoving = true
-				bot.status = "DELIVERING"
-				return "RUNNING"
+	elseif task.type == "SUPPLY_CORE" then
+		local coreX, coreZ = 150, 150
+		if WaveManager and WaveManager.getCorePosition then
+			local corePos = WaveManager.getCorePosition()
+			if corePos then
+				coreX = corePos.x or 150
+				coreZ = corePos.z or 150
 			end
 		end
 
+		bot.finalGoalX = coreX
+		bot.finalGoalZ = coreZ
+
+		if not task.path then
+			local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
+			local goalPos = Vector3.new(coreX, GROUND_Y, coreZ)
+			task.path = Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
+			task.pathIndex = 1
+		end
+
+		local waypoint = task.path[task.pathIndex]
+		if not waypoint then
+			BotRegistry.depositToCore(bot.id)
+			bot.status = "IDLE"
+			bot.isMoving = false
+			return "DONE"
+		end
+
+		local dx = waypoint.x - hrp.Position.X
+		local dz = waypoint.z - hrp.Position.Z
+		local dist = math.sqrt(dx * dx + dz * dz)
+
+		local coreDx = coreX - hrp.Position.X
+		local coreDz = coreZ - hrp.Position.Z
+		local coreDist = math.sqrt(coreDx * coreDx + coreDz * coreDz)
+
+		if coreDist <= (bot.transferRange or 10) then
+			BotRegistry.depositToCore(bot.id)
+			bot.status = "IDLE"
+			bot.isMoving = false
+			return "DONE"
+		elseif dist < 2 then
+			task.pathIndex = task.pathIndex + 1
+			waypoint = task.path[task.pathIndex]
+			if waypoint then
+				bot.moveTargetX = waypoint.x
+				bot.moveTargetZ = waypoint.z
+			end
+			bot.isMoving = true
+			bot.status = "DELIVERING"
+			return "RUNNING"
+		else
+			bot.moveTargetX = waypoint.x
+			bot.moveTargetZ = waypoint.z
+			bot.isMoving = true
+			bot.status = "DELIVERING"
+			return "RUNNING"
+		end
+
 	elseif task.type == "MOVE" then
-		-- Move to position
 		local targetX = task.args.x
 		local targetZ = task.args.z
 
-		local dx = targetX - hrp.Position.X
-		local dz = targetZ - hrp.Position.Z
+		bot.finalGoalX = targetX
+		bot.finalGoalZ = targetZ
+
+		if not task.path then
+			local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
+			local goalPos = Vector3.new(targetX, GROUND_Y, targetZ)
+			task.path = Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
+			task.pathIndex = 1
+		end
+
+		local waypoint = task.path[task.pathIndex]
+		if not waypoint then
+			bot.status = "IDLE"
+			bot.isMoving = false
+			return "DONE"
+		end
+
+		local dx = waypoint.x - hrp.Position.X
+		local dz = waypoint.z - hrp.Position.Z
 		local dist = math.sqrt(dx * dx + dz * dz)
 
 		if dist < 2 then
-			bot.status = "IDLE"
-			return "DONE"
+			task.pathIndex = task.pathIndex + 1
+			if task.pathIndex > #task.path then
+				bot.status = "IDLE"
+				bot.isMoving = false
+				return "DONE"
+			end
+			waypoint = task.path[task.pathIndex]
+			bot.moveTargetX = waypoint.x
+			bot.moveTargetZ = waypoint.z
+			bot.isMoving = true
+			bot.status = "MOVING"
+			return "RUNNING"
 		else
-			bot.moveTargetX = targetX
-			bot.moveTargetZ = targetZ
+			bot.moveTargetX = waypoint.x
+			bot.moveTargetZ = waypoint.z
 			bot.isMoving = true
 			bot.status = "MOVING"
 			return "RUNNING"
 		end
 
 	elseif task.type == "IDLE" then
-		-- Wait for specified time
 		local duration = task.args.duration or 1
 		if not task.idleStart then
 			task.idleStart = tick()
@@ -666,11 +512,43 @@ local function executeTask(bot, dt)
 		end
 		return "RUNNING"
 
+	elseif task.type == "TELEPORT" then
+		local targetX, targetZ
+
+		if task.args.target and type(task.args.target) == "table" then
+			local target = task.args.target
+			if target.world_position then
+				local pos = target.world_position()
+				targetX, targetZ = pos[1], pos[2]
+			elseif target.position then
+				local pos = target.position()
+				local coreX, coreZ = 150, 150
+				if deps.WaveManager and deps.WaveManager.getCorePosition then
+					local corePos = deps.WaveManager.getCorePosition()
+					if corePos then
+						coreX = corePos.x or 150
+						coreZ = corePos.z or 150
+					end
+				end
+				targetX = pos[1] + coreX
+				targetZ = pos[2] + coreZ
+			end
+		else
+			targetX = task.args.x
+			targetZ = task.args.z
+		end
+
+		if not targetX or not targetZ then return "FAILED" end
+
+		local freeX, freeZ = Pathfinding.findFreePosition(targetX, targetZ, bot.id)
+
+		if hrp then
+			bot.character:PivotTo(CFrame.new(freeX, GROUND_Y + 3, freeZ))
+			bot.status = "IDLE"
+		end
+		return "DONE"
+
 	elseif task.type == "SHOCK" then
-		-- Shock attack: Move to enemy -> Shock -> Stun
-		-- Phase 1: Move to enemy
-		-- Phase 2: Execute shock (once)
-		-- Phase 3: Wait for stun to end
 		local enemyId = task.args.enemyId
 		local EnemyManager = deps.EnemyManager
 		if not EnemyManager then return "FAILED" end
@@ -681,35 +559,30 @@ local function executeTask(bot, dt)
 		local enemyHrp = enemy.character:FindFirstChild("HumanoidRootPart")
 		if not enemyHrp then return "FAILED" end
 
-		-- Phase 1: Move toward enemy
 		if not task.shockExecuted then
 			local dist = (enemyHrp.Position - hrp.Position).Magnitude
 
-			if dist > SHOCK_RANGE then
-				-- Move toward enemy
+			if dist > BotStats.SHOCK_RANGE then
 				bot.status = "MOVING"
 				local targetPos = enemyHrp.Position
 				local dir = (targetPos - hrp.Position).Unit
 				local moveSpeed = bot.speed or 20
-				local newPos = hrp.Position + dir * math.min(moveSpeed * dt, dist - SHOCK_RANGE + 1)
+				local newPos = hrp.Position + dir * math.min(moveSpeed * dt, dist - BotStats.SHOCK_RANGE + 1)
 
 				hrp.CFrame = CFrame.new(newPos.X, hrp.Position.Y, newPos.Z) *
 					CFrame.Angles(0, math.atan2(-dir.X, -dir.Z), 0)
 				return "RUNNING"
 			end
 
-			-- In range - do the shock!
-			local damageDealt = EnemyManager.shock(enemyId, SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z)
+			local damageDealt = EnemyManager.shock(enemyId, BotStats.SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z)
 			task.damageDealt = damageDealt
 			task.shockExecuted = true
-			task.stunEndTime = tick() + SHOCK_STUN_TIME
+			task.stunEndTime = tick() + BotStats.SHOCK_STUN_TIME
 
-			-- Visual effect
-			BotRegistry.createBotShockEffect(bot)
+			BotModel.createShockEffect(bot)
 			bot.status = "SHOCKING"
 			return "RUNNING"
 		else
-			-- Phase 3: Wait for stun to end
 			bot.status = "STUNNED"
 			if tick() >= task.stunEndTime then
 				bot.status = "IDLE"
@@ -717,15 +590,46 @@ local function executeTask(bot, dt)
 			end
 			return "RUNNING"
 		end
+
+	elseif task.type == "EXPLODE" then
+		local cargo = bot.scrapInventory or 0
+		if cargo < 10 then
+			bot.status = "IDLE"
+			return "FAILED"
+		end
+
+		local damage = cargo * 2
+		local explodeRange = 15
+
+		local EnemyManager = deps.EnemyManager
+		if EnemyManager and EnemyManager.findInRange then
+			local enemies = EnemyManager.findInRange(hrp.Position.X, hrp.Position.Z, explodeRange)
+			for _, enemy in ipairs(enemies) do
+				EnemyManager.damage(enemy.id, damage)
+			end
+		end
+
+		BotModel.createExplosionEffect(bot, cargo)
+
+		bot.scrapInventory = 0
+
+		bot.status = "STUNNED"
+		task.stunEndTime = tick() + 1.5
+		task.exploded = true
+		return "RUNNING"
+	end
+
+	if task.exploded and task.stunEndTime then
+		if tick() >= task.stunEndTime then
+			bot.status = "IDLE"
+			return "DONE"
+		end
+		return "RUNNING"
 	end
 
 	bot.status = "IDLE"
 	return "FAILED"
 end
-
---============================================================================
--- UPDATE LOOP
---============================================================================
 
 function BotRegistry.update(dt)
 	for id, bot in pairs(bots) do
@@ -735,32 +639,12 @@ function BotRegistry.update(dt)
 			continue
 		end
 
-
 		local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
 		if not hrp then continue end
-
-		-- Animation state
-		local isMoving = bot.isMoving
-		local currentSpeed = character:GetAttribute("AnimSpeed") or 0
-		local targetSpeed = isMoving and 12 or 0
-
-		-- Smooth animation speed transition
-		currentSpeed = currentSpeed + (targetSpeed - currentSpeed) * 5 * dt
-		character:SetAttribute("AnimSpeed", currentSpeed)
-
-		-- Increment walk cycle
-		local walkCycle = (character:GetAttribute("WalkCycle") or 0) + currentSpeed * dt
-		character:SetAttribute("WalkCycle", walkCycle)
-
-		-- Procedural Waddle Animation
-		local bounce = math.abs(math.sin(walkCycle)) * 0.25  -- Vertical hop
-		local tilt = math.sin(walkCycle * 0.5) * 0.12        -- Side-to-side waddle
-		local lean = isMoving and -0.08 or 0                 -- Forward lean
 
 		local baseY = character:GetAttribute("BaseY") or 2.5
 		local facingAngle = character:GetAttribute("FacingAngle") or 0
 
-		-- Movement processing
 		local newX, newZ = hrp.Position.X, hrp.Position.Z
 
 		if bot.moveTargetX and bot.moveTargetZ then
@@ -769,56 +653,60 @@ function BotRegistry.update(dt)
 			local dist = math.sqrt(dx * dx + dz * dz)
 
 			if dist < 2 then
-				-- Arrived
 				bot.moveTargetX = nil
 				bot.moveTargetZ = nil
 				bot.isMoving = false
+				bot.lastPos = nil
 			else
-				-- Move towards target
-				local speed = bot.speed or BotStats.speed
+				local speed = bot.speed or BotStats.BASE.speed
 				local moveAmount = math.min(speed * dt, dist)
 				local dirX = dx / dist
 				local dirZ = dz / dist
 
-				newX = hrp.Position.X + dirX * moveAmount
-				newZ = hrp.Position.Z + dirZ * moveAmount
+				local proposedX = hrp.Position.X + dirX * moveAmount
+				local proposedZ = hrp.Position.Z + dirZ * moveAmount
 
-				-- Update facing angle (towards movement direction)
+				local blocked = Pathfinding.isPositionBlocked(proposedX, proposedZ, id)
+
+				if not blocked then
+					newX = proposedX
+					newZ = proposedZ
+					bot.lastPos = {x = newX, z = newZ}
+				else
+					local lastRecompute = bot.lastPathRecompute or 0
+					if tick() - lastRecompute > Pathfinding.PATH_RECOMPUTE_COOLDOWN then
+						bot.lastPathRecompute = tick()
+						local goalX = bot.finalGoalX or bot.moveTargetX
+						local goalZ = bot.finalGoalZ or bot.moveTargetZ
+						local newPath = recomputeBotPath(bot, goalX, goalZ)
+						if newPath and #newPath > 0 then
+							if bot.currentTask then
+								bot.currentTask.path = newPath
+								bot.currentTask.pathIndex = 1
+							end
+							bot.moveTargetX = newPath[1].x
+							bot.moveTargetZ = newPath[1].z
+						end
+					end
+				end
+
 				facingAngle = math.atan2(-dirX, -dirZ)
 				character:SetAttribute("FacingAngle", facingAngle)
 			end
 		end
 
-		-- Emote animations (spin, jump, shake)
-		local emoteRotation = 0
-		local emoteYOffset = 0
-		local emoteTilt = 0
+		character:SetAttribute("IsMoving", bot.isMoving or false)
+		character:SetAttribute("EmoteType", bot.emoteType or "")
+		character:SetAttribute("EmoteEndTime", bot.emoteEndTime or 0)
 
-		if bot.emoteEndTime and tick() < bot.emoteEndTime then
-			local emoteProgress = 1 - ((bot.emoteEndTime - tick()) / 2)  -- 0 to 1 over duration
-
-			if bot.emoteType == "spin" then
-				-- Spin around
-				emoteRotation = emoteProgress * math.pi * 8  -- 4 full rotations
-			elseif bot.emoteType == "jump" then
-				-- Hop up and down
-				emoteYOffset = math.sin(emoteProgress * math.pi) * 3
-			elseif bot.emoteType == "shake" then
-				-- Quick shake side to side
-				emoteTilt = math.sin(tick() * 30) * 0.3
-			end
-		else
+		if bot.emoteEndTime and tick() >= bot.emoteEndTime then
 			bot.emoteType = nil
 			bot.emoteEndTime = nil
 		end
 
-		-- Apply position + waddle animation via CFrame
-		hrp.CFrame = CFrame.new(newX, baseY + bounce + emoteYOffset, newZ)
-			* CFrame.Angles(0, facingAngle + emoteRotation, 0)  -- Face direction + spin
-			* CFrame.Angles(lean, emoteTilt, -tilt)     -- Lean + waddle + shake
+		hrp.CFrame = CFrame.new(newX, baseY, newZ)
+			* CFrame.Angles(0, facingAngle, 0)
 
-		-- BOT INTERPRETER (if bot has its own program running)
-		-- COMMAND QUEUE (from either bot's own program or Machinist)
 		if not bot.currentTask and #bot.taskQueue > 0 then
 			bot.currentTask = table.remove(bot.taskQueue, 1)
 		end
@@ -827,25 +715,27 @@ function BotRegistry.update(dt)
 			local taskStatus = executeTask(bot, dt)
 			if taskStatus == "DONE" or taskStatus == "FAILED" then
 				bot.currentTask = nil
-				-- Clear waiting flag when task completes AND no more tasks pending
 				if #bot.taskQueue == 0 then
 					bot.waitingForTask = false
+					if bot.interpreter and bot.interpreter.runtime then
+						local vm = bot.interpreter.runtime.vm
+						if vm and vm.unblock then
+							vm:unblock()
+						end
+					end
 				end
 			end
 		end
 
-		-- Run interpreter AFTER task processing, and only if not waiting for a task
 		if bot.interpreter and not bot.waitingForTask then
 			local status = bot.interpreter.status
 			if status == "RUNNING" or status == "READY" then
-				bot.interpreter:run(5)  -- Run 5 ticks per frame
+				bot.interpreter:run(5)
 			end
 		end
 
-		-- Update billboard
-		BotRegistry.updateBillboard(bot)
+		BotModel.updateBillboard(bot)
 
-		-- Cargo Visualization (Scrap pile on backpack)
 		local backpack = character:FindFirstChild("Backpack")
 		if backpack then
 			local scrapPile = backpack:FindFirstChild("ScrapPile")
@@ -861,7 +751,6 @@ function BotRegistry.update(dt)
 			end
 		end
 
-		-- Chat Bubble Logic
 		local chatHead = character:FindFirstChild("ChatHead")
 		if chatHead then
 			local chatBubble = chatHead:FindFirstChild("ChatBubble")
@@ -871,11 +760,9 @@ function BotRegistry.update(dt)
 				local chatExpiry = character:GetAttribute("ChatExpiry") or 0
 
 				if tick() > chatExpiry then
-					-- Fade out
 					if bubble then bubble.BackgroundTransparency = 1 end
 					if chatText then chatText.TextTransparency = 1 end
 				else
-					-- Show
 					if bubble then bubble.BackgroundTransparency = 0.1 end
 					if chatText then chatText.TextTransparency = 0 end
 				end
@@ -884,78 +771,8 @@ function BotRegistry.update(dt)
 	end
 end
 
-function BotRegistry.updateBillboard(bot)
-	local billboard = bot.billboard
-	if not billboard then return end
-
-	local bg = billboard:FindFirstChild("Frame") or billboard:FindFirstChildOfClass("Frame")
-	if not bg then return end
-
-	-- Update ID
-	local idLabel = bg:FindFirstChild("IdLabel")
-	if idLabel then
-		idLabel.Text = "B" .. (bot.spotId or "?")
-	end
-
-	-- Update cargo display
-	local cargoLabel = bg:FindFirstChild("CargoLabel")
-	if cargoLabel then
-		cargoLabel.Text = (bot.scrapInventory or 0) .. "/" .. (bot.maxCapacity or 50)
-	end
-
-	-- Update cargo bar
-	local cargoBarBg = bg:FindFirstChild("CargoBarBg")
-	if cargoBarBg then
-		local cargoBar = cargoBarBg:FindFirstChild("CargoBar")
-		if cargoBar then
-			local ratio = (bot.scrapInventory or 0) / (bot.maxCapacity or 50)
-			cargoBar.Size = UDim2.new(ratio, 0, 1, 0)
-		end
-	end
-
-	-- Update status
-	local statusLabel = bg:FindFirstChild("StatusLabel")
-	if statusLabel then
-		local status = bot.status or "IDLE"
-		if bot.isMoving then
-			statusLabel.Text = "MOVING"
-			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-		elseif (bot.scrapInventory or 0) >= (bot.maxCapacity or 50) then
-			statusLabel.Text = "FULL"
-			statusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-		elseif status == "COLLECTING" then
-			statusLabel.Text = "COLLECT"
-			statusLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-		elseif status == "DELIVERING" then
-			statusLabel.Text = "DELIVER"
-			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 200)
-		elseif status == "SHOCKING" then
-			statusLabel.Text = "ZAP!"
-			statusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-		elseif status == "STUNNED" then
-			statusLabel.Text = "STUNNED"
-			statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-		elseif status == "WAITING" then
-			statusLabel.Text = "WAIT"
-			statusLabel.TextColor3 = Color3.fromRGB(200, 200, 100)
-		else
-			statusLabel.Text = "IDLE"
-			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-		end
-	end
-end
-
---============================================================================
--- QUERIES
---============================================================================
-
-function BotRegistry.get(id)
-	return bots[id]
-end
-
--- Bots no longer have interpreters - they're controlled by Machinist
 function BotRegistry.getInterpreter(id)
-	return nil  -- Deprecated
+	return nil
 end
 
 function BotRegistry.getAll()
@@ -977,7 +794,6 @@ function BotRegistry.getBySpotId(spotId)
 	return nil
 end
 
--- Get all bots owned by a player (for Machinist API)
 function BotRegistry.getByOwner(ownerId)
 	local result = {}
 	for id, bot in pairs(bots) do
@@ -988,7 +804,6 @@ function BotRegistry.getByOwner(ownerId)
 	return result
 end
 
--- Check if bot is idle (no task, interpreter not blocked)
 function BotRegistry.isIdle(botId)
 	local bot = bots[botId]
 	if not bot then return false end
@@ -1040,14 +855,9 @@ function BotRegistry.findNearestWithCargo(x, z, maxRange)
 end
 
 function BotRegistry.getStats()
-	return BotStats
+	return BotStats.BASE
 end
 
---============================================================================
--- BOT ACTIONS (called by Python GameAPI)
---============================================================================
-
--- Move bot to position (sets movement target)
 function BotRegistry.moveBot(botId, x, z)
 	local bot = bots[botId]
 	if not bot then return end
@@ -1058,8 +868,6 @@ function BotRegistry.moveBot(botId, x, z)
 	bot.status = "MOVING"
 end
 
--- Collect scrap at bot's current position
--- Sucks up ALL scraps in range until bot is full
 function BotRegistry.collectScrap(botId)
 	local bot = bots[botId]
 	if not bot then return 0 end
@@ -1075,24 +883,20 @@ function BotRegistry.collectScrap(botId)
 	local pickupRange = bot.pickupRange or 8
 	local totalCollected = 0
 
-	-- Keep collecting until full or no more scrap in range
 	while true do
-		-- Check remaining capacity
 		local currentScrap = bot.scrapInventory or 0
 		local maxCapacity = bot.maxCapacity or 50
 		local space = maxCapacity - currentScrap
 
 		if space <= 0 then
-			break  -- Bot is full
+			break
 		end
 
-		-- Find nearest scrap in range
 		local scrap = ScrapManager.findNearest(x, z, pickupRange)
 		if not scrap or not scrap.id then
-			break  -- No more scrap nearby
+			break
 		end
 
-		-- Collect this scrap
 		local scrapAmount = scrap.amount or 1
 		local toCollect = math.min(scrapAmount, space)
 		bot.scrapInventory = (bot.scrapInventory or 0) + toCollect
@@ -1107,7 +911,6 @@ function BotRegistry.collectScrap(botId)
 	return totalCollected
 end
 
--- Deposit scrap to core
 function BotRegistry.depositToCore(botId)
 	local bot = bots[botId]
 	if not bot then return 0 end
@@ -1115,7 +918,6 @@ function BotRegistry.depositToCore(botId)
 	local scrapToDeposit = bot.scrapInventory or 0
 	if scrapToDeposit <= 0 then return 0 end
 
-	-- Add scrap to core
 	if WaveManager then
 		WaveManager.addScrap(scrapToDeposit)
 		print("BotRegistry: Bot deposited " .. scrapToDeposit .. " scrap to core")
@@ -1125,84 +927,19 @@ function BotRegistry.depositToCore(botId)
 	return scrapToDeposit
 end
 
---============================================================================
--- SHOCK ATTACK (Combo with turrets!)
--- Constants used by SHOCK task in executeTask()
---============================================================================
-
-local SHOCK_RANGE = 10      -- Must be close to enemy
-local SHOCK_DAMAGE = 30     -- Base damage (2x if oiled)
-local SHOCK_STUN_TIME = 2   -- Bot is stunned after shocking
-
--- Visual effect when bot shocks
-function BotRegistry.createBotShockEffect(bot)
-	if not bot.character then return end
-	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-
-	-- Electric sparks on bot
-	local sparks = Instance.new("ParticleEmitter")
-	sparks.Name = "ShockSparks"
-	sparks.Color = ColorSequence.new(Color3.fromRGB(100, 200, 255), Color3.fromRGB(255, 255, 100))
-	sparks.Size = NumberSequence.new(0.2, 0)
-	sparks.Lifetime = NumberRange.new(0.1, 0.2)
-	sparks.Rate = 80
-	sparks.Speed = NumberRange.new(3, 8)
-	sparks.SpreadAngle = Vector2.new(180, 180)
-	sparks.Parent = hrp
-
-	-- Flash bot cyan/yellow
-	for _, part in pairs(bot.character:GetDescendants()) do
-		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-			local oldColor = part.Color
-			part.Color = Color3.fromRGB(100, 200, 255) -- Electric blue
-			task.delay(0.15, function()
-				if part and part.Parent then
-					part.Color = Color3.fromRGB(255, 255, 100) -- Yellow flash
-				end
-			end)
-			task.delay(0.3, function()
-				if part and part.Parent then
-					part.Color = oldColor
-				end
-			end)
-		end
-	end
-
-	-- Stop sparks after stun
-	task.delay(SHOCK_STUN_TIME, function()
-		if sparks and sparks.Parent then
-			sparks.Enabled = false
-			task.delay(0.3, function()
-				if sparks then sparks:Destroy() end
-			end)
-		end
-		if bot then bot.status = "IDLE" end
-	end)
-end
-
--- Check if bot is stunned (called by task processor)
 function BotRegistry.isStunned(botId)
 	local bot = bots[botId]
 	if not bot then return false end
 	return bot.stunnedUntil and tick() < bot.stunnedUntil
 end
 
---============================================================================
--- DEATH (only from selling or self-destruct)
---============================================================================
-
-local RESPAWN_TIME = 30  -- Respawn after 30 seconds
-
 function BotRegistry.kill(botId)
 	local bot = bots[botId]
 	if not bot then return end
 
-	-- Save info for respawn
 	local ownerId = bot.ownerId
 	local spotId = bot.spotId
 
-	-- 1. Drop cargo as scrap
 	local cargo = bot.scrapInventory or 0
 	if cargo > 0 and deps.ScrapManager and bot.character then
 		local hrp = bot.character:FindFirstChild("HumanoidRootPart")
@@ -1211,47 +948,15 @@ function BotRegistry.kill(botId)
 		end
 	end
 
-	-- 2. Explosion effect
-	if bot.character and bot.character.PrimaryPart then
-		local pos = bot.character.PrimaryPart.Position
-		local exp = Instance.new("Explosion")
-		exp.Position = pos
-		exp.BlastRadius = 0  -- Visual only
-		exp.BlastPressure = 0
-		exp.Parent = workspace
-		game.Debris:AddItem(exp, 2)
+	BotModel.createDeathEffect(bot.character)
 
-		-- Particle burst
-		local p = Instance.new("Part")
-		p.Size = Vector3.new(0.1, 0.1, 0.1)
-		p.Position = pos
-		p.Transparency = 1
-		p.Anchored = true
-		p.CanCollide = false
-		p.Parent = workspace
+	print("BotRegistry: Bot #" .. (spotId or "?") .. " destroyed! Respawning in " .. BotStats.RESPAWN_TIME .. "s")
 
-		local emitter = Instance.new("ParticleEmitter")
-		emitter.Color = ColorSequence.new(Color3.fromRGB(255, 150, 50))
-		emitter.Size = NumberSequence.new(1, 0)
-		emitter.Lifetime = NumberRange.new(0.5, 1)
-		emitter.Speed = NumberRange.new(10, 20)
-		emitter.SpreadAngle = Vector2.new(360, 360)
-		emitter.Rate = 0
-		emitter.Parent = p
-		emitter:Emit(30)
-		game.Debris:AddItem(p, 2)
-	end
-
-	print("BotRegistry: Bot #" .. (spotId or "?") .. " destroyed! Respawning in " .. RESPAWN_TIME .. "s")
-
-	-- Broadcast death before destroying
 	BotRegistry.broadcastState()
 	BotRegistry.destroy(botId)
 
-	-- 3. Schedule respawn
 	if ownerId and spotId then
-		task.delay(RESPAWN_TIME, function()
-			-- Respawn at core (0, 0)
+		task.delay(BotStats.RESPAWN_TIME, function()
 			local newBotId = BotRegistry.create(0, 0)
 			if newBotId then
 				local newBot = bots[newBotId]
@@ -1264,31 +969,22 @@ function BotRegistry.kill(botId)
 	end
 end
 
---============================================================================
--- SHIELD ABILITY
---============================================================================
-
-local SHIELD_COOLDOWN = 60  -- 1 minute cooldown
-
 function BotRegistry.activateShield(botId, duration)
 	local bot = bots[botId]
 	if not bot or not bot.character then return false end
 
-	duration = duration or 3  -- Default 3 seconds
+	duration = duration or 3
 
-	-- Already shielded?
 	if bot.shieldActive then return false end
 
-	-- On cooldown?
 	if bot.shieldCooldownUntil and tick() < bot.shieldCooldownUntil then
 		return false
 	end
 
 	bot.shieldActive = true
 	bot.shieldExpires = tick() + duration
-	bot.shieldCooldownUntil = tick() + SHIELD_COOLDOWN  -- Start cooldown
+	bot.shieldCooldownUntil = tick() + BotStats.SHIELD_COOLDOWN
 
-	-- Create shield visual
 	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
 	if hrp then
 		local shield = Instance.new("Part")
@@ -1308,7 +1004,6 @@ function BotRegistry.activateShield(botId, duration)
 		weld.Part1 = shield
 		weld.Parent = hrp
 
-		-- Auto-remove after duration
 		task.delay(duration, function()
 			if shield and shield.Parent then
 				shield:Destroy()
@@ -1323,20 +1018,14 @@ function BotRegistry.activateShield(botId, duration)
 	return true
 end
 
---============================================================================
--- DESTRUCTION
---============================================================================
-
 function BotRegistry.destroy(id)
 	local bot = bots[id]
 	if not bot then return end
 
-	-- Unregister
 	if deps.EntityRegistry then
 		deps.EntityRegistry.unregister(id)
 	end
 
-	-- Destroy model
 	if bot.character then
 		bot.character:Destroy()
 	end
@@ -1352,26 +1041,18 @@ function BotRegistry.clear()
 	nextBotNumber = 1
 end
 
---============================================================================
--- STATE BROADCAST
---============================================================================
-
 function BotRegistry.broadcastState()
-	-- Send each player only their own bots
 	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
 		local data = BotRegistry.getStateForPlayer(player)
 		botStateEvent:FireClient(player, data)
 	end
 end
 
--- Get state for a specific player (called when client requests state)
--- Each player only sees their own bots
 function BotRegistry.getStateForPlayer(player)
 	local botList = {}
 	local playerId = player and player.UserId or nil
 
 	for id, bot in pairs(bots) do
-		-- Only include bots owned by this player
 		if playerId == nil or bot.ownerId == playerId then
 			local interp = bot.interpreter
 			table.insert(botList, {
@@ -1380,6 +1061,7 @@ function BotRegistry.getStateForPlayer(player)
 				ownerId = bot.ownerId,
 				scrapInventory = bot.scrapInventory or 0,
 				maxCapacity = bot.maxCapacity or 50,
+				maxBytecode = bot.maxBytecode or BotStats.BASE.maxBytecode,
 				status = bot.status or "IDLE",
 				paused = interp and interp.paused or false,
 			})
@@ -1388,35 +1070,16 @@ function BotRegistry.getStateForPlayer(player)
 	return { bots = botList }
 end
 
--- Send state to a specific player (called when client requests state)
 function BotRegistry.sendStateToPlayer(player)
 	local data = BotRegistry.getStateForPlayer(player)
 	botStateEvent:FireClient(player, data)
 end
 
---============================================================================
--- TEMPORARY BOTS (Wave-scoped, die when wave ends)
---============================================================================
-
 function BotRegistry.killTemporaryBots()
 	local count = 0
 	for id, bot in pairs(bots) do
 		if bot.isTemporary then
-			-- Visual effect: Meltdown
-			if bot.character and bot.character.PrimaryPart then
-				-- Particle poof
-				local exp = Instance.new("ParticleEmitter")
-				exp.Texture = "rbxassetid://243098098"
-				exp.Color = ColorSequence.new(Color3.fromRGB(255, 50, 50))
-				exp.Size = NumberSequence.new(0.5, 0)
-				exp.Lifetime = NumberRange.new(0.5)
-				exp.Rate = 100
-				exp.Speed = NumberRange.new(5, 10)
-				exp.Parent = bot.character.PrimaryPart
-				task.delay(0.2, function()
-					if exp then exp.Enabled = false end
-				end)
-			end
+			BotModel.createMeltdownEffect(bot.character)
 
 			task.delay(0.3, function()
 				BotRegistry.destroy(id)
@@ -1429,34 +1092,13 @@ function BotRegistry.killTemporaryBots()
 	end
 end
 
---============================================================================
--- UPDATE HEARTBEAT
---============================================================================
--- VISUAL & FUN APIs (Kid-friendly features)
---============================================================================
-
--- Color map for easy color names
-local colorMap = {
-	red = Color3.fromRGB(255, 80, 80),
-	blue = Color3.fromRGB(80, 150, 255),
-	green = Color3.fromRGB(80, 255, 80),
-	yellow = Color3.fromRGB(255, 255, 80),
-	cyan = Color3.fromRGB(80, 255, 255),
-	purple = Color3.fromRGB(180, 80, 255),
-	pink = Color3.fromRGB(255, 150, 200),
-	orange = Color3.fromRGB(255, 180, 80),
-	white = Color3.fromRGB(240, 240, 240),
-	black = Color3.fromRGB(50, 50, 50),
-}
-
 function BotRegistry.setBotColor(botId, colorName)
 	local bot = bots[botId]
 	if not bot or not bot.character then return false end
 
-	local col = colorMap[string.lower(colorName or "")] or colorMap.white
-	bot.color = col  -- Store for respawn
+	local col = BotStats.COLOR_MAP[string.lower(colorName or "")] or BotStats.COLOR_MAP.white
+	bot.color = col
 
-	-- Apply to visual parts
 	for _, part in pairs(bot.character:GetDescendants()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
 			part.Color = col
@@ -1469,11 +1111,9 @@ function BotRegistry.setChatBubble(botId, message)
 	local bot = bots[botId]
 	if not bot or not bot.character then return false end
 
-	-- Find head or primary part
 	local head = bot.character:FindFirstChild("Head") or bot.character.PrimaryPart
 	if not head then return false end
 
-	-- Check for existing or create new BillboardGui
 	local bb = head:FindFirstChild("BotChat")
 
 	if not bb then
@@ -1501,7 +1141,6 @@ function BotRegistry.setChatBubble(botId, message)
 	if txt then
 		txt.Text = tostring(message)
 
-		-- Fade out after 3 seconds
 		task.delay(3, function()
 			if txt and txt.Parent and txt.Text == tostring(message) then
 				txt.Text = ""
@@ -1519,25 +1158,18 @@ function BotRegistry.playEmote(botId, emoteName)
 	if not hrp then return false end
 
 	if emoteName == "dance" or emoteName == "spin" then
-		-- Spin animation
 		bot.emoteEndTime = tick() + 2
 		bot.emoteType = "spin"
 	elseif emoteName == "jump" or emoteName == "hop" then
-		-- Hop animation
 		bot.emoteEndTime = tick() + 0.5
 		bot.emoteType = "jump"
 	elseif emoteName == "shake" or emoteName == "shiver" then
-		-- Shake animation
 		bot.emoteEndTime = tick() + 1
 		bot.emoteType = "shake"
 	end
 
 	return true
 end
-
---============================================================================
--- COMBAT APIs
---============================================================================
 
 function BotRegistry.triggerExplosion(botId, damage)
 	local bot = bots[botId]
@@ -1548,17 +1180,15 @@ function BotRegistry.triggerExplosion(botId, damage)
 
 	local pos = hrp.Position
 
-	-- Visual explosion
 	local exp = Instance.new("Explosion")
 	exp.Position = pos
-	exp.BlastRadius = 0  -- We handle damage manually
+	exp.BlastRadius = 0
 	exp.BlastPressure = 0
 	exp.Parent = workspace
 
-	-- Damage enemies in radius
 	local EnemyManager = deps.EnemyManager
 	if EnemyManager and EnemyManager.findInRange then
-		local hitList = EnemyManager.findInRange(pos.X, pos.Z, 15)  -- 15 stud radius
+		local hitList = EnemyManager.findInRange(pos.X, pos.Z, 15)
 		for _, enemy in ipairs(hitList) do
 			if EnemyManager.damage then
 				EnemyManager.damage(enemy.id, damage or 200)
@@ -1566,7 +1196,6 @@ function BotRegistry.triggerExplosion(botId, damage)
 		end
 	end
 
-	-- Kill the bot (kamikaze)
 	BotRegistry.kill(botId)
 	return true
 end
@@ -1585,7 +1214,6 @@ function BotRegistry.zapEnemy(botId, range)
 	local enemy, dist = EnemyManager.findNearest(bx, bz, range or 10)
 
 	if enemy then
-		-- Visual effect: beam/lightning
 		local enemyPos = enemy.position
 		if enemyPos then
 			local beam = Instance.new("Part")
@@ -1604,7 +1232,6 @@ function BotRegistry.zapEnemy(botId, range)
 			beam.CFrame = CFrame.lookAt(midPoint, endPos)
 			beam.Parent = workspace
 
-			-- Remove after brief flash
 			task.delay(0.15, function()
 				if beam and beam.Parent then
 					beam:Destroy()
@@ -1612,7 +1239,6 @@ function BotRegistry.zapEnemy(botId, range)
 			end)
 		end
 
-		-- Deal damage
 		if EnemyManager.damage then
 			EnemyManager.damage(enemy.id, 25)
 		end
@@ -1625,14 +1251,11 @@ function BotRegistry.visualEffect(botId, effectType, targetId)
 	local bot = bots[botId]
 	if not bot then return false end
 
-	-- For now, just trigger the zap if that's requested
 	if effectType == "zap" then
 		return BotRegistry.zapEnemy(botId, 15)
 	end
 	return false
 end
-
---============================================================================
 
 function BotRegistry.startUpdateLoop()
 	RunService.Heartbeat:Connect(function(dt)

@@ -4,30 +4,22 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local DragModule = require(script.Parent.DragModule)
-local ProgramLibrary = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("ProgramLibrary"))
 local HelpDatabase = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("HelpDatabase"))
 local Python = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("Python"))
 
 local EditorPanel = {}
 
--- Character limit for Machinist programs (forces concise code)
 local MAX_CHARS = 300
 
--- Bytecode instruction limit for bots (forces specialization)
-local MAX_BOT_INSTRUCTIONS = 30
+local DEFAULT_RAM = 32
 
--- Clean up Python code (preserve indentation, just trim trailing whitespace)
 local function formatCode(source)
-	-- Python is indentation-based, so we preserve the structure
-	-- Just clean up trailing whitespace on each line
 	local lines = {}
 	for line in string.gmatch(source .. "\n", "([^\n]*)\n") do
-		-- Trim trailing whitespace but preserve leading spaces/tabs
 		local cleaned = string.gsub(line, "%s+$", "")
 		table.insert(lines, cleaned)
 	end
 
-	-- Remove trailing empty lines
 	while #lines > 0 and lines[#lines] == "" do
 		table.remove(lines)
 	end
@@ -67,8 +59,8 @@ function EditorPanel.create(parent, callbacks)
 	local panel = {}
 	callbacks = callbacks or {}
 
-	-- Track current mode for filtering examples
-	local currentMode = "player" -- "player", "golem", or "bot"
+	local currentMode = "player"
+	local currentMaxRAM = DEFAULT_RAM
 
 	-- Main frame (compact: ~6 lines of code visible, aligned with debugger below)
 	local frame = Instance.new("Frame")
@@ -108,11 +100,11 @@ function EditorPanel.create(parent, callbacks)
 
 	DragModule.makeDraggable(frame, topBar)
 
-	-- Mode indicator badge (hidden by default)
+	-- Mode indicator badge (shows unit type and ID)
 	local modeIndicator = Instance.new("TextLabel")
 	modeIndicator.Name = "ModeIndicator"
-	modeIndicator.Size = UDim2.new(0, 120, 0, 20)
-	modeIndicator.Position = UDim2.new(0.5, -60, 0, -24)
+	modeIndicator.Size = UDim2.new(0, 80, 0, 20)
+	modeIndicator.Position = UDim2.new(0.5, -40, 0, -24)
 	modeIndicator.BackgroundColor3 = Color3.fromRGB(100, 70, 30)
 	modeIndicator.BackgroundTransparency = 0.2
 	modeIndicator.BorderSizePixel = 0
@@ -127,28 +119,22 @@ function EditorPanel.create(parent, callbacks)
 	modeCorner.CornerRadius = UDim.new(0, 6)
 	modeCorner.Parent = modeIndicator
 
-	-- Exit golem button (hidden by default)
-	local exitGolemBtn = Instance.new("TextButton")
-	exitGolemBtn.Name = "ExitGolemBtn"
-	exitGolemBtn.Size = UDim2.new(0, 50, 0, 22)
-	exitGolemBtn.Position = UDim2.new(1, -55, 0, 5)  -- Right-aligned
-	exitGolemBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 40)
-	exitGolemBtn.Text = "EXIT"
-	exitGolemBtn.TextColor3 = Color3.fromRGB(255, 180, 120)
-	exitGolemBtn.Font = Enum.Font.GothamBold
-	exitGolemBtn.TextSize = 9
-	exitGolemBtn.Visible = false
-	exitGolemBtn.Parent = topBar
+	-- RAM display (top-right of top bar, shows instruction count)
+	local ramLabel = Instance.new("TextLabel")
+	ramLabel.Name = "RAMLabel"
+	ramLabel.Size = UDim2.new(0, 70, 0, 22)
+	ramLabel.Position = UDim2.new(1, -75, 0, 5)
+	ramLabel.BackgroundColor3 = Color3.fromRGB(30, 40, 50)
+	ramLabel.BackgroundTransparency = 0.3
+	ramLabel.Text = "RAM: 0/32"
+	ramLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+	ramLabel.Font = Enum.Font.Code
+	ramLabel.TextSize = 9
+	ramLabel.Parent = topBar
 
-	local exitCorner = Instance.new("UICorner")
-	exitCorner.CornerRadius = UDim.new(0, 4)
-	exitCorner.Parent = exitGolemBtn
-
-	exitGolemBtn.MouseButton1Click:Connect(function()
-		if panel.onExitGolem then
-			panel.onExitGolem()
-		end
-	end)
+	local ramCorner = Instance.new("UICorner")
+	ramCorner.CornerRadius = UDim.new(0, 4)
+	ramCorner.Parent = ramLabel
 
 	-- SELL and MOVE buttons removed from IDE - now in HUD inspector panel
 
@@ -219,26 +205,11 @@ function EditorPanel.create(parent, callbacks)
 		end
 	end)
 
-	local examplesBtn = Instance.new("TextButton")
-	examplesBtn.Name = "ExamplesBtn"
-	examplesBtn.Size = UDim2.new(0, 50, 0, 22)
-	examplesBtn.Position = UDim2.new(0, 197, 0, 5)
-	examplesBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-	examplesBtn.Text = "PROGS"
-	examplesBtn.TextColor3 = Color3.fromRGB(180, 180, 220)
-	examplesBtn.Font = Enum.Font.GothamBold
-	examplesBtn.TextSize = 9
-	examplesBtn.Parent = topBar
-
-	local examplesBtnCorner = Instance.new("UICorner")
-	examplesBtnCorner.CornerRadius = UDim.new(0, 4)
-	examplesBtnCorner.Parent = examplesBtn
-
 	-- Character counter (shows current/max) - hidden by default, only for bot mode
 	local charCountLabel = Instance.new("TextLabel")
 	charCountLabel.Name = "CharCount"
 	charCountLabel.Size = UDim2.new(0, 55, 0, 22)
-	charCountLabel.Position = UDim2.new(1, -110, 0, 5)  -- Left of exit button
+	charCountLabel.Position = UDim2.new(0, 197, 0, 5)
 	charCountLabel.BackgroundTransparency = 1
 	charCountLabel.Text = "0/" .. MAX_CHARS
 	charCountLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
@@ -394,35 +365,7 @@ function EditorPanel.create(parent, callbacks)
 	helpPadding.PaddingLeft = UDim.new(0, 6)
 	helpPadding.Parent = helpTooltip
 
-	-- Program memory indicator (for bots - shows instruction count)
-	local memoryLabel = Instance.new("TextLabel")
-	memoryLabel.Name = "MemoryLabel"
-	memoryLabel.Size = UDim2.new(0, 70, 0, 16)
-	memoryLabel.Position = UDim2.new(1, -75, 1, -33)
-	memoryLabel.BackgroundColor3 = Color3.fromRGB(30, 40, 50)
-	memoryLabel.BackgroundTransparency = 0.3
-	memoryLabel.Text = "RAM: 0/30"
-	memoryLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-	memoryLabel.Font = Enum.Font.Code
-	memoryLabel.TextSize = 9
-	memoryLabel.Visible = false  -- Only visible in bot mode
-	memoryLabel.Parent = frame
-
-	local memoryCorner = Instance.new("UICorner")
-	memoryCorner.CornerRadius = UDim.new(0, 4)
-	memoryCorner.Parent = memoryLabel
-
-	-- Hints bar
-	local hintsBar = Instance.new("TextLabel")
-	hintsBar.Name = "HintsBar"
-	hintsBar.Size = UDim2.new(1, -6, 0, 13)
-	hintsBar.Position = UDim2.new(0, 3, 1, -14)
-	hintsBar.BackgroundTransparency = 1
-	hintsBar.Text = "^Q: Unfocus  |  ^1: Run  |  ^2: Pause  |  ^3: Step"
-	hintsBar.TextColor3 = Color3.fromRGB(90, 90, 110)
-	hintsBar.Font = Enum.Font.Code
-	hintsBar.TextSize = 9
-	hintsBar.Parent = frame
+	-- Hints bar and old memory label removed - RAM now shown in top bar
 
 	-- Update line numbers and sync canvas sizes
 	local LINE_HEIGHT = 16 -- Approximate height per line at TextSize 14
@@ -477,26 +420,22 @@ function EditorPanel.create(parent, callbacks)
 
 	textBox:GetPropertyChangedSignal("Text"):Connect(updateCharCount)
 
-	-- Update instruction count for bot memory display
 	local lastInstructionCount = 0
 	local function updateInstructionCount()
-		if currentMode ~= "bot" then return end
-
 		local source = textBox.Text
 		if source == "" then
 			lastInstructionCount = 0
-			panel:setMemoryUsage(0, MAX_BOT_INSTRUCTIONS)
+			panel:setMemoryUsage(0, currentMaxRAM)
 			return
 		end
 
-		-- Try to compile to get instruction count
 		local success, result = pcall(function()
 			return Python.compile(source)
 		end)
 
 		if success and result and result.instructionCount then
 			lastInstructionCount = result.instructionCount
-			panel:setMemoryUsage(result.instructionCount, MAX_BOT_INSTRUCTIONS)
+			panel:setMemoryUsage(result.instructionCount, currentMaxRAM)
 		end
 	end
 
@@ -916,344 +855,6 @@ function EditorPanel.create(parent, callbacks)
 		end
 	end)
 
-	-- Programs popup (using ProgramLibrary)
-	local programsPopup = Instance.new("Frame")
-	programsPopup.Name = "ProgramsPopup"
-	programsPopup.Size = UDim2.new(0, 500, 0, 420)
-	programsPopup.Position = UDim2.new(0.5, -250, 0.5, -210)
-	programsPopup.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-	programsPopup.BorderSizePixel = 0
-	programsPopup.Visible = false
-	programsPopup.ZIndex = 100
-	programsPopup.Parent = parent
-
-	local programsCorner = Instance.new("UICorner")
-	programsCorner.CornerRadius = UDim.new(0, 10)
-	programsCorner.Parent = programsPopup
-
-	local programsStroke = Instance.new("UIStroke")
-	programsStroke.Color = Color3.fromRGB(100, 180, 100)
-	programsStroke.Thickness = 2
-	programsStroke.Parent = programsPopup
-
-	local programsHeader = Instance.new("Frame")
-	programsHeader.Size = UDim2.new(1, 0, 0, 40)
-	programsHeader.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-	programsHeader.BorderSizePixel = 0
-	programsHeader.Parent = programsPopup
-
-	local programsHeaderCorner = Instance.new("UICorner")
-	programsHeaderCorner.CornerRadius = UDim.new(0, 10)
-	programsHeaderCorner.Parent = programsHeader
-
-	DragModule.makeDraggable(programsPopup, programsHeader)
-
-	local programsTitle = Instance.new("TextLabel")
-	programsTitle.Size = UDim2.new(0, 200, 1, 0)
-	programsTitle.Position = UDim2.new(0, 15, 0, 0)
-	programsTitle.BackgroundTransparency = 1
-	programsTitle.Text = "PROGRAMS"
-	programsTitle.TextColor3 = Color3.fromRGB(100, 255, 150)
-	programsTitle.TextXAlignment = Enum.TextXAlignment.Left
-	programsTitle.Font = Enum.Font.GothamBold
-	programsTitle.TextSize = 16
-	programsTitle.ZIndex = 101
-	programsTitle.Parent = programsHeader
-
-	-- Back button (hidden initially)
-	local progBackBtn = Instance.new("TextButton")
-	progBackBtn.Name = "BackBtn"
-	progBackBtn.Size = UDim2.new(0, 60, 0, 26)
-	progBackBtn.Position = UDim2.new(0, 220, 0, 7)
-	progBackBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-	progBackBtn.Text = "< BACK"
-	progBackBtn.TextColor3 = Color3.fromRGB(180, 180, 220)
-	progBackBtn.Font = Enum.Font.GothamBold
-	progBackBtn.TextSize = 10
-	progBackBtn.Visible = false
-	progBackBtn.ZIndex = 101
-	progBackBtn.Parent = programsHeader
-
-	local progBackBtnCorner = Instance.new("UICorner")
-	progBackBtnCorner.CornerRadius = UDim.new(0, 4)
-	progBackBtnCorner.Parent = progBackBtn
-
-	local programsCloseBtn = Instance.new("TextButton")
-	programsCloseBtn.Size = UDim2.new(0, 30, 0, 30)
-	programsCloseBtn.Position = UDim2.new(1, -35, 0, 5)
-	programsCloseBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-	programsCloseBtn.Text = "X"
-	programsCloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-	programsCloseBtn.Font = Enum.Font.GothamBold
-	programsCloseBtn.TextSize = 14
-	programsCloseBtn.ZIndex = 101
-	programsCloseBtn.Parent = programsHeader
-
-	local progCloseBtnCorner = Instance.new("UICorner")
-	progCloseBtnCorner.CornerRadius = UDim.new(0, 6)
-	progCloseBtnCorner.Parent = programsCloseBtn
-
-	programsCloseBtn.MouseButton1Click:Connect(function()
-		programsPopup.Visible = false
-	end)
-
-	local programsScroll = Instance.new("ScrollingFrame")
-	programsScroll.Size = UDim2.new(1, -20, 1, -50)
-	programsScroll.Position = UDim2.new(0, 10, 0, 45)
-	programsScroll.BackgroundTransparency = 1
-	programsScroll.ScrollBarThickness = 6
-	programsScroll.ZIndex = 100
-	programsScroll.Parent = programsPopup
-
-	local programsLayout = Instance.new("UIListLayout")
-	programsLayout.Padding = UDim.new(0, 4)
-	programsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	programsLayout.Parent = programsScroll
-
-	-- Forward declarations
-	local showProgramDetails
-	local showProgramsList
-
-	-- Show program details view
-	showProgramDetails = function(prog)
-		-- Clear content
-		for _, child in ipairs(programsScroll:GetChildren()) do
-			if not child:IsA("UIListLayout") then
-				child:Destroy()
-			end
-		end
-
-		programsTitle.Text = prog.name
-		progBackBtn.Visible = true
-
-		-- Program name
-		local nameLabel = Instance.new("TextLabel")
-		nameLabel.Size = UDim2.new(1, 0, 0, 30)
-		nameLabel.BackgroundTransparency = 1
-		nameLabel.Text = prog.name
-		nameLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
-		nameLabel.Font = Enum.Font.GothamBold
-		nameLabel.TextSize = 20
-		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-		nameLabel.ZIndex = 101
-		nameLabel.LayoutOrder = 0
-		nameLabel.Parent = programsScroll
-
-		-- Description
-		local descLabel = Instance.new("TextLabel")
-		descLabel.Size = UDim2.new(1, 0, 0, 25)
-		descLabel.BackgroundTransparency = 1
-		descLabel.Text = prog.desc
-		descLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
-		descLabel.Font = Enum.Font.Gotham
-		descLabel.TextSize = 13
-		descLabel.TextXAlignment = Enum.TextXAlignment.Left
-		descLabel.ZIndex = 101
-		descLabel.LayoutOrder = 1
-		descLabel.Parent = programsScroll
-
-		-- Category
-		local catLabel = Instance.new("TextLabel")
-		catLabel.Size = UDim2.new(1, 0, 0, 20)
-		catLabel.BackgroundTransparency = 1
-		catLabel.Text = "Category: " .. prog.category
-		catLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-		catLabel.Font = Enum.Font.Gotham
-		catLabel.TextSize = 11
-		catLabel.TextXAlignment = Enum.TextXAlignment.Left
-		catLabel.ZIndex = 101
-		catLabel.LayoutOrder = 2
-		catLabel.Parent = programsScroll
-
-		-- Code header
-		local codeHeader = Instance.new("TextLabel")
-		codeHeader.Size = UDim2.new(1, 0, 0, 25)
-		codeHeader.BackgroundTransparency = 1
-		codeHeader.Text = "Code:"
-		codeHeader.TextColor3 = Color3.fromRGB(150, 200, 150)
-		codeHeader.Font = Enum.Font.GothamBold
-		codeHeader.TextSize = 12
-		codeHeader.TextXAlignment = Enum.TextXAlignment.Left
-		codeHeader.ZIndex = 101
-		codeHeader.LayoutOrder = 3
-		codeHeader.Parent = programsScroll
-
-		-- Code preview
-		local codeLines = select(2, string.gsub(prog.code, "\n", "\n")) + 1
-		local codeHeight = math.min(codeLines * 16 + 16, 180)
-
-		local codeBox = Instance.new("TextLabel")
-		codeBox.Size = UDim2.new(1, 0, 0, codeHeight)
-		codeBox.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-		codeBox.Text = "  " .. string.gsub(prog.code, "\n", "\n  ")
-		codeBox.TextColor3 = Color3.fromRGB(200, 200, 220)
-		codeBox.Font = Enum.Font.Code
-		codeBox.TextSize = 12
-		codeBox.TextXAlignment = Enum.TextXAlignment.Left
-		codeBox.TextYAlignment = Enum.TextYAlignment.Top
-		codeBox.TextWrapped = true
-		codeBox.ZIndex = 101
-		codeBox.LayoutOrder = 4
-		codeBox.Parent = programsScroll
-
-		local codeCorner = Instance.new("UICorner")
-		codeCorner.CornerRadius = UDim.new(0, 6)
-		codeCorner.Parent = codeBox
-
-		local codePadding = Instance.new("UIPadding")
-		codePadding.PaddingTop = UDim.new(0, 8)
-		codePadding.PaddingLeft = UDim.new(0, 8)
-		codePadding.Parent = codeBox
-
-		-- Load button
-		local loadBtn = Instance.new("TextButton")
-		loadBtn.Size = UDim2.new(0, 120, 0, 35)
-		loadBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
-		loadBtn.Text = "LOAD PROGRAM"
-		loadBtn.TextColor3 = Color3.fromRGB(200, 255, 200)
-		loadBtn.Font = Enum.Font.GothamBold
-		loadBtn.TextSize = 13
-		loadBtn.ZIndex = 101
-		loadBtn.LayoutOrder = 5
-		loadBtn.Parent = programsScroll
-
-		local loadCorner = Instance.new("UICorner")
-		loadCorner.CornerRadius = UDim.new(0, 6)
-		loadCorner.Parent = loadBtn
-
-		loadBtn.MouseButton1Click:Connect(function()
-			textBox.Text = prog.code
-			updateLineNumbers()
-			programsPopup.Visible = false
-		end)
-
-		programsScroll.CanvasSize = UDim2.new(0, 0, 0, 30 + 25 + 20 + 25 + codeHeight + 35 + 40)
-	end
-
-	-- Show programs list view (filtered by current mode)
-	showProgramsList = function()
-		-- Clear content
-		for _, child in ipairs(programsScroll:GetChildren()) do
-			if not child:IsA("UIListLayout") then
-				child:Destroy()
-			end
-		end
-
-		-- Update title based on mode
-		local modeTitle = currentMode:upper() .. " PROGRAMS"
-		programsTitle.Text = modeTitle
-		progBackBtn.Visible = false
-
-		-- Get theme colors
-		local theme = THEMES[currentMode] or THEMES.player
-
-		local totalHeight = 0
-		local layoutOrder = 0
-
-		-- Get programs for current target type
-		local relevantProgs = ProgramLibrary.getByTarget(currentMode)
-
-		-- Group by category
-		local categories = {}
-		for _, prog in ipairs(relevantProgs) do
-			local cat = prog.category
-			if not categories[cat] then
-				categories[cat] = {}
-			end
-			table.insert(categories[cat], prog)
-		end
-
-		-- Display by category
-		for _, category in ipairs(ProgramLibrary.categories) do
-			local progs = categories[category]
-			if progs and #progs > 0 then
-				-- Category header
-				local catHeader = Instance.new("TextLabel")
-				catHeader.Size = UDim2.new(1, 0, 0, 22)
-				catHeader.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
-				catHeader.Text = "  " .. category .. " (" .. #progs .. ")"
-				catHeader.TextColor3 = theme.accent
-				catHeader.Font = Enum.Font.GothamBold
-				catHeader.TextSize = 11
-				catHeader.TextXAlignment = Enum.TextXAlignment.Left
-				catHeader.ZIndex = 101
-				catHeader.LayoutOrder = layoutOrder
-				catHeader.Parent = programsScroll
-				totalHeight = totalHeight + 26
-				layoutOrder = layoutOrder + 1
-
-				local catCorner = Instance.new("UICorner")
-				catCorner.CornerRadius = UDim.new(0, 4)
-				catCorner.Parent = catHeader
-
-				-- Programs in this category
-				for _, prog in ipairs(progs) do
-					local progBtn = Instance.new("TextButton")
-					progBtn.Size = UDim2.new(1, 0, 0, 28)
-					progBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-					progBtn.Text = ""
-					progBtn.ZIndex = 100
-					progBtn.LayoutOrder = layoutOrder
-					progBtn.Parent = programsScroll
-					totalHeight = totalHeight + 32
-					layoutOrder = layoutOrder + 1
-
-					local progBtnCorner = Instance.new("UICorner")
-					progBtnCorner.CornerRadius = UDim.new(0, 4)
-					progBtnCorner.Parent = progBtn
-
-					local progName = Instance.new("TextLabel")
-					progName.Size = UDim2.new(0, 120, 1, 0)
-					progName.Position = UDim2.new(0, 8, 0, 0)
-					progName.BackgroundTransparency = 1
-					progName.Text = prog.name
-					progName.TextColor3 = theme.accent
-					progName.Font = Enum.Font.GothamBold
-					progName.TextSize = 12
-					progName.TextXAlignment = Enum.TextXAlignment.Left
-					progName.ZIndex = 101
-					progName.Parent = progBtn
-
-					local progDesc = Instance.new("TextLabel")
-					progDesc.Size = UDim2.new(1, -140, 1, 0)
-					progDesc.Position = UDim2.new(0, 130, 0, 0)
-					progDesc.BackgroundTransparency = 1
-					progDesc.Text = prog.desc
-					progDesc.TextColor3 = Color3.fromRGB(140, 140, 160)
-					progDesc.Font = Enum.Font.Gotham
-					progDesc.TextSize = 10
-					progDesc.TextXAlignment = Enum.TextXAlignment.Left
-					progDesc.TextTruncate = Enum.TextTruncate.AtEnd
-					progDesc.ZIndex = 101
-					progDesc.Parent = progBtn
-
-					progBtn.MouseButton1Click:Connect(function()
-						showProgramDetails(prog)
-					end)
-				end
-			end
-		end
-
-		programsScroll.CanvasSize = UDim2.new(0, 0, 0, totalHeight + 10)
-	end
-
-	-- Back button handler
-	progBackBtn.MouseButton1Click:Connect(function()
-		showProgramsList()
-	end)
-
-	-- Initialize with list view
-	showProgramsList()
-
-	examplesBtn.MouseButton1Click:Connect(function()
-		if programsPopup.Visible then
-			programsPopup.Visible = false
-		else
-			showProgramsList()
-			programsPopup.Visible = true
-		end
-	end)
-
 	-- Public interface
 	panel.frame = frame
 	panel.textBox = textBox
@@ -1311,78 +912,64 @@ function EditorPanel.create(parent, callbacks)
 		return frame.Visible
 	end
 
-	function panel:hideExamples()
-		programsPopup.Visible = false
-	end
-
-	-- Track current weapon for player mode indicator
 	local currentWeaponName = "BULLET"
 
-	-- Generic mode setter: "player", "golem", or "bot"
-	function panel:setMode(mode, spotId)
+	function panel:setMode(mode, spotId, maxRAM)
 		currentMode = mode or "player"
+		currentMaxRAM = maxRAM or DEFAULT_RAM
 		local theme = THEMES[currentMode] or THEMES.player
 
 		frame.BackgroundColor3 = theme.frameBg
 		topBar.BackgroundColor3 = theme.topBarBg
 
+		panel:setMemoryUsage(0, currentMaxRAM)
+		updateInstructionCount()
+
 		if currentMode == "player" then
 			-- Player mode: READ-ONLY but with debugger controls
-			modeIndicator.Text = "WEAPON: " .. currentWeaponName
+			modeIndicator.Text = currentWeaponName
 			modeIndicator.TextColor3 = theme.modeColor
 			modeIndicator.BackgroundColor3 = theme.topBarBg
 			modeIndicator.Visible = true
-			exitGolemBtn.Visible = false  -- Can't exit player mode
 			startBtn.Visible = false  -- No RUN - weapons auto-run
 			pauseBtn.Visible = true   -- Can pause weapon
 			stepBtn.Visible = true    -- Can step through
-			memoryLabel.Visible = false
 			charCountLabel.Visible = false  -- No char limit for weapons
-			examplesBtn.Visible = false  -- No PROGS for player
 			textBox.TextEditable = false  -- READ-ONLY (change weapons with 1-4)
 			textBox.Active = false  -- Prevent focus/click capture so WASD still works
-			hintsBar.Text = "READ-ONLY  |  1-4: Switch Weapon  |  ^2: Pause  |  ^3: Step"
 		elseif currentMode == "golem" then
-			-- Turret mode: READ-ONLY (view code, can't edit)
-			modeIndicator.Text = "TURRET #" .. (spotId or "?") .. " (READ-ONLY)"
+			-- Turret mode: FULL PROGRAMMING (like bots)
+			modeIndicator.Text = "TURRET #" .. (spotId or "?")
 			modeIndicator.TextColor3 = theme.modeColor
 			modeIndicator.BackgroundColor3 = theme.topBarBg
 			modeIndicator.Visible = true
-			exitGolemBtn.Visible = true
-			-- Hide run/pause/step - turrets are read-only
-			startBtn.Visible = false
-			pauseBtn.Visible = false
-			stepBtn.Visible = true  -- Allow stepping to see bytecode execution
-			memoryLabel.Visible = false
-			charCountLabel.Visible = false  -- No char limit for turrets
-			examplesBtn.Visible = false  -- No PROGS for turrets
-			textBox.TextEditable = false  -- READ-ONLY
-			textBox.Active = false  -- Prevent focus/click capture so WASD still works
-			hintsBar.Text = "READ-ONLY  |  Use panel buttons to MOVE/SELL"
+			-- Show all controls - turrets are now fully programmable
+			startBtn.Visible = true
+			startBtn.BackgroundColor3 = theme.startBtn or COLORS.accent
+			pauseBtn.Visible = true
+			stepBtn.Visible = true
+			charCountLabel.Visible = true  -- Show RAM limit
+			textBox.TextEditable = true  -- EDITABLE
+			textBox.Active = true  -- Allow focus/editing
 		elseif currentMode == "bot" then
 			-- Bot mode: FULL PROGRAMMING
 			modeIndicator.Text = "BOT #" .. (spotId or "?")
 			modeIndicator.TextColor3 = theme.modeColor
 			modeIndicator.BackgroundColor3 = theme.topBarBg
 			modeIndicator.Visible = true
-			exitGolemBtn.Visible = true
 			startBtn.Visible = true
 			startBtn.BackgroundColor3 = theme.startBtn
 			pauseBtn.Visible = true
 			stepBtn.Visible = true
-			memoryLabel.Visible = true  -- Show memory usage for bots
 			charCountLabel.Visible = true  -- Show char limit for bots
-			examplesBtn.Visible = true  -- Show PROGS for bots only
 			textBox.TextEditable = true
 			textBox.Active = true  -- Allow focus/editing for bot programming
-			hintsBar.Text = "BOT PROGRAMMING  |  ^1: Run  |  ^2: Pause  |  ^3: Step"
 		end
 	end
 
-	-- Backwards compatibility
-	function panel:setGolemMode(isGolemMode, spotId)
+	function panel:setGolemMode(isGolemMode, spotId, maxRAM)
 		if isGolemMode then
-			panel:setMode("golem", spotId)
+			panel:setMode("golem", spotId, maxRAM)
 		else
 			panel:setMode("player")
 		end
@@ -1408,24 +995,24 @@ function EditorPanel.create(parent, callbacks)
 		end
 	end
 
-	-- Update memory display (instruction count)
+	-- Update memory display (instruction count) - shown for all modes
 	function panel:setMemoryUsage(used, max)
-		max = max or 30
+		max = max or 32
 		used = used or 0
-		memoryLabel.Text = "RAM: " .. used .. "/" .. max
+		ramLabel.Text = "RAM: " .. used .. "/" .. max
 
 		-- Color based on usage
 		local ratio = used / max
 		if ratio > 1 then
-			memoryLabel.TextColor3 = Color3.fromRGB(255, 80, 80)  -- Red: over limit
+			ramLabel.TextColor3 = Color3.fromRGB(255, 80, 80)  -- Red: over limit
 		elseif ratio > 0.8 then
-			memoryLabel.TextColor3 = Color3.fromRGB(255, 200, 80)  -- Yellow: near limit
+			ramLabel.TextColor3 = Color3.fromRGB(255, 200, 80)  -- Yellow: near limit
 		else
-			memoryLabel.TextColor3 = Color3.fromRGB(100, 200, 255)  -- Cyan: OK
+			ramLabel.TextColor3 = Color3.fromRGB(100, 200, 255)  -- Cyan: OK
 		end
 	end
 
-	-- Callbacks for golem/bot mode
+	-- Callback for exiting golem/bot mode (set by main client)
 	panel.onExitGolem = nil
 
 	return panel

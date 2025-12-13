@@ -69,13 +69,13 @@ local EnemyTypes = {
 	},
 }
 
--- Wave scaling configuration
+-- Wave scaling configuration - TESTING: aggressive scaling
 local WaveScaling = {
-	hpPerWave = 0.15,      -- +15% HP per wave
-	damagePerWave = 0.10,  -- +10% damage per wave
-	sizePerWave = 0.03,    -- +3% size per wave
-	speedPerWave = 0.02,   -- +2% speed per wave (capped)
-	maxSpeedMult = 1.5,    -- Max speed multiplier
+	hpPerWave = 0.30,      -- +30% HP per wave (was 15%)
+	damagePerWave = 0.15,  -- +15% damage per wave (was 10%)
+	sizePerWave = 0.10,    -- +10% size per wave (was 3%) - enemies grow visibly bigger!
+	speedPerWave = 0.03,   -- +3% speed per wave (capped)
+	maxSpeedMult = 1.8,    -- Max speed multiplier (was 1.5)
 }
 
 -- Current wave (set by WaveManager)
@@ -87,6 +87,65 @@ local spawnGates = {}
 
 -- Enemy path waypoints (set from map)
 local enemyPath = {}
+
+--============================================================================
+-- SPATIAL PARTITIONING HELPERS (must be defined early for spawn/kill)
+--============================================================================
+
+-- Convert world position to grid key
+local function getGridKey(x, z)
+	local gx = math.floor(x / GRID_CELL_SIZE)
+	local gz = math.floor(z / GRID_CELL_SIZE)
+	return gx .. "_" .. gz
+end
+
+-- Update enemy's grid position only when crossing cell boundaries
+-- Much more efficient than rebuilding entire grid every frame
+local function updateEnemyGridPosition(enemy, newX, newZ)
+	local newKey = getGridKey(newX, newZ)
+
+	-- Only update grid if cell changed
+	if newKey ~= enemy.currentGridKey then
+		-- Remove from old cell
+		if enemy.currentGridKey and enemyGrid[enemy.currentGridKey] then
+			local cell = enemyGrid[enemy.currentGridKey]
+			for i, e in ipairs(cell) do
+				if e.id == enemy.id then
+					table.remove(cell, i)
+					-- Clean up empty cells
+					if #cell == 0 then
+						enemyGrid[enemy.currentGridKey] = nil
+					end
+					break
+				end
+			end
+		end
+
+		-- Add to new cell
+		if not enemyGrid[newKey] then
+			enemyGrid[newKey] = {}
+		end
+		table.insert(enemyGrid[newKey], enemy)
+		enemy.currentGridKey = newKey
+	end
+end
+
+-- Remove enemy from grid (called on death/despawn)
+local function removeEnemyFromGrid(enemy)
+	if enemy.currentGridKey and enemyGrid[enemy.currentGridKey] then
+		local cell = enemyGrid[enemy.currentGridKey]
+		for i, e in ipairs(cell) do
+			if e.id == enemy.id then
+				table.remove(cell, i)
+				if #cell == 0 then
+					enemyGrid[enemy.currentGridKey] = nil
+				end
+				break
+			end
+		end
+	end
+	enemy.currentGridKey = nil
+end
 
 --============================================================================
 -- INITIALIZATION
@@ -174,6 +233,7 @@ local function createSimpleEnemy(typeName, position, scaledType)
 
 	local modelsFolder = getEnemyModelsFolder()
 	local character = nil
+	local sizeScale = enemyType.size or 1
 
 	if modelsFolder then
 		local modelFolder = modelsFolder:FindFirstChild(enemyType.modelName)
@@ -181,6 +241,10 @@ local function createSimpleEnemy(typeName, position, scaledType)
 			local sourceModel = findModelInFolder(modelFolder)
 			if sourceModel then
 				character = sourceModel:Clone()
+				-- Scale the model based on wave-scaled size
+				if sizeScale ~= 1 then
+					character:ScaleTo(sizeScale)
+				end
 			end
 		end
 	end
@@ -192,21 +256,22 @@ local function createSimpleEnemy(typeName, position, scaledType)
 
 		local hrp = Instance.new("Part")
 		hrp.Name = "HumanoidRootPart"
-		hrp.Size = Vector3.new(2, 4, 2) * enemyType.size
+		hrp.Size = Vector3.new(2, 4, 2) * sizeScale
 		hrp.Position = position
 		hrp.Anchored = true
 		hrp.CanCollide = false
 		hrp.Material = Enum.Material.SmoothPlastic
 
-		-- Color by type
+		-- Color by type (brighter for higher waves to show strength)
+		local waveTint = math.min(1, currentWave * 0.05)  -- Gets redder each wave
 		if typeName == "Zombie" then
-			hrp.Color = Color3.fromRGB(100, 150, 100)
+			hrp.Color = Color3.fromRGB(100 + waveTint * 100, 150 - waveTint * 50, 100 - waveTint * 50)
 		elseif typeName == "Runner" then
-			hrp.Color = Color3.fromRGB(150, 100, 150)
+			hrp.Color = Color3.fromRGB(150 + waveTint * 50, 100 - waveTint * 30, 150 - waveTint * 50)
 		elseif typeName == "Tank" then
-			hrp.Color = Color3.fromRGB(100, 100, 150)
+			hrp.Color = Color3.fromRGB(100 + waveTint * 80, 100 - waveTint * 30, 150 - waveTint * 30)
 		elseif typeName == "Boss" then
-			hrp.Color = Color3.fromRGB(200, 50, 50)
+			hrp.Color = Color3.fromRGB(200 + waveTint * 55, 50, 50 + waveTint * 50)
 		end
 
 		hrp.Parent = character
@@ -305,6 +370,9 @@ function EnemyManager.spawn(typeName, gateIndex, dependencies)
 	end
 
 	enemies[id] = enemy
+
+	-- Add to spatial grid at spawn position
+	updateEnemyGridPosition(enemy, spawnX, spawnZ)
 
 	-- Set attribute for client click detection
 	character:SetAttribute("EnemyId", id)
@@ -838,39 +906,15 @@ function EnemyManager.kill(enemyId, killerGolemId)
 		WaveManager.onEnemyKilled(enemyId, killerGolemId)
 	end
 
+	-- Remove from spatial grid
+	removeEnemyFromGrid(enemy)
+
 	enemies[enemyId] = nil
 end
 
 --============================================================================
--- SPATIAL PARTITIONING (Grid-based enemy lookups)
+-- SPATIAL PARTITIONING QUERIES
 --============================================================================
-
--- Convert world position to grid key
-local function getGridKey(x, z)
-	local gx = math.floor(x / GRID_CELL_SIZE)
-	local gz = math.floor(z / GRID_CELL_SIZE)
-	return gx .. "_" .. gz
-end
-
--- Rebuild the spatial grid from current enemy positions
--- Called once per frame in update loop
-local function rebuildGrid()
-	table.clear(enemyGrid)
-
-	for id, enemy in pairs(enemies) do
-		if enemy.hp > 0 and enemy.character then
-			local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				local pos = hrp.Position
-				local key = getGridKey(pos.X, pos.Z)
-				if not enemyGrid[key] then
-					enemyGrid[key] = {}
-				end
-				table.insert(enemyGrid[key], enemy)
-			end
-		end
-	end
-end
 
 -- Get all grid cells that could contain enemies within range of (x, z)
 -- Returns enemies in those cells
@@ -906,8 +950,7 @@ function EnemyManager.update(dt)
 	local corePos = WaveManager.getCorePosition()
 	if not corePos then return end
 
-	-- Rebuild spatial grid for optimized enemy lookups
-	rebuildGrid()
+	-- Grid is now updated incrementally as enemies move (no full rebuild needed)
 
 	local toRemove = {}
 
@@ -975,6 +1018,9 @@ function EnemyManager.update(dt)
 			WaveManager.damageCore(enemy.damage, id)
 			WaveManager.onEnemyReachedCore(id)
 
+			-- Remove from spatial grid
+			removeEnemyFromGrid(enemy)
+
 			-- Remove enemy
 			if character then character:Destroy() end
 			if deps.EntityRegistry then
@@ -1014,6 +1060,9 @@ function EnemyManager.update(dt)
 
 			local newX = myX + enemy.velocityX * dt
 			local newZ = myZ + enemy.velocityZ * dt
+
+			-- Update spatial grid only when crossing cell boundaries (efficient!)
+			updateEnemyGridPosition(enemy, newX, newZ)
 
 			-- Simple bobbing animation
 			enemy.time = enemy.time + dt
@@ -1059,6 +1108,36 @@ function EnemyManager.count()
 	local n = 0
 	for _ in pairs(enemies) do n = n + 1 end
 	return n
+end
+
+-- Get lightweight enemy data for minimap display
+-- Returns array of {id, typeName, pathProgress} where pathProgress is 0-1 (0=spawn, 1=gate/core)
+function EnemyManager.getMinimapData()
+	local data = {}
+	local totalWaypoints = #enemyPath + 1  -- +1 for core as final target
+
+	for id, enemy in pairs(enemies) do
+		if enemy.hp > 0 then
+			-- Calculate path progress (0 = at spawn, 1 = at core)
+			local progress = 0
+			if totalWaypoints > 1 then
+				progress = ((enemy.currentWaypoint or 1) - 1) / totalWaypoints
+			end
+
+			table.insert(data, {
+				id = id,
+				typeName = enemy.typeName,
+				pathProgress = progress,
+			})
+		end
+	end
+
+	return data
+end
+
+-- Get total path length for minimap scaling
+function EnemyManager.getPathLength()
+	return #enemyPath + 1
 end
 
 function EnemyManager.findNearest(x, z, maxRange)

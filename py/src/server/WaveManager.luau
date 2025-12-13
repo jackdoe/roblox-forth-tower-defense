@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
+local Pathfinding = require(script.Parent.Pathfinding)
 
 local WaveManager = {}
 
@@ -78,19 +79,20 @@ local ENEMY_TYPES = {"Zombie", "Runner", "Tank"}
 function WaveManager.generateWave(waveNum)
 	local composition = {}
 
-	-- Base enemy count scales with wave (10 + wave * 3)
-	local baseCount = 10 + waveNum * 3
+	-- Base enemy count scales with wave - TESTING: much higher counts
+	-- Wave 1: 30, Wave 5: 70, Wave 10: 120
+	local baseCount = 30 + waveNum * 8
 	-- Add some randomness (+/- 20%)
 	local enemyCount = math.floor(baseCount * (0.8 + math.random() * 0.4))
 
-	-- Spawn interval gets faster with waves (starts 2s, min 0.5s)
-	local interval = math.max(0.5, 2 - waveNum * 0.1)
+	-- Spawn interval gets faster with waves (starts 1s, min 0.3s)
+	local interval = math.max(0.3, 1 - waveNum * 0.05)
 
 	-- Generate random enemies (Zombie, Runner, Tank)
 	-- Higher waves unlock more enemy types
 	local availableTypes = {"Zombie"}
 	if waveNum >= 2 then table.insert(availableTypes, "Runner") end
-	if waveNum >= 4 then table.insert(availableTypes, "Tank") end
+	if waveNum >= 3 then table.insert(availableTypes, "Tank") end
 
 	for i = 1, enemyCount do
 		local enemyType = availableTypes[math.random(#availableTypes)]
@@ -100,24 +102,16 @@ function WaveManager.generateWave(waveNum)
 		})
 	end
 
-	-- Boss count: higher waves = more chance for multiple bosses
-	-- Wave 1-2: 1 boss, Wave 3-5: 1-2, Wave 6-8: 1-3, Wave 9+: 1-5
-	local maxBosses = math.min(5, math.floor(waveNum / 2) + 1)
-	-- Probability increases with wave number
-	local bossCount = 1
-	for i = 2, maxBosses do
-		-- Each additional boss has (wave * 5)% chance
-		if math.random(100) < waveNum * 5 then
-			bossCount = bossCount + 1
-		end
-	end
+	-- Boss count: higher waves = more bosses
+	-- Wave 1: 1, Wave 3: 2, Wave 5: 3, etc.
+	local bossCount = math.min(8, math.floor(waveNum / 2) + 1)
 
 	-- Add bosses at the end (last boss is always last enemy)
 	local lastDelay = #composition > 0 and composition[#composition].delay or 0
 	for i = 1, bossCount do
 		table.insert(composition, {
 			type = "Boss",
-			delay = lastDelay + 2 + (i - 1) * 3, -- Bosses spawn after regular enemies, 3s apart
+			delay = lastDelay + 2 + (i - 1) * 2, -- Bosses spawn after regular enemies, 2s apart
 		})
 	end
 
@@ -376,8 +370,10 @@ function WaveManager.createCore(position)
 		end
 	end)
 
+	Pathfinding.createPathBlocker(model, Vector3.new(position.x, GROUND_Y + 4, position.z), Vector3.new(14, 8, 14), "Core")
+
 	model.Parent = workspace
-	state.coreModel = core
+	state.coreModel = model
 	print("WaveManager: Fancy Core created at", position.x, position.z)
 end
 
@@ -590,6 +586,22 @@ function WaveManager.removeScrap(amount)
 end
 
 function WaveManager.getScrap()
+	return state.scrap or 0
+end
+
+-- Remove from core stockpile (used by turret reload)
+-- Returns actual amount taken (may be less than requested if not enough scrap)
+function WaveManager.removeCoreStockpile(amount)
+	local current = state.scrap or 0
+	local toTake = math.min(amount, current)
+	if toTake > 0 then
+		state.scrap = current - toTake
+	end
+	return toTake
+end
+
+-- Get core stockpile amount (same as scrap for now)
+function WaveManager.getCoreStockpile()
 	return state.scrap or 0
 end
 

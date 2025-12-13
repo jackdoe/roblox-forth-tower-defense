@@ -121,22 +121,18 @@ function SoundConfig.createLoopedSound(soundId, volume, parent)
 end
 
 -- Play a sound at a specific 3D position with strict distance falloff
--- This fixes audio overload by making sounds fade quickly over distance
+-- Uses Attachments instead of Parts for better performance (no physics overhead)
 function SoundConfig.playSpatialSound(soundId, position, volume)
 	if not soundId or soundId == "" then return nil end
 	if not position then return nil end
 
 	local Debris = game:GetService("Debris")
 
-	-- Create a temporary part at the location to emit sound
-	local soundPart = Instance.new("Part")
-	soundPart.Transparency = 1
-	soundPart.CanCollide = false
-	soundPart.Anchored = true
-	soundPart.Size = Vector3.new(1, 1, 1)
-	soundPart.Position = position
-	soundPart.Name = "AudioSource"
-	soundPart.Parent = workspace
+	-- Use Attachment on Terrain for 3D audio (much lighter than creating Parts)
+	local attachment = Instance.new("Attachment")
+	attachment.WorldPosition = position
+	attachment.Name = "AudioSource"
+	attachment.Parent = workspace.Terrain
 
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
@@ -147,10 +143,10 @@ function SoundConfig.playSpatialSound(soundId, position, volume)
 	sound.RollOffMinDistance = 10 -- Full volume within 10 studs
 	sound.RollOffMaxDistance = 80 -- Completely silent after 80 studs
 
-	sound.Parent = soundPart
+	sound.Parent = attachment
 
 	sound.Ended:Connect(function()
-		soundPart:Destroy()
+		attachment:Destroy()
 	end)
 
 	-- Play in protected call
@@ -159,12 +155,12 @@ function SoundConfig.playSpatialSound(soundId, position, volume)
 	end)
 
 	if not success then
-		soundPart:Destroy()
+		attachment:Destroy()
 		return nil
 	end
 
 	-- Safety cleanup in case sound bugs out
-	Debris:AddItem(soundPart, 5)
+	Debris:AddItem(attachment, 5)
 
 	return sound
 end

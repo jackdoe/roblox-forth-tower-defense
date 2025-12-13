@@ -37,7 +37,7 @@ local Config = {
 	--============================================================================
 	-- TOWER DEFENSE SETTINGS
 	--============================================================================
-	STARTING_SCRAP = 600,
+	STARTING_SCRAP = 10000,  -- Testing value (was 600)
 	SCRAP_PER_KILL = 15,
 	WAVE_BONUS_BASE = 200,
 	CORE_HP = 1000,

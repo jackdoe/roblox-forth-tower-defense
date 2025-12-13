@@ -1,35 +1,45 @@
 -- HUD.luau
--- The unified "Commander's Console" interface for Iron Defense
--- Replaces UnitListPanel and TDPanel with a modern RTS-style HUD
+-- "Project Dirac" - Elegant Commander's Console
+-- Combines mathematical precision with high-end visual feedback
 
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local HUD = {}
 
--- Visual Assets (colors)
+-- Dirac Visual Theme (Glass + Neon)
 local COLORS = {
-	bg = Color3.fromRGB(20, 24, 30),
-	panel = Color3.fromRGB(30, 35, 45),
-	accent = Color3.fromRGB(0, 255, 200),
-	danger = Color3.fromRGB(255, 80, 80),
-	success = Color3.fromRGB(80, 255, 100),
-	warning = Color3.fromRGB(255, 200, 50),
-	text = Color3.fromRGB(240, 240, 240),
-	subtext = Color3.fromRGB(150, 160, 180),
+	bg = Color3.fromRGB(12, 16, 22),        -- Deep space black
+	panel = Color3.fromRGB(20, 25, 35),     -- Translucent panel
+	accent = Color3.fromRGB(0, 255, 200),   -- Cyan neon
+	danger = Color3.fromRGB(255, 60, 80),   -- Warning red
+	success = Color3.fromRGB(60, 255, 120), -- Confirm green
+	warning = Color3.fromRGB(255, 200, 50), -- Alert gold
+	text = Color3.fromRGB(240, 245, 255),   -- Clean white
+	subtext = Color3.fromRGB(120, 130, 150),-- Muted info
+	glass = Color3.fromRGB(255, 255, 255),  -- Glass edge highlight
 }
 
--- Enemy type icons (emoji-style)
+-- Enemy visual mapping
 local ENEMY_ICONS = {
-	Zombie = "Z",
-	Runner = "R",
-	Tank = "T",
-	Boss = "B",
+	Zombie = "●",
+	Runner = "◆",
+	Tank = "■",
+	Boss = "★",
 }
 
 local ENEMY_COLORS = {
-	Zombie = Color3.fromRGB(100, 180, 100),
-	Runner = Color3.fromRGB(255, 200, 100),
-	Tank = Color3.fromRGB(150, 150, 200),
-	Boss = Color3.fromRGB(255, 80, 80),
+	Zombie = Color3.fromRGB(100, 200, 120),  -- Green horde
+	Runner = Color3.fromRGB(255, 180, 80),   -- Orange speed
+	Tank = Color3.fromRGB(140, 160, 220),    -- Blue armor
+	Boss = Color3.fromRGB(255, 60, 100),     -- Red danger
+}
+
+-- Enemy pip sizes (visual weight)
+local ENEMY_SIZES = {
+	Zombie = 10,
+	Runner = 12,
+	Tank = 18,
+	Boss = 22,
 }
 
 function HUD.create(parent, callbacks)
@@ -39,97 +49,34 @@ function HUD.create(parent, callbacks)
 	}
 
 	--=========================================================================
-	-- 1. TOP BAR (Wave Info + Minimalist Enemy Queue)
-	--=========================================================================
-	local topBar = Instance.new("Frame")
-	topBar.Name = "TopBar"
-	topBar.Size = UDim2.new(0, 300, 0, 36)  -- More compact
-	topBar.AnchorPoint = Vector2.new(0.5, 0)
-	topBar.Position = UDim2.new(0.5, 0, 0, 10)
-	topBar.BackgroundColor3 = COLORS.panel
-	topBar.BorderSizePixel = 0
-	topBar.Parent = parent
-
-	local topCorner = Instance.new("UICorner")
-	topCorner.CornerRadius = UDim.new(0, 6)
-	topCorner.Parent = topBar
-
-	local topStroke = Instance.new("UIStroke")
-	topStroke.Color = Color3.fromRGB(50, 55, 65)
-	topStroke.Thickness = 1
-	topStroke.Parent = topBar
-
-	-- Wave number display (compact)
-	local waveTitle = Instance.new("TextLabel")
-	waveTitle.Name = "WaveTitle"
-	waveTitle.Size = UDim2.new(0, 50, 1, 0)
-	waveTitle.BackgroundTransparency = 1
-	waveTitle.Text = "W1"
-	waveTitle.Font = Enum.Font.GothamBold
-	waveTitle.TextSize = 18
-	waveTitle.TextColor3 = COLORS.accent
-	waveTitle.Parent = topBar
-
-	-- Enemy queue container (dots representing enemies)
-	local queueFrame = Instance.new("Frame")
-	queueFrame.Name = "QueueFrame"
-	queueFrame.Size = UDim2.new(1, -60, 0, 24)
-	queueFrame.Position = UDim2.new(0, 55, 0.5, -12)
-	queueFrame.BackgroundColor3 = COLORS.bg
-	queueFrame.BackgroundTransparency = 0.5
-	queueFrame.ClipsDescendants = true
-	queueFrame.Parent = topBar
-
-	local queueCorner = Instance.new("UICorner")
-	queueCorner.CornerRadius = UDim.new(0, 4)
-	queueCorner.Parent = queueFrame
-
-	-- Queue layout (horizontal dots)
-	local queueLayout = Instance.new("UIListLayout")
-	queueLayout.FillDirection = Enum.FillDirection.Horizontal
-	queueLayout.Padding = UDim.new(0, 2)
-	queueLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	queueLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-	queueLayout.Parent = queueFrame
-
-	local queuePadding = Instance.new("UIPadding")
-	queuePadding.PaddingLeft = UDim.new(0, 4)
-	queuePadding.Parent = queueFrame
-
-	-- Enemy size mapping (height of dot indicates threat level)
-	local ENEMY_SIZES = {
-		Zombie = 8,   -- Small
-		Runner = 10,  -- Medium
-		Tank = 16,    -- Large
-		Boss = 20,    -- Huge
-	}
-
-	--=========================================================================
-	-- 2. ACTION BAR (Hotkeys 1-6: Weapons + Building)
+	-- 1. ACTION BAR (Dirac Style - Glass + Price Tags)
 	--=========================================================================
 	local actionBar = Instance.new("Frame")
 	actionBar.Name = "ActionBar"
-	actionBar.Size = UDim2.new(0, 340, 0, 60)
+	actionBar.Size = UDim2.new(0, 394, 0, 70)  -- 7 buttons (0-6) + padding
 	actionBar.AnchorPoint = Vector2.new(0.5, 1)
-	actionBar.Position = UDim2.new(0.5, 0, 1, -10)
-	actionBar.BackgroundColor3 = COLORS.panel
+	actionBar.Position = UDim2.new(0.5, 0, 1, -8)
+	actionBar.BackgroundColor3 = COLORS.bg
+	actionBar.BackgroundTransparency = 0.15
 	actionBar.BorderSizePixel = 0
 	actionBar.Parent = parent
 
 	local actionBarCorner = Instance.new("UICorner")
-	actionBarCorner.CornerRadius = UDim.new(0, 10)
+	actionBarCorner.CornerRadius = UDim.new(0, 8)
 	actionBarCorner.Parent = actionBar
 
+	-- Glass edge
 	local actionBarStroke = Instance.new("UIStroke")
-	actionBarStroke.Color = Color3.fromRGB(50, 55, 65)
+	actionBarStroke.Color = COLORS.glass
+	actionBarStroke.Transparency = 0.8
 	actionBarStroke.Thickness = 1
 	actionBarStroke.Parent = actionBar
 
 	-- Action Buttons Container
 	local actionContainer = Instance.new("Frame")
 	actionContainer.Name = "ActionContainer"
-	actionContainer.Size = UDim2.new(1, -16, 1, -12)
-	actionContainer.Position = UDim2.new(0, 8, 0, 6)
+	actionContainer.Size = UDim2.new(1, -12, 0, 48)
+	actionContainer.Position = UDim2.new(0, 6, 0, 4)
 	actionContainer.BackgroundTransparency = 1
 	actionContainer.Parent = actionBar
 
@@ -140,14 +87,15 @@ function HUD.create(parent, callbacks)
 	actionLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 	actionLayout.Parent = actionContainer
 
-	-- Helper to create Action Buttons
-	local function createActionSlot(hotkey, icon, tooltip, color)
+	-- Helper to create Action Buttons with integrated price tags
+	local function createActionSlot(hotkey, icon, tooltip, color, cost)
 		local btn = Instance.new("TextButton")
 		btn.Name = "Action" .. hotkey
-		btn.Size = UDim2.new(0, 48, 0, 44)
+		btn.Size = UDim2.new(0, 50, 0, 46)
 		btn.BackgroundColor3 = COLORS.bg
+		btn.BackgroundTransparency = 0.3
 		btn.Text = ""
-		btn.AutoButtonColor = true
+		btn.AutoButtonColor = false  -- We handle hover ourselves
 		btn.Parent = actionContainer
 
 		local corner = Instance.new("UICorner")
@@ -157,83 +105,132 @@ function HUD.create(parent, callbacks)
 		local stroke = Instance.new("UIStroke")
 		stroke.Color = color
 		stroke.Thickness = 2
+		stroke.Transparency = 0.3
 		stroke.Parent = btn
 
-		-- Icon/emoji
+		-- Icon
 		local iconLabel = Instance.new("TextLabel")
 		iconLabel.Name = "Icon"
-		iconLabel.Size = UDim2.new(1, 0, 0.65, 0)
-		iconLabel.Position = UDim2.new(0, 0, 0, 0)
+		iconLabel.Size = UDim2.new(1, 0, 0, 22)
+		iconLabel.Position = UDim2.new(0, 0, 0, 2)
 		iconLabel.BackgroundTransparency = 1
 		iconLabel.Text = icon
 		iconLabel.Font = Enum.Font.GothamBold
-		iconLabel.TextSize = 16
+		iconLabel.TextSize = 18
 		iconLabel.TextColor3 = color
 		iconLabel.Parent = btn
 
-		-- Hotkey number
+		-- Hotkey badge (top-left corner)
+		local hotkeyBadge = Instance.new("Frame")
+		hotkeyBadge.Name = "HotkeyBadge"
+		hotkeyBadge.Size = UDim2.new(0, 14, 0, 14)
+		hotkeyBadge.Position = UDim2.new(0, 2, 0, 2)
+		hotkeyBadge.BackgroundColor3 = color
+		hotkeyBadge.BackgroundTransparency = 0.7
+		hotkeyBadge.Parent = btn
+
+		local hbCorner = Instance.new("UICorner")
+		hbCorner.CornerRadius = UDim.new(0, 3)
+		hbCorner.Parent = hotkeyBadge
+
 		local hotkeyLabel = Instance.new("TextLabel")
 		hotkeyLabel.Name = "Hotkey"
-		hotkeyLabel.Size = UDim2.new(1, 0, 0.35, 0)
-		hotkeyLabel.Position = UDim2.new(0, 0, 0.65, 0)
+		hotkeyLabel.Size = UDim2.new(1, 0, 1, 0)
 		hotkeyLabel.BackgroundTransparency = 1
 		hotkeyLabel.Text = hotkey
-		hotkeyLabel.TextColor3 = COLORS.subtext
+		hotkeyLabel.TextColor3 = COLORS.text
 		hotkeyLabel.Font = Enum.Font.Code
 		hotkeyLabel.TextSize = 10
-		hotkeyLabel.Parent = btn
+		hotkeyLabel.Parent = hotkeyBadge
+
+		-- Price tag (bottom, only for items with cost)
+		if cost then
+			local priceTag = Instance.new("Frame")
+			priceTag.Name = "PriceTag"
+			priceTag.Size = UDim2.new(1, -4, 0, 14)
+			priceTag.Position = UDim2.new(0, 2, 1, -16)
+			priceTag.BackgroundColor3 = COLORS.bg
+			priceTag.BackgroundTransparency = 0.5
+			priceTag.Parent = btn
+
+			local ptCorner = Instance.new("UICorner")
+			ptCorner.CornerRadius = UDim.new(0, 3)
+			ptCorner.Parent = priceTag
+
+			local priceLabel = Instance.new("TextLabel")
+			priceLabel.Name = "Price"
+			priceLabel.Size = UDim2.new(1, 0, 1, 0)
+			priceLabel.BackgroundTransparency = 1
+			priceLabel.Text = tostring(cost)
+			priceLabel.Font = Enum.Font.Code
+			priceLabel.TextSize = 10
+			priceLabel.TextColor3 = COLORS.success  -- Green = affordable
+			priceLabel.Parent = priceTag
+
+			btn:SetAttribute("BaseCost", cost)
+			btn:SetAttribute("BaseColor", color:ToHex())
+		end
+
+		-- Hover effect
+		btn.MouseEnter:Connect(function()
+			TweenService:Create(stroke, TweenInfo.new(0.15), {
+				Thickness = 3,
+				Transparency = 0
+			}):Play()
+			TweenService:Create(btn, TweenInfo.new(0.15), {
+				BackgroundTransparency = 0.1
+			}):Play()
+		end)
+
+		btn.MouseLeave:Connect(function()
+			TweenService:Create(stroke, TweenInfo.new(0.15), {
+				Thickness = 2,
+				Transparency = 0.3
+			}):Play()
+			TweenService:Create(btn, TweenInfo.new(0.15), {
+				BackgroundTransparency = 0.3
+			}):Play()
+		end)
+
+		-- Click depression effect
+		btn.MouseButton1Down:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.05), {
+				Size = UDim2.new(0, 48, 0, 44)
+			}):Play()
+		end)
+
+		btn.MouseButton1Up:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.1, Enum.EasingStyle.Back), {
+				Size = UDim2.new(0, 50, 0, 46)
+			}):Play()
+		end)
 
 		return btn, stroke
 	end
 
-	-- Ammo type colors
+	-- Ammo type colors (Dirac palette)
 	local AMMO_COLORS = {
-		bullet = Color3.fromRGB(255, 255, 150),  -- Yellow
-		rocket = Color3.fromRGB(255, 100, 50),   -- Orange
-		laser = Color3.fromRGB(255, 50, 50),     -- Red
-		grenade = Color3.fromRGB(100, 255, 100), -- Green
+		passive = Color3.fromRGB(120, 120, 140), -- Muted gray
+		bullet = Color3.fromRGB(255, 240, 120),  -- Warm yellow
+		rocket = Color3.fromRGB(255, 120, 60),   -- Hot orange
+		laser = Color3.fromRGB(255, 80, 100),    -- Plasma red
+		grenade = Color3.fromRGB(120, 255, 140), -- Toxic green
 	}
 
-	-- Actions: 1=Bullet, 2=Rocket, 3=Laser, 4=Grenade, 5=Bot, 6=Turret
-	local bulletBtn, bulletStroke = createActionSlot("1", "•", "Bullet", AMMO_COLORS.bullet)
-	local rocketBtn, rocketStroke = createActionSlot("2", "◆", "Rocket", AMMO_COLORS.rocket)
-	local laserBtn, laserStroke = createActionSlot("3", "—", "Laser", AMMO_COLORS.laser)
-	local grenadeBtn, grenadeStroke = createActionSlot("4", "●", "Grenade", AMMO_COLORS.grenade)
-	local botBtn, botStroke = createActionSlot("5", "🤖", "Bot", COLORS.warning)
-	local turretBtn, turretStroke = createActionSlot("6", "🗼", "Turret", COLORS.accent)
+	-- Actions: 0=Passive, 1=Bullet, 2=Rocket, 3=Laser, 4=Grenade, 5=Bot, 6=Turret
+	local passiveBtn, passiveStroke = createActionSlot("0", "○", "Passive", AMMO_COLORS.passive, nil)
+	local bulletBtn, bulletStroke = createActionSlot("1", "•", "Bullet", AMMO_COLORS.bullet, nil)
+	local rocketBtn, rocketStroke = createActionSlot("2", "◆", "Rocket", AMMO_COLORS.rocket, nil)
+	local laserBtn, laserStroke = createActionSlot("3", "━", "Laser", AMMO_COLORS.laser, nil)
+	local grenadeBtn, grenadeStroke = createActionSlot("4", "●", "Grenade", AMMO_COLORS.grenade, nil)
+	local botBtn, botStroke = createActionSlot("5", "⚙", "Bot", COLORS.warning, 75)
+	local turretBtn, turretStroke = createActionSlot("6", "◎", "Turret", COLORS.accent, 100)
 
-	-- Cost labels (shown below action bar)
-	local costDisplay = Instance.new("Frame")
-	costDisplay.Name = "CostDisplay"
-	costDisplay.Size = UDim2.new(0, 200, 0, 18)
-	costDisplay.AnchorPoint = Vector2.new(0.5, 0)
-	costDisplay.Position = UDim2.new(0.5, 0, 1, 2)
-	costDisplay.BackgroundTransparency = 1
-	costDisplay.Parent = actionBar
+	-- Button callbacks (0=passive, 1-4: load weapon programs, 5-6: build)
+	passiveBtn.MouseButton1Click:Connect(function()
+		if callbacks.onLoadWeapon then callbacks.onLoadWeapon(0) end
+	end)
 
-	local botCostLabel = Instance.new("TextLabel")
-	botCostLabel.Name = "BotCost"
-	botCostLabel.Size = UDim2.new(0.5, 0, 1, 0)
-	botCostLabel.Position = UDim2.new(0, 0, 0, 0)
-	botCostLabel.BackgroundTransparency = 1
-	botCostLabel.Text = "Bot: 75"
-	botCostLabel.TextColor3 = COLORS.warning
-	botCostLabel.Font = Enum.Font.Gotham
-	botCostLabel.TextSize = 10
-	botCostLabel.Parent = costDisplay
-
-	local turretCostLabel = Instance.new("TextLabel")
-	turretCostLabel.Name = "TurretCost"
-	turretCostLabel.Size = UDim2.new(0.5, 0, 1, 0)
-	turretCostLabel.Position = UDim2.new(0.5, 0, 0, 0)
-	turretCostLabel.BackgroundTransparency = 1
-	turretCostLabel.Text = "Turret: 100"
-	turretCostLabel.TextColor3 = COLORS.accent
-	turretCostLabel.Font = Enum.Font.Gotham
-	turretCostLabel.TextSize = 10
-	turretCostLabel.Parent = costDisplay
-
-	-- Button callbacks (1-4: load weapon programs, 5-6: build)
 	bulletBtn.MouseButton1Click:Connect(function()
 		if callbacks.onLoadWeapon then callbacks.onLoadWeapon(1) end
 	end)
@@ -261,7 +258,6 @@ function HUD.create(parent, callbacks)
 	--=========================================================================
 	-- 2b. GLOBAL COOLDOWN OVERLAY (WoW-style sweep)
 	--=========================================================================
-	local TweenService = game:GetService("TweenService")
 
 	-- Create cooldown overlay for each weapon button
 	local function createCooldownOverlay(btn)
@@ -282,20 +278,23 @@ function HUD.create(parent, callbacks)
 		return overlay
 	end
 
+	local passiveOverlay = createCooldownOverlay(passiveBtn)
 	local bulletOverlay = createCooldownOverlay(bulletBtn)
 	local rocketOverlay = createCooldownOverlay(rocketBtn)
 	local laserOverlay = createCooldownOverlay(laserBtn)
 	local grenadeOverlay = createCooldownOverlay(grenadeBtn)
 
 	-- Track current weapon and reload state
-	local currentWeapon = 1  -- 1=bullet, 2=rocket, 3=laser, 4=ice
+	-- Index 0=passive, 1=bullet, 2=rocket, 3=laser, 4=grenade
+	local currentWeapon = 1
 	local isReloading = false
-	local weaponButtons = {bulletBtn, rocketBtn, laserBtn, grenadeBtn}
-	local weaponOverlays = {bulletOverlay, rocketOverlay, laserOverlay, grenadeOverlay}
+	-- Use index 0 for passive, so we store buttons/overlays with [0] key
+	local weaponButtons = {[0] = passiveBtn, [1] = bulletBtn, [2] = rocketBtn, [3] = laserBtn, [4] = grenadeBtn}
+	local weaponOverlays = {[0] = passiveOverlay, [1] = bulletOverlay, [2] = rocketOverlay, [3] = laserOverlay, [4] = grenadeOverlay}
 
 	-- Highlight active weapon
 	local function highlightWeapon(weaponIndex)
-		for i, btn in ipairs(weaponButtons) do
+		for i, btn in pairs(weaponButtons) do
 			local stroke = btn:FindFirstChildOfClass("UIStroke")
 			if stroke then
 				stroke.Thickness = (i == weaponIndex) and 3 or 2
@@ -326,7 +325,7 @@ function HUD.create(parent, callbacks)
 
 	-- Trigger global cooldown animation (sweep from bottom to top then disappear)
 	local function triggerGlobalCooldown(duration)
-		for _, overlay in ipairs(weaponOverlays) do
+		for _, overlay in pairs(weaponOverlays) do
 			-- Reset to full coverage
 			overlay.Size = UDim2.new(1, 0, 1, 0)
 			overlay.Position = UDim2.new(0, 0, 1, 0)
@@ -344,7 +343,7 @@ function HUD.create(parent, callbacks)
 		isReloading = true
 
 		-- Darken all weapon buttons during reload
-		for i, overlay in ipairs(weaponOverlays) do
+		for _, overlay in pairs(weaponOverlays) do
 			overlay.Size = UDim2.new(1, 0, 1, 0)
 			overlay.BackgroundTransparency = 0.7
 		end
@@ -359,7 +358,7 @@ function HUD.create(parent, callbacks)
 			tween.Completed:Connect(function()
 				isReloading = false
 				-- Reset all overlays
-				for _, ov in ipairs(weaponOverlays) do
+				for _, ov in pairs(weaponOverlays) do
 					ov.Size = UDim2.new(1, 0, 0, 0)
 					ov.BackgroundTransparency = 0.5
 				end
@@ -427,12 +426,12 @@ function HUD.create(parent, callbacks)
 	-- Combat status indicator removed (was too cluttered)
 
 	--=========================================================================
-	-- 3. SELECTION INSPECTOR (Right Side Panel)
+	-- 3. SELECTION INSPECTOR (Bottom Left Panel)
 	--=========================================================================
 	local inspector = Instance.new("Frame")
 	inspector.Name = "Inspector"
-	inspector.Size = UDim2.new(0, 180, 0, 140)
-	inspector.Position = UDim2.new(0, 15, 1, -155)
+	inspector.Size = UDim2.new(0, 180, 0, 210)  -- Taller to fit ammo buttons
+	inspector.Position = UDim2.new(0, 15, 1, -225)
 	inspector.BackgroundColor3 = COLORS.panel
 	inspector.BorderSizePixel = 0
 	inspector.Visible = false -- Hidden until selection
@@ -546,7 +545,7 @@ function HUD.create(parent, callbacks)
 		btn.BackgroundColor3 = COLORS.bg
 		btn.Text = text
 		btn.TextColor3 = color
-		btn.Font = Enum.Font.GothamBold
+		btn.Font = Enum.Font.Gotham  -- Regular font, no bold
 		btn.TextSize = 10
 		btn.Parent = actionContainer
 
@@ -554,10 +553,7 @@ function HUD.create(parent, callbacks)
 		corner.CornerRadius = UDim.new(0, 4)
 		corner.Parent = btn
 
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = color
-		stroke.Thickness = 1
-		stroke.Parent = btn
+		-- No stroke - cleaner look
 
 		btn.MouseButton1Click:Connect(function()
 			if callback then callback() end
@@ -567,12 +563,7 @@ function HUD.create(parent, callbacks)
 	end
 
 	-- CODE button removed - clicking unit auto-enters mind mode
-
-	local moveBtn = createActionBtn("MOVE", COLORS.warning, function()
-		if hud.selection and callbacks.onMove then
-			callbacks.onMove(hud.selection.id, hud.selection.type)
-		end
-	end)
+	-- MOVE button removed - not needed
 
 	local sellBtn = createActionBtn("SELL", COLORS.danger, function()
 		if hud.selection and callbacks.onSell then
@@ -585,6 +576,133 @@ function HUD.create(parent, callbacks)
 			callbacks.onUpgrade(hud.selection.id, hud.selection.type)
 		end
 	end)
+
+	--=========================================================================
+	-- 3b. AMMO TYPE SELECTOR (for turrets)
+	--=========================================================================
+	local ammoContainer = Instance.new("Frame")
+	ammoContainer.Name = "AmmoSelector"
+	ammoContainer.Size = UDim2.new(1, -20, 0, 50)
+	ammoContainer.Position = UDim2.new(0, 10, 0, 95)
+	ammoContainer.BackgroundTransparency = 1
+	ammoContainer.Visible = false  -- Only visible for turrets
+	ammoContainer.Parent = inspector
+
+	local ammoLabel = Instance.new("TextLabel")
+	ammoLabel.Size = UDim2.new(1, 0, 0, 14)
+	ammoLabel.BackgroundTransparency = 1
+	ammoLabel.Text = "AMMO TYPE"
+	ammoLabel.TextColor3 = COLORS.subtext
+	ammoLabel.TextXAlignment = Enum.TextXAlignment.Left
+	ammoLabel.Font = Enum.Font.Gotham
+	ammoLabel.TextSize = 9
+	ammoLabel.Parent = ammoContainer
+
+	local ammoButtonFrame = Instance.new("Frame")
+	ammoButtonFrame.Size = UDim2.new(1, 0, 0, 32)
+	ammoButtonFrame.Position = UDim2.new(0, 0, 0, 16)
+	ammoButtonFrame.BackgroundTransparency = 1
+	ammoButtonFrame.Parent = ammoContainer
+
+	local ammoLayout = Instance.new("UIListLayout")
+	ammoLayout.FillDirection = Enum.FillDirection.Horizontal
+	ammoLayout.Padding = UDim.new(0, 4)
+	ammoLayout.Parent = ammoButtonFrame
+
+	-- Ammo type definitions
+	local AMMO_TYPES = {
+		{id = 1, name = "●", fullName = "BULLET", color = Color3.fromRGB(255, 220, 100)},
+		{id = 2, name = "◆", fullName = "ROCKET", color = Color3.fromRGB(255, 100, 80)},
+		{id = 4, name = "❄", fullName = "ICE", color = Color3.fromRGB(100, 200, 255)},
+		{id = 5, name = "✱", fullName = "GRENADE", color = Color3.fromRGB(100, 255, 100)},
+	}
+
+	local ammoButtons = {}
+	local selectedAmmoType = 1  -- Default to BULLET
+
+	for _, ammoInfo in ipairs(AMMO_TYPES) do
+		local ammoBtn = Instance.new("TextButton")
+		ammoBtn.Name = "Ammo_" .. ammoInfo.id
+		ammoBtn.Size = UDim2.new(0, 36, 0, 32)
+		ammoBtn.BackgroundColor3 = COLORS.bg
+		ammoBtn.Text = ammoInfo.name
+		ammoBtn.TextColor3 = ammoInfo.color
+		ammoBtn.Font = Enum.Font.GothamBold
+		ammoBtn.TextSize = 16
+		ammoBtn.Parent = ammoButtonFrame
+
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 4)
+		btnCorner.Parent = ammoBtn
+
+		-- Border to show selection
+		local btnBorder = Instance.new("UIStroke")
+		btnBorder.Name = "Border"
+		btnBorder.Color = ammoInfo.color
+		btnBorder.Thickness = 0  -- Hidden by default
+		btnBorder.Parent = ammoBtn
+
+		ammoBtn.MouseButton1Click:Connect(function()
+			if hud.selection and hud.selection.type == "golem" then
+				-- Check if this ammo type is unlocked
+				local unlocked = hud.selection.unlockedAmmo or {1}
+				local isUnlocked = false
+				for _, aType in ipairs(unlocked) do
+					if aType == ammoInfo.id then
+						isUnlocked = true
+						break
+					end
+				end
+
+				if isUnlocked then
+					selectedAmmoType = ammoInfo.id
+					-- Update visuals
+					for id, btn in pairs(ammoButtons) do
+						local border = btn:FindFirstChild("Border")
+						if border then
+							border.Thickness = (id == selectedAmmoType) and 2 or 0
+						end
+					end
+					-- Call callback to change turret program
+					if callbacks.onAmmoChange then
+						callbacks.onAmmoChange(hud.selection.id, ammoInfo.id, ammoInfo.fullName)
+					end
+				end
+			end
+		end)
+
+		ammoButtons[ammoInfo.id] = ammoBtn
+	end
+
+	-- Function to update ammo button availability based on unlocked ammo
+	local function updateAmmoButtons(unlockedAmmo)
+		unlockedAmmo = unlockedAmmo or {1}
+		for _, ammoInfo in ipairs(AMMO_TYPES) do
+			local btn = ammoButtons[ammoInfo.id]
+			if btn then
+				local isUnlocked = false
+				for _, aType in ipairs(unlockedAmmo) do
+					if aType == ammoInfo.id then
+						isUnlocked = true
+						break
+					end
+				end
+				-- Gray out locked ammo types
+				if isUnlocked then
+					btn.TextTransparency = 0
+					btn.BackgroundColor3 = COLORS.bg
+				else
+					btn.TextTransparency = 0.7
+					btn.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+				end
+				-- Show selection border
+				local border = btn:FindFirstChild("Border")
+				if border then
+					border.Thickness = (ammoInfo.id == selectedAmmoType and isUnlocked) and 2 or 0
+				end
+			end
+		end
+	end
 
 	--=========================================================================
 	-- 4. CORE HP DISPLAY (Top Left)
@@ -651,12 +769,52 @@ function HUD.create(parent, callbacks)
 	scrapText.Parent = scrapDisplay
 
 	--=========================================================================
-	-- 6. PHASE INDICATOR (Top Left, below Scrap)
+	-- 5b. NEXT WAVE INFO (Below Scrap)
+	--=========================================================================
+	local nextWaveDisplay = Instance.new("Frame")
+	nextWaveDisplay.Name = "NextWaveDisplay"
+	nextWaveDisplay.Size = UDim2.new(0, 160, 0, 40)
+	nextWaveDisplay.Position = UDim2.new(0, 15, 0, 98)
+	nextWaveDisplay.BackgroundColor3 = COLORS.panel
+	nextWaveDisplay.Parent = parent
+
+	local nextWaveCorner = Instance.new("UICorner")
+	nextWaveCorner.CornerRadius = UDim.new(0, 8)
+	nextWaveCorner.Parent = nextWaveDisplay
+
+	local nextWaveTitle = Instance.new("TextLabel")
+	nextWaveTitle.Name = "Title"
+	nextWaveTitle.Size = UDim2.new(1, -10, 0, 14)
+	nextWaveTitle.Position = UDim2.new(0, 5, 0, 4)
+	nextWaveTitle.BackgroundTransparency = 1
+	nextWaveTitle.Text = "NEXT WAVE:"
+	nextWaveTitle.TextColor3 = COLORS.subtext
+	nextWaveTitle.Font = Enum.Font.Gotham
+	nextWaveTitle.TextSize = 9
+	nextWaveTitle.TextXAlignment = Enum.TextXAlignment.Left
+	nextWaveTitle.Parent = nextWaveDisplay
+
+	-- Container for enemy type icons
+	local nextWaveIcons = Instance.new("Frame")
+	nextWaveIcons.Name = "Icons"
+	nextWaveIcons.Size = UDim2.new(1, -10, 0, 18)
+	nextWaveIcons.Position = UDim2.new(0, 5, 0, 18)
+	nextWaveIcons.BackgroundTransparency = 1
+	nextWaveIcons.Parent = nextWaveDisplay
+
+	local nextWaveLayout = Instance.new("UIListLayout")
+	nextWaveLayout.FillDirection = Enum.FillDirection.Horizontal
+	nextWaveLayout.Padding = UDim.new(0, 4)
+	nextWaveLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	nextWaveLayout.Parent = nextWaveIcons
+
+	--=========================================================================
+	-- 6. PHASE INDICATOR (Top Left, below Next Wave)
 	--=========================================================================
 	local phaseDisplay = Instance.new("Frame")
 	phaseDisplay.Name = "PhaseDisplay"
 	phaseDisplay.Size = UDim2.new(0, 160, 0, 35)
-	phaseDisplay.Position = UDim2.new(0, 15, 0, 98)
+	phaseDisplay.Position = UDim2.new(0, 15, 0, 143)
 	phaseDisplay.BackgroundColor3 = COLORS.panel
 	phaseDisplay.Parent = parent
 
@@ -682,7 +840,7 @@ function HUD.create(parent, callbacks)
 	local waveActionBtn = Instance.new("TextButton")
 	waveActionBtn.Name = "WaveActionBtn"
 	waveActionBtn.Size = UDim2.new(0, 160, 0, 35)
-	waveActionBtn.Position = UDim2.new(0, 15, 0, 138)
+	waveActionBtn.Position = UDim2.new(0, 15, 0, 183)
 	waveActionBtn.BackgroundColor3 = COLORS.accent
 	waveActionBtn.Text = "READY"
 	waveActionBtn.TextColor3 = COLORS.bg
@@ -707,74 +865,314 @@ function HUD.create(parent, callbacks)
 	end)
 
 	--=========================================================================
+	-- 8. BOT PARTY FRAME (Quick bot selection - right side)
+	--=========================================================================
+	local partyFrame = Instance.new("Frame")
+	partyFrame.Name = "PartyFrame"
+	partyFrame.Size = UDim2.new(0, 60, 0, 220)  -- 4 bot slots stacked vertically
+	partyFrame.Position = UDim2.new(1, -75, 0.5, -110)  -- Right side, centered
+	partyFrame.BackgroundColor3 = COLORS.panel
+	partyFrame.BackgroundTransparency = 0.3
+	partyFrame.Parent = parent
+
+	local partyCorner = Instance.new("UICorner")
+	partyCorner.CornerRadius = UDim.new(0, 8)
+	partyCorner.Parent = partyFrame
+
+	local partyStroke = Instance.new("UIStroke")
+	partyStroke.Color = COLORS.glass
+	partyStroke.Transparency = 0.8
+	partyStroke.Thickness = 1
+	partyStroke.Parent = partyFrame
+
+	local partyLabel = Instance.new("TextLabel")
+	partyLabel.Size = UDim2.new(1, 0, 0, 16)
+	partyLabel.Position = UDim2.new(0, 0, 0, 2)
+	partyLabel.BackgroundTransparency = 1
+	partyLabel.Text = "BOTS"
+	partyLabel.TextColor3 = COLORS.subtext
+	partyLabel.Font = Enum.Font.GothamBold
+	partyLabel.TextSize = 9
+	partyLabel.Parent = partyFrame
+
+	-- Create 4 bot slots
+	local botSlots = {}
+	local BOT_COLORS = {
+		Color3.fromRGB(255, 100, 100),  -- B1: Red
+		Color3.fromRGB(100, 180, 255),  -- B2: Blue
+		Color3.fromRGB(100, 255, 150),  -- B3: Green
+		Color3.fromRGB(255, 200, 100),  -- B4: Orange
+	}
+
+	for i = 1, 4 do
+		local slot = Instance.new("TextButton")
+		slot.Name = "BotSlot" .. i
+		slot.Size = UDim2.new(0, 50, 0, 46)
+		slot.Position = UDim2.new(0, 5, 0, 18 + (i - 1) * 50)
+		slot.BackgroundColor3 = COLORS.bg
+		slot.BackgroundTransparency = 0.5
+		slot.Text = ""
+		slot.AutoButtonColor = true
+		slot.Parent = partyFrame
+
+		local slotCorner = Instance.new("UICorner")
+		slotCorner.CornerRadius = UDim.new(0, 6)
+		slotCorner.Parent = slot
+
+		-- Bot number label
+		local numLabel = Instance.new("TextLabel")
+		numLabel.Name = "Number"
+		numLabel.Size = UDim2.new(1, 0, 0, 14)
+		numLabel.Position = UDim2.new(0, 0, 0, 2)
+		numLabel.BackgroundTransparency = 1
+		numLabel.Text = "B" .. i
+		numLabel.TextColor3 = BOT_COLORS[i]
+		numLabel.Font = Enum.Font.GothamBold
+		numLabel.TextSize = 11
+		numLabel.Parent = slot
+
+		-- Status icon (shows cargo or status)
+		local statusIcon = Instance.new("TextLabel")
+		statusIcon.Name = "Status"
+		statusIcon.Size = UDim2.new(1, 0, 0, 16)
+		statusIcon.Position = UDim2.new(0, 0, 0, 16)
+		statusIcon.BackgroundTransparency = 1
+		statusIcon.Text = "—"
+		statusIcon.TextColor3 = COLORS.subtext
+		statusIcon.Font = Enum.Font.Gotham
+		statusIcon.TextSize = 10
+		statusIcon.Parent = slot
+
+		-- Cargo indicator (small bar at bottom)
+		local cargoBar = Instance.new("Frame")
+		cargoBar.Name = "CargoBar"
+		cargoBar.Size = UDim2.new(0.8, 0, 0, 4)
+		cargoBar.Position = UDim2.new(0.1, 0, 1, -8)
+		cargoBar.BackgroundColor3 = COLORS.bg
+		cargoBar.Parent = slot
+
+		local cargoBarCorner = Instance.new("UICorner")
+		cargoBarCorner.CornerRadius = UDim.new(0, 2)
+		cargoBarCorner.Parent = cargoBar
+
+		local cargoFill = Instance.new("Frame")
+		cargoFill.Name = "Fill"
+		cargoFill.Size = UDim2.new(0, 0, 1, 0)
+		cargoFill.BackgroundColor3 = COLORS.warning
+		cargoFill.Parent = cargoBar
+
+		local cargoFillCorner = Instance.new("UICorner")
+		cargoFillCorner.CornerRadius = UDim.new(0, 2)
+		cargoFillCorner.Parent = cargoFill
+
+		-- Click handler
+		slot.MouseButton1Click:Connect(function()
+			if callbacks.onBotSelect then
+				callbacks.onBotSelect(i)
+			end
+		end)
+
+		botSlots[i] = {
+			frame = slot,
+			number = numLabel,
+			status = statusIcon,
+			cargoBar = cargoBar,
+			cargoFill = cargoFill,
+			exists = false,
+		}
+	end
+
+	-- Update a single bot slot
+	-- botData: { exists, status, cargo, maxCargo }
+	function hud.updateBotSlot(slotNum, botData)
+		local slot = botSlots[slotNum]
+		if not slot then return end
+
+		if botData and botData.exists then
+			slot.exists = true
+			slot.frame.BackgroundTransparency = 0.2
+			slot.number.TextColor3 = BOT_COLORS[slotNum]
+
+			-- Update status
+			local statusText = botData.status or "IDLE"
+			if statusText == "COLLECTING" then
+				slot.status.Text = "📦"
+			elseif statusText == "MOVING" then
+				slot.status.Text = "→"
+			elseif statusText == "STUNNED" then
+				slot.status.Text = "⚡"
+			elseif statusText == "WAITING" then
+				slot.status.Text = "⏳"
+			else
+				slot.status.Text = "●"
+			end
+			slot.status.TextColor3 = COLORS.text
+
+			-- Update cargo bar
+			local cargo = botData.cargo or 0
+			local maxCargo = botData.maxCargo or 50
+			local ratio = math.clamp(cargo / maxCargo, 0, 1)
+			slot.cargoFill.Size = UDim2.new(ratio, 0, 1, 0)
+			slot.cargoBar.Visible = true
+		else
+			slot.exists = false
+			slot.frame.BackgroundTransparency = 0.7
+			slot.number.TextColor3 = COLORS.subtext
+			slot.status.Text = "—"
+			slot.status.TextColor3 = COLORS.subtext
+			slot.cargoBar.Visible = false
+		end
+	end
+
+	-- Update all bot slots from botStates table
+	function hud.updateBotParty(botStates)
+		for i = 1, 4 do
+			local botData = nil
+			-- Find bot with spotId == i
+			for _, bot in pairs(botStates or {}) do
+				if bot.spotId == i then
+					botData = {
+						exists = true,
+						status = bot.status,
+						cargo = bot.scrapInventory or 0,
+						maxCargo = 50,
+					}
+					break
+				end
+			end
+			hud.updateBotSlot(i, botData)
+		end
+	end
+
+	-- Expose party frame
+	hud.partyFrame = partyFrame
+
+	--=========================================================================
 	-- PUBLIC FUNCTIONS
 	--=========================================================================
 
-	function hud.updateWave(waveNum, previewList)
-		waveTitle.Text = "W" .. (waveNum or 1)
+	local currentWaveNum = 1
 
-		-- Clear old queue
-		for _, child in ipairs(queueFrame:GetChildren()) do
+	-- Update wave number
+	function hud.updateWave(waveNum, previewList)
+		currentWaveNum = waveNum or 1
+	end
+
+	-- Legacy function - no longer used but kept for compatibility
+	function hud.updateEnemyMinimap(enemies, pathLength)
+		-- Minimap removed - next wave info is sufficient
+	end
+
+	-- Legacy function - no longer used but kept for compatibility
+	function hud.updateWaveProgress(spawnedCount)
+		-- No longer used
+	end
+
+	-- Update next wave preview (shows enemy types in upcoming wave)
+	-- preview: table mapping enemy type to count, e.g. {Zombie = 5, Runner = 3, Tank = 1}
+	function hud.updateNextWave(waveNum, preview)
+		nextWaveTitle.Text = "WAVE " .. (waveNum or "?") .. ":"
+
+		-- Clear old icons
+		for _, child in ipairs(nextWaveIcons:GetChildren()) do
 			if child:IsA("Frame") then
 				child:Destroy()
 			end
 		end
 
-		-- Populate queue with minimalist dots (each dot = 1 enemy, size = threat)
-		if previewList and #previewList > 0 then
-			-- Show up to 40 enemies as dots
-			local maxDots = math.min(40, #previewList)
-			for i = 1, maxDots do
-				local typeName = previewList[i]
-				local size = ENEMY_SIZES[typeName] or 8
+		-- Add icons for each enemy type
+		if preview then
+			for typeName, count in pairs(preview) do
+				local icon = ENEMY_ICONS[typeName] or "●"
 				local color = ENEMY_COLORS[typeName] or COLORS.subtext
 
-				local dot = Instance.new("Frame")
-				dot.Name = "Enemy" .. i
-				dot.Size = UDim2.new(0, 4, 0, size)  -- Width=4, height=threat
-				dot.BackgroundColor3 = color
-				dot.BorderSizePixel = 0
-				dot.LayoutOrder = i
-				dot.Parent = queueFrame
+				local iconFrame = Instance.new("Frame")
+				iconFrame.Name = typeName
+				iconFrame.Size = UDim2.new(0, 36, 0, 18)
+				iconFrame.BackgroundTransparency = 1
+				iconFrame.Parent = nextWaveIcons
 
-				local dotCorner = Instance.new("UICorner")
-				dotCorner.CornerRadius = UDim.new(0, 2)
-				dotCorner.Parent = dot
-			end
+				local iconLabel = Instance.new("TextLabel")
+				iconLabel.Size = UDim2.new(0, 14, 1, 0)
+				iconLabel.BackgroundTransparency = 1
+				iconLabel.Text = icon
+				iconLabel.TextColor3 = color
+				iconLabel.Font = Enum.Font.GothamBold
+				iconLabel.TextSize = 12
+				iconLabel.Parent = iconFrame
 
-			-- If more enemies, show indicator
-			if #previewList > maxDots then
-				local more = Instance.new("TextLabel")
-				more.Name = "More"
-				more.Size = UDim2.new(0, 20, 0, 16)
-				more.BackgroundTransparency = 1
-				more.Text = "+" .. (#previewList - maxDots)
-				more.TextColor3 = COLORS.subtext
-				more.Font = Enum.Font.Code
-				more.TextSize = 9
-				more.LayoutOrder = maxDots + 1
-				more.Parent = queueFrame
+				local countLabel = Instance.new("TextLabel")
+				countLabel.Size = UDim2.new(0, 20, 1, 0)
+				countLabel.Position = UDim2.new(0, 14, 0, 0)
+				countLabel.BackgroundTransparency = 1
+				countLabel.Text = "x" .. count
+				countLabel.TextColor3 = COLORS.text
+				countLabel.Font = Enum.Font.Gotham
+				countLabel.TextSize = 10
+				countLabel.TextXAlignment = Enum.TextXAlignment.Left
+				countLabel.Parent = iconFrame
 			end
 		end
 	end
 
 	function hud.updateEconomy(scrap, turretCost, botCost)
 		scrapText.Text = "SCRAP: " .. (scrap or 0)
+		local currentScrap = scrap or 0
 
-		turretCostLabel.Text = "Turret: " .. (turretCost or 100)
-		botCostLabel.Text = "Bot: " .. (botCost or 75)
+		-- Update price tags on buttons
+		local turretPrice = turretBtn:FindFirstChild("PriceTag")
+		local botPrice = botBtn:FindFirstChild("PriceTag")
 
-		-- Update button affordability visuals
-		if scrap >= turretCost then
-			turretStroke.Color = COLORS.accent
-		else
-			turretStroke.Color = COLORS.subtext
+		if turretPrice then
+			local label = turretPrice:FindFirstChild("Price")
+			if label then
+				label.Text = tostring(turretCost or 100)
+			end
 		end
 
-		if scrap >= botCost then
+		if botPrice then
+			local label = botPrice:FindFirstChild("Price")
+			if label then
+				label.Text = tostring(botCost or 75)
+			end
+		end
+
+		-- Update button affordability visuals
+		local canAffordTurret = currentScrap >= (turretCost or 100)
+		local canAffordBot = currentScrap >= (botCost or 75)
+
+		-- Turret button affordability
+		if canAffordTurret then
+			turretStroke.Color = COLORS.accent
+			turretStroke.Transparency = 0.3
+			if turretPrice then
+				local label = turretPrice:FindFirstChild("Price")
+				if label then label.TextColor3 = COLORS.success end
+			end
+		else
+			turretStroke.Color = COLORS.subtext
+			turretStroke.Transparency = 0.6
+			if turretPrice then
+				local label = turretPrice:FindFirstChild("Price")
+				if label then label.TextColor3 = COLORS.danger end
+			end
+		end
+
+		-- Bot button affordability
+		if canAffordBot then
 			botStroke.Color = COLORS.warning
+			botStroke.Transparency = 0.3
+			if botPrice then
+				local label = botPrice:FindFirstChild("Price")
+				if label then label.TextColor3 = COLORS.success end
+			end
 		else
 			botStroke.Color = COLORS.subtext
+			botStroke.Transparency = 0.6
+			if botPrice then
+				local label = botPrice:FindFirstChild("Price")
+				if label then label.TextColor3 = COLORS.danger end
+			end
 		end
 	end
 
@@ -827,7 +1225,7 @@ function HUD.create(parent, callbacks)
 	end
 
 	function hud.select(objData)
-		hud.selection = objData -- {id, type, spotId, ammo, maxAmmo, dynamicRange, status}
+		hud.selection = objData -- {id, type, spotId, ammo, maxAmmo, dynamicRange, status, tier, tierName, upgradeCost, unlockedAmmo}
 
 		if not objData then
 			inspector.Visible = false
@@ -838,19 +1236,35 @@ function HUD.create(parent, callbacks)
 
 		-- Update title and buttons based on type
 		if objData.type == "golem" then
-			inspectTitle.Text = "TURRET #" .. (objData.spotId or "?")
-			inspectTitle.TextColor3 = COLORS.accent
-			moveBtn.Visible = true
-			upgradeBtn.Visible = true
+			local tier = objData.tier or 1
+			local ramAmount = objData.maxBytecode or 64
+			inspectTitle.Text = "TURRET #" .. (objData.spotId or "?") .. " [" .. ramAmount .. " RAM]"
+			inspectTitle.TextColor3 = tier == 3 and Color3.fromRGB(255, 220, 50) or   -- Hazard Yellow for Dreadnought
+			                          tier == 2 and Color3.fromRGB(255, 150, 0) or    -- Industrial Orange for Arachnid
+			                          COLORS.accent
+
+			-- Show UPGRADE button with cost if not at max tier
+			-- Upgrades now give more RAM (bytecode limit)
+			if objData.upgradeCost then
+				upgradeBtn.Visible = true
+				upgradeBtn.Text = "UPGRADE (" .. objData.upgradeCost .. ") → " .. (ramAmount * 2) .. " RAM"
+			else
+				upgradeBtn.Visible = false  -- At max tier
+			end
+
+			-- Ammo selector removed - turrets are now fully programmable
+			ammoContainer.Visible = false
+
 		elseif objData.type == "bot" then
 			inspectTitle.Text = "BOT #" .. (objData.spotId or "?")
 			inspectTitle.TextColor3 = COLORS.warning
-			moveBtn.Visible = false
 			upgradeBtn.Visible = false  -- Bots can't be upgraded
+			ammoContainer.Visible = false  -- Bots don't have ammo types
 		else
 			inspectTitle.Text = "UNIT"
 			inspectTitle.TextColor3 = COLORS.text
 			upgradeBtn.Visible = false
+			ammoContainer.Visible = false
 		end
 
 		-- Update stats
@@ -865,8 +1279,7 @@ function HUD.create(parent, callbacks)
 
 	-- Expose elements for external updates
 	hud.inspector = inspector
-	hud.topBar = topBar
-	hud.bottomBar = bottomBar
+	hud.actionBar = actionBar
 
 	return hud
 end

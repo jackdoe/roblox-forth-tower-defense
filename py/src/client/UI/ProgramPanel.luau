@@ -37,8 +37,9 @@ local THEMES = {
 }
 
 -- Format a Python value for display
-local function formatValue(value, maxLen)
+local function formatValue(value, maxLen, depth)
 	maxLen = maxLen or 30
+	depth = depth or 0
 	local str
 
 	if value == nil then
@@ -48,17 +49,74 @@ local function formatValue(value, maxLen)
 	elseif type(value) == "string" then
 		str = '"' .. value .. '"'
 	elseif type(value) == "table" then
-		local items = {}
-		local count = 0
-		for i, v in ipairs(value) do
-			count = count + 1
-			if count > 5 then
-				table.insert(items, "...")
+		-- Check if it's an array (sequential numeric keys starting at 1)
+		local isArray = true
+		local arrayLen = 0
+		for k, _ in pairs(value) do
+			if type(k) == "number" and k == math.floor(k) and k > 0 then
+				arrayLen = math.max(arrayLen, k)
+			else
+				isArray = false
 				break
 			end
-			table.insert(items, formatValue(v, 10))
 		end
-		str = "[" .. table.concat(items, ", ") .. "]"
+		-- Also check for gaps
+		if isArray then
+			for i = 1, arrayLen do
+				if value[i] == nil then
+					isArray = false
+					break
+				end
+			end
+		end
+
+		if isArray then
+			-- Format as Python list: [item1, item2, ...]
+			local items = {}
+			local count = 0
+			for i, v in ipairs(value) do
+				count = count + 1
+				if count > 5 then
+					table.insert(items, "...")
+					break
+				end
+				-- For nested objects (like enemy), show a brief repr
+				if type(v) == "table" and depth < 2 then
+					table.insert(items, formatValue(v, 20, depth + 1))
+				else
+					table.insert(items, formatValue(v, 10, depth + 1))
+				end
+			end
+			str = "[" .. table.concat(items, ", ") .. "]"
+		else
+			-- Format as Python dict-like object: {key: val, ...}
+			-- For game objects like enemies, show a nice repr
+			if value.id and value.type and value.hp then
+				-- Enemy object: show as Enemy(type, hp/max_hp)
+				str = string.format("%s(hp=%d)", value.type or "Enemy", value.hp or 0)
+			elseif value.id and value.x and value.z then
+				-- Scrap object: show position
+				str = string.format("Scrap@(%d,%d)", math.floor(value.x or 0), math.floor(value.z or 0))
+			elseif value.id then
+				-- Generic object with ID
+				str = string.format("{id=%s}", tostring(value.id):sub(1, 8))
+			else
+				-- Generic dict
+				local items = {}
+				local count = 0
+				for k, v in pairs(value) do
+					count = count + 1
+					if count > 3 then
+						table.insert(items, "...")
+						break
+					end
+					local keyStr = tostring(k)
+					local valStr = formatValue(v, 8, depth + 1)
+					table.insert(items, keyStr .. ":" .. valStr)
+				end
+				str = "{" .. table.concat(items, ", ") .. "}"
+			end
+		end
 	else
 		str = tostring(value)
 	end

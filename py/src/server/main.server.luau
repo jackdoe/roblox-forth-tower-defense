@@ -415,9 +415,9 @@ local function onPlayerAdded(player)
 		-- TD-specific: player ammo inventory
 		interp.ammoInventory = Config.STARTING_AMMO or 100
 
-		-- Logistics: player scrap inventory
+		-- Logistics: player scrap inventory (players carry much more than bots)
 		interp.scrapInventory = 0
-		interp.maxCapacity = 50
+		interp.maxCapacity = 500
 
 		-- Set up Python game environment for player
 		local gameEnv = Python.createPlayerEnvironment(player, interp, deps)
@@ -598,14 +598,25 @@ runProgramEvent.OnServerEvent:Connect(function(player, source, interpreterTarget
 		-- Load new program and start fresh
 		local loadSuccess, loadErr, instructionCount = interp:load(source)
 		if loadSuccess then
-			-- Check instruction limit for bots (forces specialization)
+			-- Check instruction limit (RAM) - enforces specialization
+			instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
 			if interpreterTarget.type == "bot" then
-				instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
 				if instructionCount > MAX_BOT_INSTRUCTIONS then
 					interp.error = "PROGRAM TOO COMPLEX (" .. instructionCount .. "/" .. MAX_BOT_INSTRUCTIONS .. " instructions)"
 					interp.status = "ERROR"
 					sendInterpreterState(player, interpreterTarget)
 					return
+				end
+			elseif interpreterTarget.type == "golem" then
+				local golem = GolemRegistry.get(interpreterTarget.golemId)
+				if golem then
+					local maxBytecode = GolemRegistry.getMaxBytecode(golem.tier)
+					if instructionCount > maxBytecode then
+						interp.error = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions) - Upgrade for more!"
+						interp.status = "ERROR"
+						sendInterpreterState(player, interpreterTarget)
+						return
+					end
 				end
 			end
 			interp.lastProgram = source
@@ -891,6 +902,19 @@ RunService.Heartbeat:Connect(function(dt)
 				state.buildTimeRemaining = waveState.buildTimeRemaining
 				state.restartTimeRemaining = waveState.restartTimeRemaining
 				state.enemiesRemaining = waveState.enemiesRemaining
+
+				-- Add enemy minimap data (lightweight for network)
+				state.enemyMinimap = EnemyManager.getMinimapData()
+				state.pathLength = EnemyManager.getPathLength()
+
+				-- Add next wave preview (count of each enemy type)
+				local nextWavePreview = WaveManager.getWavePreview()
+				local nextWaveSummary = {}
+				for _, typeName in ipairs(nextWavePreview) do
+					nextWaveSummary[typeName] = (nextWaveSummary[typeName] or 0) + 1
+				end
+				state.nextWavePreview = nextWaveSummary
+				state.nextWaveNumber = waveState.waveNumber + 1
 
 				-- Death countdown
 				if interp.dead and interp.deathTime then
