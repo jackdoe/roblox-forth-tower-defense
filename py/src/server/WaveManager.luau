@@ -34,9 +34,8 @@ local state = {
 	corePosition = nil, -- Set from map
 	coreModel = nil,
 
-	-- Economy
-	scrap = {}, -- { [userId] = amount }
-	coreStockpile = 0, -- Scrap deposited at core by bots (turrets reload from this)
+	-- Economy (shared core scrap)
+	scrap = 0, -- Single shared scrap value for the core
 
 	-- Timing
 	buildTime = 30,     -- Seconds for build phase
@@ -165,18 +164,11 @@ function WaveManager.init(dependencies)
 		WaveManager.skipBuildPhase()
 	end)
 
-	-- Initialize scrap for existing players
-	for _, player in ipairs(Players:GetPlayers()) do
-		state.scrap[player.UserId] = deps.Config.STARTING_SCRAP or 200
-	end
+	-- Initialize core scrap
+	state.scrap = deps.Config.STARTING_SCRAP or 200
 
-	-- Handle new players
-	Players.PlayerAdded:Connect(function(player)
-		state.scrap[player.UserId] = deps.Config.STARTING_SCRAP or 200
-	end)
-
+	-- Handle player ready state cleanup
 	Players.PlayerRemoving:Connect(function(player)
-		state.scrap[player.UserId] = nil
 		state.readyPlayers[player.UserId] = nil
 	end)
 
@@ -539,12 +531,10 @@ function WaveManager.onEnemyKilled(enemyId, killerGolemId)
 
 	-- NOTE: Direct scrap awards removed!
 	-- Scrap now drops physically on the ground when enemies die.
-	-- Supply Bots collect it and deliver to turrets.
-	-- Players still get a small "assist" bonus for the kill.
+	-- Supply Bots collect it and deliver to core.
+	-- Small "assist" bonus for the kill goes to core.
 	local assistBonus = deps.Config.SCRAP_ASSIST_BONUS or 2
-	for _, player in ipairs(Players:GetPlayers()) do
-		WaveManager.addScrap(player.UserId, assistBonus)
-	end
+	WaveManager.addScrap(assistBonus)
 
 	-- Check if wave complete
 	if state.enemiesRemaining <= 0 and state.enemiesSpawned >= state.enemiesToSpawn then
@@ -571,9 +561,7 @@ function WaveManager.waveComplete()
 
 	-- Bonus scrap for completing wave (scales with NG+ level)
 	local bonusScrap = state.waveNumber * 50 * (1 + state.ngPlusLevel * 0.5)
-	for _, player in ipairs(Players:GetPlayers()) do
-		WaveManager.addScrap(player.UserId, math.floor(bonusScrap))
-	end
+	WaveManager.addScrap(math.floor(bonusScrap))
 
 	-- Infinite waves - always go to build phase
 	WaveManager.setPhase("BUILD")
@@ -583,41 +571,21 @@ end
 -- ECONOMY
 --============================================================================
 
-function WaveManager.addScrap(userId, amount)
-	state.scrap[userId] = (state.scrap[userId] or 0) + amount
+function WaveManager.addScrap(amount)
+	state.scrap = (state.scrap or 0) + amount
 end
 
-function WaveManager.removeScrap(userId, amount)
-	local current = state.scrap[userId] or 0
+function WaveManager.removeScrap(amount)
+	local current = state.scrap or 0
 	if current >= amount then
-		state.scrap[userId] = current - amount
+		state.scrap = current - amount
 		return true
 	end
 	return false
 end
 
-function WaveManager.getScrap(userId)
-	return state.scrap[userId] or 0
-end
-
--- Core stockpile functions (bots deposit here, turrets reload from here)
-function WaveManager.addCoreStockpile(amount)
-	state.coreStockpile = (state.coreStockpile or 0) + amount
-end
-
-function WaveManager.removeCoreStockpile(amount)
-	local current = state.coreStockpile or 0
-	if current >= amount then
-		state.coreStockpile = current - amount
-		return amount
-	end
-	-- Return what we could take
-	state.coreStockpile = 0
-	return current
-end
-
-function WaveManager.getCoreStockpile()
-	return state.coreStockpile or 0
+function WaveManager.getScrap()
+	return state.scrap or 0
 end
 
 --============================================================================
@@ -664,10 +632,7 @@ function WaveManager.restart()
 	state.highestGateUnlocked = 1
 
 	-- Reset scrap
-	for _, player in ipairs(Players:GetPlayers()) do
-		state.scrap[player.UserId] = deps.Config.STARTING_SCRAP or 200
-	end
-	state.coreStockpile = 0
+	state.scrap = deps.Config.STARTING_SCRAP or 200
 end
 
 --============================================================================
@@ -735,8 +700,8 @@ function WaveManager.broadcastState()
 		stateData.readyCount = stateData.readyCount + 1
 	end
 
+	stateData.scrap = state.scrap or 0
 	for _, player in ipairs(Players:GetPlayers()) do
-		stateData.scrap = state.scrap[player.UserId] or 0
 		stateData.isReady = state.readyPlayers[player.UserId] or false
 		waveStateEvent:FireClient(player, stateData)
 	end

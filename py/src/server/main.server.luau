@@ -700,7 +700,7 @@ RunService.Heartbeat:Connect(function(dt)
 				state.myPlayerId = interp.playerId
 
 				-- Add TD-specific state
-				state.scrap = WaveManager.getScrap(userId)
+				state.scrap = WaveManager.getScrap()
 				state.ammoInventory = interp.ammoInventory
 				state.scrapInventory = interp.scrapInventory or 0
 				state.maxCapacity = interp.maxCapacity or 50

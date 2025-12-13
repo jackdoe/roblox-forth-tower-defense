@@ -47,7 +47,7 @@ local BotStats = {
 	hp = 50,
 	speed = 14,
 	maxCapacity = 50, -- Can carry 50 scrap
-	pickupRange = 8,
+	pickupRange = 10, -- Range to suck up scraps
 	transferRange = 10,
 	cost = 75, -- Scrap cost to build
 }
@@ -141,11 +141,11 @@ function BotRegistry.tryBuild(player, x, z)
 
 	-- Check scrap
 	if WaveManager then
-		local scrap = WaveManager.getScrap(player.UserId)
+		local scrap = WaveManager.getScrap()
 		if scrap < BotStats.cost then
 			return false, "Not enough scrap (" .. scrap .. "/" .. BotStats.cost .. ")"
 		end
-		WaveManager.removeScrap(player.UserId, BotStats.cost)
+		WaveManager.removeScrap(BotStats.cost)
 	end
 
 	-- Create the bot
@@ -179,7 +179,7 @@ function BotRegistry.sellBot(player, botId)
 	refund = refund + carryingScrap
 
 	if WaveManager then
-		WaveManager.addScrap(player.UserId, refund)
+		WaveManager.addScrap(refund)
 	end
 
 	BotRegistry.destroy(botId)
@@ -592,10 +592,11 @@ local function executeTask(bot, dt)
 			local dz = targetZ - hrp.Position.Z
 			local dist = math.sqrt(dx * dx + dz * dz)
 
-			if dist <= (bot.pickupRange or 8) then
-				-- Close enough - try to collect nearest scrap
-				BotRegistry.collectScrap(bot.id)
-				-- Now go to core to deposit
+			-- Move close to the target position (within 2 studs)
+			if dist <= 2 then
+				-- Arrived - collect all scraps in pickup range (10 studs)
+				local collected = BotRegistry.collectScrap(bot.id)
+				-- Now go to core to deposit (even if we got nothing)
 				task.phase = "RETURN_TO_CORE"
 				bot.status = "DELIVERING"
 				return "RUNNING"
@@ -624,6 +625,7 @@ local function executeTask(bot, dt)
 
 			if dist <= (bot.transferRange or 10) then
 				-- Close enough to core - deposit
+				print("BotRegistry: Bot at core (dist=" .. math.floor(dist) .. "), depositing...")
 				BotRegistry.depositToCore(bot.id)
 				bot.status = "IDLE"
 				return "DONE"
@@ -1057,6 +1059,7 @@ function BotRegistry.moveBot(botId, x, z)
 end
 
 -- Collect scrap at bot's current position
+-- Sucks up ALL scraps in range until bot is full
 function BotRegistry.collectScrap(botId)
 	local bot = bots[botId]
 	if not bot then return 0 end
@@ -1068,33 +1071,43 @@ function BotRegistry.collectScrap(botId)
 	local ScrapManager = deps.ScrapManager
 	if not ScrapManager then return 0 end
 
-	-- Check remaining capacity
-	local currentScrap = bot.scrapInventory or 0
-	local maxCapacity = bot.maxCapacity or 50
-	local space = maxCapacity - currentScrap
-
-	if space <= 0 then
-		return 0  -- Already full
-	end
-
-	-- Find nearest scrap at current position
 	local x, z = hrp.Position.X, hrp.Position.Z
-	local scrap = ScrapManager.findNearest(x, z, bot.pickupRange or 8)
+	local pickupRange = bot.pickupRange or 8
+	local totalCollected = 0
 
-	if not scrap or not scrap.id then
-		return 0  -- No scrap nearby
+	-- Keep collecting until full or no more scrap in range
+	while true do
+		-- Check remaining capacity
+		local currentScrap = bot.scrapInventory or 0
+		local maxCapacity = bot.maxCapacity or 50
+		local space = maxCapacity - currentScrap
+
+		if space <= 0 then
+			break  -- Bot is full
+		end
+
+		-- Find nearest scrap in range
+		local scrap = ScrapManager.findNearest(x, z, pickupRange)
+		if not scrap or not scrap.id then
+			break  -- No more scrap nearby
+		end
+
+		-- Collect this scrap
+		local scrapAmount = scrap.amount or 1
+		local toCollect = math.min(scrapAmount, space)
+		bot.scrapInventory = (bot.scrapInventory or 0) + toCollect
+		totalCollected = totalCollected + toCollect
+		ScrapManager.remove(scrap.id)
 	end
 
-	-- Collect the scrap directly (bot doesn't have interpreter)
-	local scrapAmount = scrap.amount or 1
-	local toCollect = math.min(scrapAmount, space)
-	bot.scrapInventory = (bot.scrapInventory or 0) + toCollect
-	ScrapManager.remove(scrap.id)
+	if totalCollected > 0 then
+		print("BotRegistry: Bot collected " .. totalCollected .. " scrap, now carrying " .. (bot.scrapInventory or 0))
+	end
 
-	return toCollect
+	return totalCollected
 end
 
--- Deposit scrap to core stockpile
+-- Deposit scrap to core
 function BotRegistry.depositToCore(botId)
 	local bot = bots[botId]
 	if not bot then return 0 end
@@ -1102,31 +1115,10 @@ function BotRegistry.depositToCore(botId)
 	local scrapToDeposit = bot.scrapInventory or 0
 	if scrapToDeposit <= 0 then return 0 end
 
-	-- Check if bot is close enough to core
-	local character = bot.character
-	local hrp = character and character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return 0 end
-
-	local coreX, coreZ = 150, 150
-	if WaveManager and WaveManager.getCorePosition then
-		local corePos = WaveManager.getCorePosition()
-		if corePos then
-			coreX = corePos.x or 150
-			coreZ = corePos.z or 150
-		end
-	end
-
-	local dx = coreX - hrp.Position.X
-	local dz = coreZ - hrp.Position.Z
-	local dist = math.sqrt(dx * dx + dz * dz)
-
-	if dist > (bot.transferRange or 10) then
-		return 0  -- Too far from core
-	end
-
-	-- Deposit to core stockpile
-	if WaveManager and WaveManager.addCoreStockpile then
-		WaveManager.addCoreStockpile(scrapToDeposit)
+	-- Add scrap to core
+	if WaveManager then
+		WaveManager.addScrap(scrapToDeposit)
+		print("BotRegistry: Bot deposited " .. scrapToDeposit .. " scrap to core")
 	end
 	bot.scrapInventory = 0
 

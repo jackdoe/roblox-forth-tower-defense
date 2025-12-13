@@ -340,13 +340,13 @@ function GolemRegistry.tryPlaceAt(player, x, z)
 
 	-- 3. Check player has enough scrap
 	if WaveManager then
-		local scrap = WaveManager.getScrap(player.UserId)
+		local scrap = WaveManager.getScrap()
 		if scrap < GolemStats.cost then
 			return false, "Not enough scrap (" .. scrap .. "/" .. GolemStats.cost .. ")"
 		end
 
 		-- Deduct cost
-		WaveManager.removeScrap(player.UserId, GolemStats.cost)
+		WaveManager.removeScrap(GolemStats.cost)
 	end
 
 	-- 4. Create the golem
@@ -385,7 +385,7 @@ function GolemRegistry.sellGolem(player, golemId)
 
 	-- Refund scrap
 	if WaveManager then
-		WaveManager.addScrap(player.UserId, refund)
+		WaveManager.addScrap(refund)
 	end
 
 	-- Destroy the golem
