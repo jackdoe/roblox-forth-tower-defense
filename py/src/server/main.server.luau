@@ -67,13 +67,11 @@ local nextPlayerId = 1
 
 -- Default program for player (Python!)
 local DEFAULT_PLAYER_PROGRAM = [[
-# Monitor and protect your bots!
+# Control bot from player
 while True:
-    if B1.danger() < 30:
-        B1.color("red")
-        B1.flee()
-    else:
-        B1.color("blue")
+    s = B1.scraps()
+    if len(s) > 0:
+        B1.collect(s[0])
 ]]
 
 -- Track which interpreter each player is viewing

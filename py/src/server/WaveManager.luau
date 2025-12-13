@@ -36,6 +36,7 @@ local state = {
 
 	-- Economy
 	scrap = {}, -- { [userId] = amount }
+	coreStockpile = 0, -- Scrap deposited at core by bots (turrets reload from this)
 
 	-- Timing
 	buildTime = 30,     -- Seconds for build phase
@@ -599,6 +600,26 @@ function WaveManager.getScrap(userId)
 	return state.scrap[userId] or 0
 end
 
+-- Core stockpile functions (bots deposit here, turrets reload from here)
+function WaveManager.addCoreStockpile(amount)
+	state.coreStockpile = (state.coreStockpile or 0) + amount
+end
+
+function WaveManager.removeCoreStockpile(amount)
+	local current = state.coreStockpile or 0
+	if current >= amount then
+		state.coreStockpile = current - amount
+		return amount
+	end
+	-- Return what we could take
+	state.coreStockpile = 0
+	return current
+end
+
+function WaveManager.getCoreStockpile()
+	return state.coreStockpile or 0
+end
+
 --============================================================================
 -- GAME END
 --============================================================================
@@ -646,6 +667,7 @@ function WaveManager.restart()
 	for _, player in ipairs(Players:GetPlayers()) do
 		state.scrap[player.UserId] = deps.Config.STARTING_SCRAP or 200
 	end
+	state.coreStockpile = 0
 end
 
 --============================================================================

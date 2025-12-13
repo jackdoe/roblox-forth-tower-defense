@@ -378,6 +378,57 @@ local function createTurretProxy(spotId, deps, directGolem)
 		return getMethods(proxy)
 	end
 
+	-- Reload ammo from core stockpile
+	-- BLOCKING: waits until stockpile has resources, then delays based on amount
+	-- Delay formula: 1 second base + amount/50 seconds (so reload(50) = 2s, reload(200) = 5s)
+	-- Returns amount reloaded
+	proxy.reload = function(amount)
+		local golem = getGolem()
+		if not golem or not isAlive() then return 0 end
+
+		local interp = golem.interpreter
+		if not interp then return 0 end
+
+		-- Calculate how much we need
+		local needed = (interp.maxAmmo or 300) - (interp.ammo or 0)
+		if needed <= 0 then return 0 end
+
+		-- Amount to try to reload (default: fill up)
+		amount = amount or needed
+		local toReload = math.min(amount, needed)
+
+		-- Set up blocking reload state
+		-- The reload happens over time, checking stockpile each tick
+		interp.reloadPending = {
+			amount = toReload,
+			startTime = tick(),
+			-- Delay: 1 second base + amount/50 (faster for small amounts)
+			duration = 1 + (toReload / 50),
+			collected = 0,
+		}
+
+		-- Block the VM (if this is called from the golem's own environment)
+		local vm = interp.runtime and interp.runtime.vm
+		if vm and vm.block then
+			vm:block()
+		end
+
+		return toReload  -- Returns expected amount (actual collection happens over time)
+	end
+
+	-- Check reload cooldown remaining (now shows reload progress)
+	proxy.reload_cooldown = function()
+		local golem = getGolem()
+		if not golem then return 0 end
+
+		local interp = golem.interpreter
+		if not interp or not interp.reloadPending then return 0 end
+
+		local elapsed = tick() - interp.reloadPending.startTime
+		local remaining = interp.reloadPending.duration - elapsed
+		return remaining > 0 and math.ceil(remaining) or 0
+	end
+
 	return proxy
 end
 
@@ -530,20 +581,7 @@ local function createBotProxy(spotId, deps, directBot)
 		return proxy.move(0, 0)
 	end
 
-	-- Collection & Supply (all blocking - interpreter waits until task completes)
-	proxy.supply = function(target)
-		local bot = getBot()
-		-- Don't allow supply if dead
-		if not bot or not isAlive() or not BotRegistry.issueCommand then return false end
-
-		local targetSpotId = target
-		if type(target) == "table" and target.spot then
-			targetSpotId = target.spot()
-		end
-		return BotRegistry.issueCommand(bot.id, "SUPPLY", { target = targetSpotId }, true)
-	end
-
-	-- collect(pos) - Move to position [x,z] and collect nearest scrap there
+	-- collect(pos) - Move to position [x,z], collect nearest scrap, return to core to deposit
 	proxy.collect = function(pos)
 		local bot = getBot()
 		if not bot or not isAlive() then return false end
@@ -607,6 +645,18 @@ local function createBotProxy(spotId, deps, directBot)
 		return true
 	end
 
+	-- Shock attack! Must be close to enemy. Combos with ROCKET (oiled) and LASER (burning)
+	-- BLOCKING: Bot is stunned for 2 seconds after shocking.
+	-- Returns true if shock was executed, false if failed (too far, invalid enemy, etc.)
+	proxy.shock = function(enemyId)
+		local bot = getBot()
+		if not bot or not isAlive() then return false end
+		if not BotRegistry or not BotRegistry.issueCommand then return false end
+
+		-- Issue SHOCK command (blocking - waits for stun to end)
+		return BotRegistry.issueCommand(bot.id, "SHOCK", { enemyId = enemyId }, true)
+	end
+
 	proxy.distance = function(target)
 		local bot = getBot()
 		if not bot or not bot.character then return 9999 end
@@ -633,13 +683,6 @@ local function createBotProxy(spotId, deps, directBot)
 		local bot = getBot()
 		if bot then
 			showChatBubble(bot.character, message)
-		end
-	end
-
-	proxy.color = function(colorName)
-		local bot = getBot()
-		if bot then
-			applyBotColor(bot.character, colorName)
 		end
 	end
 
@@ -933,14 +976,6 @@ function GameAPI.createBotEnvironment(bot, deps)
 	env.self.say = function(message)
 		if BotRegistry and BotRegistry.setChatBubble then
 			return BotRegistry.setChatBubble(bot.id, tostring(message))
-		end
-		return false
-	end
-
-	-- self.color("red") - Changes body color
-	env.self.color = function(colorName)
-		if BotRegistry and BotRegistry.setBotColor then
-			return BotRegistry.setBotColor(bot.id, colorName)
 		end
 		return false
 	end

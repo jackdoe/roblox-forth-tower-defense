@@ -88,11 +88,13 @@ local AmmoStats = {
 
 -- Default program for new golems (Python!)
 local DEFAULT_PROGRAM = [[
-# Shoot the nearest enemy
+# Shoot nearest, reload when low
 while True:
+    if self.ammo() < 50:
+        self.reload(100)
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies))
+        self.fire(nearest(enemies), BULLET)
 ]]
 
 -- Remote events
@@ -897,6 +899,36 @@ function GolemRegistry.update(dt)
 			continue
 		end
 
+		-- RELOAD PROCESSING
+		-- If reload is pending, wait for stockpile and collect over time
+		if interp.reloadPending then
+			local reload = interp.reloadPending
+			local elapsed = tick() - reload.startTime
+
+			-- Try to pull from stockpile each tick until we have enough
+			if reload.collected < reload.amount then
+				local stillNeed = reload.amount - reload.collected
+				if WaveManager and WaveManager.removeCoreStockpile then
+					local taken = WaveManager.removeCoreStockpile(math.min(stillNeed, 10))  -- Take up to 10 per tick
+					if taken > 0 then
+						reload.collected = reload.collected + taken
+						interp.ammo = (interp.ammo or 0) + taken
+					end
+				end
+			end
+
+			-- Check if reload is complete (collected enough AND duration elapsed)
+			if reload.collected >= reload.amount and elapsed >= reload.duration then
+				interp.reloadPending = nil
+				-- Unblock the VM
+				local vm = interp.runtime and interp.runtime.vm
+				if vm and vm.unblock then
+					vm:unblock()
+				end
+			end
+			-- No timeout - reload waits forever until stockpile has resources
+		end
+
 		-- COMMAND QUEUE PROCESSING (Machinist Architecture)
 		-- Process any queued commands from Player mainframe
 		if golem.currentTask or #golem.taskQueue > 0 then
@@ -1148,9 +1180,18 @@ function GolemRegistry.fire(golemId, ammoType, skipCooldown)
 				if eHrp then
 					local eDist = (eHrp.Position - enemyHrp.Position).Magnitude
 					if eDist <= ammoStats.splashRadius then
+						-- Check shatter combo (frozen + rocket = 1.5x damage)
+						local damageToApply = finalDamage
+						if EnemyManager.checkShatterCombo then
+							damageToApply = EnemyManager.checkShatterCombo(e.id, finalDamage)
+						end
 						-- Damage falls off with distance
 						local falloff = 1 - (eDist / ammoStats.splashRadius) * 0.5
-						EnemyManager.damage(e.id, math.floor(finalDamage * falloff), golemId)
+						EnemyManager.damage(e.id, math.floor(damageToApply * falloff), golemId)
+						-- ROCKET applies "oiled" status (for shock combo)
+						if EnemyManager.applyOiled then
+							EnemyManager.applyOiled(e.id, 5)
+						end
 					end
 				end
 			end
@@ -1165,6 +1206,11 @@ function GolemRegistry.fire(golemId, ammoType, skipCooldown)
 	-- Apply slow effect for ICE/FREEZE ammo
 	if ammoStats.slowAmount and ammoStats.slowDuration then
 		EnemyManager.applySlow(interp.target, ammoStats.slowAmount, ammoStats.slowDuration)
+	end
+
+	-- LASER applies "burning" status (DoT + chain lightning combo)
+	if ammoType == 3 and EnemyManager.applyBurning then
+		EnemyManager.applyBurning(interp.target, 3, 5) -- 3 seconds, 5 damage per tick
 	end
 
 	-- Visual effect

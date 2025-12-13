@@ -30,20 +30,15 @@ local nextBotNumber = 1
 
 -- Default program for new bots (Python!)
 -- Kid-friendly with visual feedback and easy commands
+-- collect() now auto-returns to core to deposit scrap
 local DEFAULT_PROGRAM = [[
 # My helpful bot!
 self.say("Ready!")
-self.color("cyan")
 
 while True:
-    if self.is_full():
-        self.say("Delivering!")
-        self.goto(T1)
-        self.supply(T1)
-    else:
-        s = self.scraps()
-        if len(s) > 0:
-            self.collect(s[0])
+    s = self.scraps()
+    if len(s) > 0:
+        self.collect(s[0])
 ]]
 
 -- Bot stats
@@ -225,7 +220,7 @@ function BotRegistry.create(x, z)
 		isMoving = false,
 
 		-- Command Queue: Controlled by either self.program or Machinist
-		taskQueue = {},  -- { {type="SUPPLY", target=golemSpotId}, ... }
+		taskQueue = {},  -- { {type="COLLECT_AT", x=num, z=num}, ... }
 		currentTask = nil,
 		waitingForTask = false,  -- When true, interpreter yields until task completes
 
@@ -554,40 +549,7 @@ local function executeTask(bot, dt)
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return "FAILED" end
 
-	if task.type == "SUPPLY" then
-		-- Move to golem and supply
-		local spotId = task.args.target
-		local GolemRegistry = deps.GolemRegistry
-		if not GolemRegistry then return "FAILED" end
-
-		local golem = GolemRegistry.getBySpotId(spotId)
-		if not golem or not golem.character then return "FAILED" end
-
-		local golemHrp = golem.character:FindFirstChild("HumanoidRootPart")
-		if not golemHrp then return "FAILED" end
-
-		-- Calculate distance
-		local dx = golemHrp.Position.X - hrp.Position.X
-		local dz = golemHrp.Position.Z - hrp.Position.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
-
-		if dist <= (bot.transferRange or 10) then
-			-- Close enough - supply and complete
-			if (bot.scrapInventory or 0) > 0 then
-				BotRegistry.supplyGolem(bot.id, spotId)
-			end
-			bot.status = "IDLE"
-			return "DONE"
-		else
-			-- Move towards golem
-			bot.moveTargetX = golemHrp.Position.X
-			bot.moveTargetZ = golemHrp.Position.Z
-			bot.isMoving = true
-			bot.status = "SUPPLYING"
-			return "RUNNING"
-		end
-
-	elseif task.type == "COLLECT" then
+	if task.type == "COLLECT" then
 		-- Move to scrap by ID and collect (legacy)
 		local scrapId = task.args.target
 		local ScrapManager = deps.ScrapManager
@@ -617,26 +579,61 @@ local function executeTask(bot, dt)
 		end
 
 	elseif task.type == "COLLECT_AT" then
-		-- Move to position and collect nearest scrap there
-		local targetX = task.args.x
-		local targetZ = task.args.z
-		if not targetX or not targetZ then return "FAILED" end
+		-- Phase-based collection: go to scrap -> pick up -> return to core -> deposit
+		-- Phase 1: GOTO_SCRAP, Phase 2: RETURN_TO_CORE
+		task.phase = task.phase or "GOTO_SCRAP"
 
-		local dx = targetX - hrp.Position.X
-		local dz = targetZ - hrp.Position.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
+		if task.phase == "GOTO_SCRAP" then
+			local targetX = task.args.x
+			local targetZ = task.args.z
+			if not targetX or not targetZ then return "FAILED" end
 
-		if dist <= (bot.pickupRange or 8) then
-			-- Close enough - try to collect nearest scrap
-			BotRegistry.collectScrap(bot.id)
-			bot.status = "IDLE"
-			return "DONE"
-		else
-			bot.moveTargetX = targetX
-			bot.moveTargetZ = targetZ
-			bot.isMoving = true
-			bot.status = "COLLECTING"
-			return "RUNNING"
+			local dx = targetX - hrp.Position.X
+			local dz = targetZ - hrp.Position.Z
+			local dist = math.sqrt(dx * dx + dz * dz)
+
+			if dist <= (bot.pickupRange or 8) then
+				-- Close enough - try to collect nearest scrap
+				BotRegistry.collectScrap(bot.id)
+				-- Now go to core to deposit
+				task.phase = "RETURN_TO_CORE"
+				bot.status = "DELIVERING"
+				return "RUNNING"
+			else
+				bot.moveTargetX = targetX
+				bot.moveTargetZ = targetZ
+				bot.isMoving = true
+				bot.status = "COLLECTING"
+				return "RUNNING"
+			end
+
+		elseif task.phase == "RETURN_TO_CORE" then
+			-- Get core position
+			local coreX, coreZ = 150, 150
+			if WaveManager and WaveManager.getCorePosition then
+				local corePos = WaveManager.getCorePosition()
+				if corePos then
+					coreX = corePos.x or 150
+					coreZ = corePos.z or 150
+				end
+			end
+
+			local dx = coreX - hrp.Position.X
+			local dz = coreZ - hrp.Position.Z
+			local dist = math.sqrt(dx * dx + dz * dz)
+
+			if dist <= (bot.transferRange or 10) then
+				-- Close enough to core - deposit
+				BotRegistry.depositToCore(bot.id)
+				bot.status = "IDLE"
+				return "DONE"
+			else
+				bot.moveTargetX = coreX
+				bot.moveTargetZ = coreZ
+				bot.isMoving = true
+				bot.status = "DELIVERING"
+				return "RUNNING"
+			end
 		end
 
 	elseif task.type == "MOVE" then
@@ -671,6 +668,48 @@ local function executeTask(bot, dt)
 			return "DONE"
 		end
 		return "RUNNING"
+
+	elseif task.type == "SHOCK" then
+		-- Shock attack with stun duration
+		-- Phase 1: Execute shock (once)
+		-- Phase 2: Wait for stun to end
+		if not task.shockExecuted then
+			-- Execute the shock
+			local enemyId = task.args.enemyId
+			local EnemyManager = deps.EnemyManager
+			if not EnemyManager then return "FAILED" end
+
+			local enemy = EnemyManager.get(enemyId)
+			if not enemy or not enemy.character then return "FAILED" end
+
+			-- Check range
+			local enemyHrp = enemy.character:FindFirstChild("HumanoidRootPart")
+			if not enemyHrp then return "FAILED" end
+
+			local dist = (enemyHrp.Position - hrp.Position).Magnitude
+			if dist > SHOCK_RANGE then
+				return "FAILED"  -- Too far
+			end
+
+			-- Do the shock!
+			local damageDealt = EnemyManager.shock(enemyId, SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z)
+			task.damageDealt = damageDealt
+			task.shockExecuted = true
+			task.stunEndTime = tick() + SHOCK_STUN_TIME
+
+			-- Visual effect
+			BotRegistry.createBotShockEffect(bot)
+			bot.status = "SHOCKING"
+			return "RUNNING"
+		else
+			-- Wait for stun to end
+			bot.status = "STUNNED"
+			if tick() >= task.stunEndTime then
+				bot.status = "IDLE"
+				return "DONE"
+			end
+			return "RUNNING"
+		end
 	end
 
 	bot.status = "IDLE"
@@ -885,9 +924,15 @@ function BotRegistry.updateBillboard(bot)
 		elseif status == "COLLECTING" then
 			statusLabel.Text = "COLLECT"
 			statusLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-		elseif status == "SUPPLYING" then
-			statusLabel.Text = "SUPPLY"
+		elseif status == "DELIVERING" then
+			statusLabel.Text = "DELIVER"
 			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 200)
+		elseif status == "SHOCKING" then
+			statusLabel.Text = "ZAP!"
+			statusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+		elseif status == "STUNNED" then
+			statusLabel.Text = "STUNNED"
+			statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
 		elseif status == "WAITING" then
 			statusLabel.Text = "WAIT"
 			statusLabel.TextColor3 = Color3.fromRGB(200, 200, 100)
@@ -1041,7 +1086,7 @@ function BotRegistry.collectScrap(botId)
 	end
 
 	-- Collect the scrap directly (bot doesn't have interpreter)
-	local scrapAmount = scrap.value or 1
+	local scrapAmount = scrap.amount or 1
 	local toCollect = math.min(scrapAmount, space)
 	bot.scrapInventory = (bot.scrapInventory or 0) + toCollect
 	ScrapManager.remove(scrap.id)
@@ -1049,45 +1094,106 @@ function BotRegistry.collectScrap(botId)
 	return toCollect
 end
 
--- Supply scrap to golem
-function BotRegistry.supplyGolem(botId, spotId)
+-- Deposit scrap to core stockpile
+function BotRegistry.depositToCore(botId)
 	local bot = bots[botId]
 	if not bot then return 0 end
 
-	local GolemRegistry = deps.GolemRegistry
-	if not GolemRegistry then return 0 end
+	local scrapToDeposit = bot.scrapInventory or 0
+	if scrapToDeposit <= 0 then return 0 end
 
-	-- Find golem by spot ID
-	local golem = GolemRegistry.getBySpotId(spotId)
-	if not golem then return 0 end
+	-- Check if bot is close enough to core
+	local character = bot.character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return 0 end
 
-	-- Check if bot is close enough
-	local botChar = bot.character
-	local botHrp = botChar and botChar:FindFirstChild("HumanoidRootPart")
-	local golemChar = golem.character
-	local golemHrp = golemChar and golemChar:FindFirstChild("HumanoidRootPart")
+	local coreX, coreZ = 150, 150
+	if WaveManager and WaveManager.getCorePosition then
+		local corePos = WaveManager.getCorePosition()
+		if corePos then
+			coreX = corePos.x or 150
+			coreZ = corePos.z or 150
+		end
+	end
 
-	if not botHrp or not golemHrp then return 0 end
-
-	local dx = golemHrp.Position.X - botHrp.Position.X
-	local dz = golemHrp.Position.Z - botHrp.Position.Z
+	local dx = coreX - hrp.Position.X
+	local dz = coreZ - hrp.Position.Z
 	local dist = math.sqrt(dx * dx + dz * dz)
 
 	if dist > (bot.transferRange or 10) then
-		return 0  -- Too far
+		return 0  -- Too far from core
 	end
 
-	-- Transfer scrap to golem's ammo
-	local scrapToGive = bot.scrapInventory or 0
-	if scrapToGive <= 0 then return 0 end
+	-- Deposit to core stockpile
+	if WaveManager and WaveManager.addCoreStockpile then
+		WaveManager.addCoreStockpile(scrapToDeposit)
+	end
+	bot.scrapInventory = 0
 
-	-- Convert scrap to ammo (1:5 ratio)
-	local ammoToGive = scrapToGive * 5
-	local ammoAdded = GolemRegistry.refillAmmo(golem.id, ammoToGive)
-	local scrapUsed = math.ceil(ammoAdded / 5)
+	return scrapToDeposit
+end
 
-	bot.scrapInventory = (bot.scrapInventory or 0) - scrapUsed
-	return scrapUsed
+--============================================================================
+-- SHOCK ATTACK (Combo with turrets!)
+-- Constants used by SHOCK task in executeTask()
+--============================================================================
+
+local SHOCK_RANGE = 10      -- Must be close to enemy
+local SHOCK_DAMAGE = 30     -- Base damage (2x if oiled)
+local SHOCK_STUN_TIME = 2   -- Bot is stunned after shocking
+
+-- Visual effect when bot shocks
+function BotRegistry.createBotShockEffect(bot)
+	if not bot.character then return end
+	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	-- Electric sparks on bot
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Name = "ShockSparks"
+	sparks.Color = ColorSequence.new(Color3.fromRGB(100, 200, 255), Color3.fromRGB(255, 255, 100))
+	sparks.Size = NumberSequence.new(0.2, 0)
+	sparks.Lifetime = NumberRange.new(0.1, 0.2)
+	sparks.Rate = 80
+	sparks.Speed = NumberRange.new(3, 8)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Parent = hrp
+
+	-- Flash bot cyan/yellow
+	for _, part in pairs(bot.character:GetDescendants()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			local oldColor = part.Color
+			part.Color = Color3.fromRGB(100, 200, 255) -- Electric blue
+			task.delay(0.15, function()
+				if part and part.Parent then
+					part.Color = Color3.fromRGB(255, 255, 100) -- Yellow flash
+				end
+			end)
+			task.delay(0.3, function()
+				if part and part.Parent then
+					part.Color = oldColor
+				end
+			end)
+		end
+	end
+
+	-- Stop sparks after stun
+	task.delay(SHOCK_STUN_TIME, function()
+		if sparks and sparks.Parent then
+			sparks.Enabled = false
+			task.delay(0.3, function()
+				if sparks then sparks:Destroy() end
+			end)
+		end
+		if bot then bot.status = "IDLE" end
+	end)
+end
+
+-- Check if bot is stunned (called by task processor)
+function BotRegistry.isStunned(botId)
+	local bot = bots[botId]
+	if not bot then return false end
+	return bot.stunnedUntil and tick() < bot.stunnedUntil
 end
 
 --============================================================================

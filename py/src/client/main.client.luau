@@ -57,6 +57,10 @@ local botStateEvent = PythonTD:WaitForChild("BotState")
 local botBuildEvent = PythonTD:WaitForChild("BotBuild")
 local botSellEvent = PythonTD:WaitForChild("BotSell")
 
+-- Bot Mind Mode events (viewer registration)
+local botRegisterViewerEvent = PythonTD:WaitForChild("BotRegisterViewer")
+local botUnregisterViewerEvent = PythonTD:WaitForChild("BotUnregisterViewer")
+
 -- Track golem states for inspection
 local golemStates = {}
 
@@ -1514,10 +1518,6 @@ end)
 --============================================================================
 -- BOT MIND MODE HELPERS
 --============================================================================
-
--- Bot register/unregister events (same pattern as golem)
-local botRegisterViewerEvent = PythonTD:WaitForChild("BotRegisterViewer")
-local botUnregisterViewerEvent = PythonTD:WaitForChild("BotUnregisterViewer")
 
 local function enterBotMind(botId)
 	local botData = botStates[botId]

@@ -485,6 +485,299 @@ function EnemyManager.clearSlow(enemy)
 	end
 end
 
+--============================================================================
+-- STATUS EFFECT SYSTEM (Combos!)
+--============================================================================
+
+-- Apply "oiled" status (from ROCKET) - takes 2x shock damage
+function EnemyManager.applyOiled(enemyId, duration)
+	local enemy = enemies[enemyId]
+	if not enemy then return end
+
+	enemy.oiled = true
+	enemy.oiledExpires = tick() + (duration or 5)
+
+	-- Visual: Orange tint
+	if enemy.character then
+		for _, part in ipairs(enemy.character:GetDescendants()) do
+			if part:IsA("BasePart") and not part:GetAttribute("OriginalColor") then
+				part:SetAttribute("OriginalColor", part.Color:ToHex())
+			end
+			if part:IsA("BasePart") then
+				local origHex = part:GetAttribute("OriginalColor")
+				if origHex then
+					local orig = Color3.fromHex(origHex)
+					part.Color = orig:Lerp(Color3.fromRGB(255, 140, 0), 0.6) -- Orange
+				end
+			end
+		end
+	end
+end
+
+-- Apply "burning" status (from LASER) - DoT damage
+function EnemyManager.applyBurning(enemyId, duration, damagePerTick)
+	local enemy = enemies[enemyId]
+	if not enemy then return end
+
+	enemy.burning = true
+	enemy.burningExpires = tick() + (duration or 3)
+	enemy.burningDamage = damagePerTick or 5
+	enemy.burningLastTick = tick()
+
+	-- Visual: Red/orange fire tint
+	if enemy.character then
+		for _, part in ipairs(enemy.character:GetDescendants()) do
+			if part:IsA("BasePart") and not part:GetAttribute("OriginalColor") then
+				part:SetAttribute("OriginalColor", part.Color:ToHex())
+			end
+			if part:IsA("BasePart") then
+				local origHex = part:GetAttribute("OriginalColor")
+				if origHex then
+					local orig = Color3.fromHex(origHex)
+					part.Color = orig:Lerp(Color3.fromRGB(255, 80, 20), 0.5) -- Fire red
+				end
+			end
+		end
+
+		-- Add fire particles
+		local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
+		if hrp and not hrp:FindFirstChild("FireEffect") then
+			local fire = Instance.new("ParticleEmitter")
+			fire.Name = "FireEffect"
+			fire.Color = ColorSequence.new(Color3.fromRGB(255, 150, 0), Color3.fromRGB(255, 50, 0))
+			fire.Size = NumberSequence.new(0.5, 0)
+			fire.Lifetime = NumberRange.new(0.3, 0.6)
+			fire.Rate = 30
+			fire.Speed = NumberRange.new(2, 4)
+			fire.SpreadAngle = Vector2.new(30, 30)
+			fire.Parent = hrp
+		end
+	end
+end
+
+-- Shock an enemy (from Bot) - bonus damage if oiled, chain if burning
+function EnemyManager.shock(enemyId, baseDamage, sourceX, sourceZ)
+	local enemy = enemies[enemyId]
+	if not enemy then return 0 end
+
+	baseDamage = baseDamage or 30
+	local totalDamage = baseDamage
+
+	-- Combo: Oiled + Shock = 2x damage explosion!
+	if enemy.oiled then
+		totalDamage = baseDamage * 2
+		enemy.oiled = nil
+		enemy.oiledExpires = nil
+		-- Explosion visual
+		EnemyManager.createShockExplosion(enemy)
+	end
+
+	-- Combo: Burning + Shock = chain lightning to nearby enemies
+	if enemy.burning then
+		enemy.burning = nil
+		enemy.burningExpires = nil
+		-- Remove fire particles
+		if enemy.character then
+			local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local fire = hrp:FindFirstChild("FireEffect")
+				if fire then fire:Destroy() end
+			end
+		end
+		-- Chain to nearby enemies
+		EnemyManager.chainLightning(enemyId, baseDamage * 0.5, sourceX, sourceZ)
+	end
+
+	-- Apply damage
+	EnemyManager.damage(enemyId, totalDamage)
+
+	-- Electric spark visual on enemy
+	EnemyManager.createShockSparks(enemy)
+
+	return totalDamage
+end
+
+-- Shatter combo: Frozen + ROCKET = bonus damage
+function EnemyManager.checkShatterCombo(enemyId, rocketDamage)
+	local enemy = enemies[enemyId]
+	if not enemy then return rocketDamage end
+
+	-- If frozen (slowed by ICE), shatter for 1.5x damage
+	if enemy.slowAmount and enemy.slowAmount >= 0.5 then
+		-- Clear the freeze
+		EnemyManager.clearSlow(enemy)
+		-- Shatter visual
+		EnemyManager.createShatterEffect(enemy)
+		return rocketDamage * 1.5
+	end
+
+	return rocketDamage
+end
+
+-- Visual: Shock explosion (oiled combo)
+function EnemyManager.createShockExplosion(enemy)
+	if not enemy.character then return end
+	local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	-- Bright flash sphere
+	local explosion = Instance.new("Part")
+	explosion.Shape = Enum.PartType.Ball
+	explosion.Size = Vector3.new(1, 1, 1)
+	explosion.Position = hrp.Position
+	explosion.Anchored = true
+	explosion.CanCollide = false
+	explosion.Material = Enum.Material.Neon
+	explosion.Color = Color3.fromRGB(255, 200, 50) -- Yellow/orange
+	explosion.Transparency = 0.3
+	explosion.Parent = workspace
+
+	-- Expand and fade
+	task.spawn(function()
+		for i = 1, 15 do
+			explosion.Size = Vector3.new(i * 1.5, i * 1.5, i * 1.5)
+			explosion.Transparency = 0.3 + (i / 15) * 0.7
+			task.wait(0.02)
+		end
+		explosion:Destroy()
+	end)
+end
+
+-- Visual: Electric sparks
+function EnemyManager.createShockSparks(enemy)
+	if not enemy.character then return end
+	local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	-- Brief electric particle burst
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Color = ColorSequence.new(Color3.fromRGB(100, 200, 255), Color3.fromRGB(255, 255, 100))
+	sparks.Size = NumberSequence.new(0.3, 0)
+	sparks.Lifetime = NumberRange.new(0.1, 0.3)
+	sparks.Rate = 100
+	sparks.Speed = NumberRange.new(5, 15)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Parent = hrp
+
+	task.delay(0.2, function()
+		sparks.Enabled = false
+		task.delay(0.3, function() sparks:Destroy() end)
+	end)
+end
+
+-- Visual: Shatter effect (frozen + rocket)
+function EnemyManager.createShatterEffect(enemy)
+	if not enemy.character then return end
+	local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	-- Ice shards burst
+	for i = 1, 8 do
+		local shard = Instance.new("Part")
+		shard.Size = Vector3.new(0.3, 0.6, 0.2)
+		shard.Position = hrp.Position
+		shard.Anchored = false
+		shard.CanCollide = false
+		shard.Material = Enum.Material.Ice
+		shard.Color = Color3.fromRGB(150, 220, 255)
+		shard.Transparency = 0.3
+		shard.Parent = workspace
+
+		-- Random velocity outward
+		local angle = (i / 8) * math.pi * 2
+		local vel = Instance.new("BodyVelocity")
+		vel.Velocity = Vector3.new(math.cos(angle) * 20, 10, math.sin(angle) * 20)
+		vel.MaxForce = Vector3.new(10000, 10000, 10000)
+		vel.Parent = shard
+
+		task.delay(0.5, function()
+			shard:Destroy()
+		end)
+	end
+end
+
+-- Chain lightning (burning + shock combo)
+function EnemyManager.chainLightning(sourceEnemyId, chainDamage, sourceX, sourceZ)
+	local sourceEnemy = enemies[sourceEnemyId]
+	if not sourceEnemy or not sourceEnemy.character then return end
+
+	local sourceHrp = sourceEnemy.character:FindFirstChild("HumanoidRootPart")
+	if not sourceHrp then return end
+
+	-- Find up to 3 nearby enemies to chain to
+	local nearbyEnemies = EnemyManager.findInRange(sourceHrp.Position.X, sourceHrp.Position.Z, 15)
+	local chainCount = 0
+
+	for _, nearbyEnemy in ipairs(nearbyEnemies) do
+		if nearbyEnemy.id ~= sourceEnemyId and chainCount < 3 then
+			-- Draw lightning bolt visual
+			EnemyManager.createLightningBolt(sourceHrp.Position, nearbyEnemy.character)
+			-- Apply chain damage
+			EnemyManager.damage(nearbyEnemy.id, chainDamage)
+			EnemyManager.createShockSparks(nearbyEnemy)
+			chainCount = chainCount + 1
+		end
+	end
+end
+
+-- Visual: Lightning bolt between two points
+function EnemyManager.createLightningBolt(startPos, targetChar)
+	if not targetChar then return end
+	local targetHrp = targetChar:FindFirstChild("HumanoidRootPart")
+	if not targetHrp then return end
+
+	local endPos = targetHrp.Position
+
+	-- Simple beam effect
+	local beam = Instance.new("Part")
+	beam.Anchored = true
+	beam.CanCollide = false
+	beam.Material = Enum.Material.Neon
+	beam.Color = Color3.fromRGB(100, 200, 255)
+
+	local distance = (endPos - startPos).Magnitude
+	beam.Size = Vector3.new(0.2, 0.2, distance)
+	beam.CFrame = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -distance / 2)
+	beam.Parent = workspace
+
+	task.delay(0.15, function()
+		beam:Destroy()
+	end)
+end
+
+-- Clear status effects (called in update loop)
+function EnemyManager.updateStatusEffects(enemy)
+	local now = tick()
+
+	-- Clear expired oiled
+	if enemy.oiledExpires and now > enemy.oiledExpires then
+		enemy.oiled = nil
+		enemy.oiledExpires = nil
+		-- Restore color handled by next tint or clearSlow
+	end
+
+	-- Process burning DoT
+	if enemy.burning then
+		if enemy.burningExpires and now > enemy.burningExpires then
+			enemy.burning = nil
+			enemy.burningExpires = nil
+			enemy.burningDamage = nil
+			-- Remove fire particles
+			if enemy.character then
+				local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local fire = hrp:FindFirstChild("FireEffect")
+					if fire then fire:Destroy() end
+				end
+			end
+		elseif enemy.burningLastTick and now - enemy.burningLastTick >= 0.5 then
+			-- Tick damage every 0.5s
+			enemy.burningLastTick = now
+			EnemyManager.damage(enemy.id, enemy.burningDamage or 5)
+		end
+	end
+end
+
 function EnemyManager.kill(enemyId, killerGolemId)
 	local enemy = enemies[enemyId]
 	if not enemy then return end
@@ -674,6 +967,9 @@ function EnemyManager.update(dt)
 		if enemy.slowExpires and tick() > enemy.slowExpires then
 			EnemyManager.clearSlow(enemy)
 		end
+
+		-- Process status effects (oiled, burning DoT, etc.)
+		EnemyManager.updateStatusEffects(enemy)
 
 		-- Calculate effective speed (apply slow if active)
 		local effectiveSpeed = enemy.speed
