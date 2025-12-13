@@ -84,19 +84,7 @@ return {
 		golemBaseCost = 100,
 	},
 
-	-- Starting turrets (more can be built with scrap)
-	initialGolems = {
-		{ x = 70,  z = 140, unlockWave = 1 }, -- #1
-		{ x = 70,  z = 160, unlockWave = 1 }, -- #2
-	},
-
-	-- 4 bots per player (all from wave 1)
-	initialBots = {
-		{ x = 145, z = 145, unlockWave = 1 }, -- #1
-		{ x = 155, z = 145, unlockWave = 1 }, -- #2
-		{ x = 145, z = 155, unlockWave = 1 }, -- #3
-		{ x = 155, z = 155, unlockWave = 1 }, -- #4
-	},
+	-- No auto-spawned units - players build everything themselves
 
 	-- Help tokens for teaching (adjusted for larger map)
 	helpTokens = {
@@ -154,7 +142,7 @@ AMMO?   ( -- n )  Check ammo left
 YOU can be programmed too!
 
 MACHINES ( -- n )  How many golems?
-STATUS ( id -- ammo hp ) Check golem
+STATUS ( id -- ammo ) Check golem
 TELEPORT ( id -- ) Warp to golem
 REFILL ( -- ) Give ammo to nearby golem
 

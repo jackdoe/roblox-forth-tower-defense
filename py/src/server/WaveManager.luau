@@ -52,12 +52,11 @@ local state = {
 	-- Ready system (for lobby)
 	readyPlayers = {},
 
-	-- New Game+ tracking
-	ngPlusLevel = 0, -- Each level doubles enemy HP
-	highestGateUnlocked = 1,
-
 	-- Restart countdown
 	restartTimeRemaining = 0,
+
+	-- Current wave composition (for preview)
+	currentWaveComposition = {},
 }
 
 -- Remote events
@@ -66,123 +65,83 @@ local playerReadyEvent = nil
 local skipBuildEvent = nil
 local waveStateEvent = nil
 
--- Wave definitions - each wave unlocks a new gate
--- Waves 1-8 progressively unlock all 8 gates
--- After wave 8, enemies get NG+ scaling (double HP) and waves loop
-local WaveDefinitions = {
-	[1] = { -- Gate 1 only (North)
-		{ type = "Zombie", count = 6, gate = 1, interval = 2.5 },
-	},
-	[2] = { -- Gate 2 unlocks (South)
-		{ type = "Zombie", count = 8, gate = 1, interval = 2 },
-		{ type = "Zombie", count = 5, gate = 2, interval = 2.5 },
-	},
-	[3] = { -- Gate 3 unlocks (West) + 2FIRE unlocked!
-		{ type = "Zombie", count = 10, gate = 1, interval = 1.8 },
-		{ type = "Runner", count = 6,  gate = 2, interval = 2 },
-		{ type = "Zombie", count = 5,  gate = 3, interval = 2.5 },
-	},
-	[4] = { -- Gate 4 unlocks (East)
-		{ type = "Zombie", count = 12, gate = 1, interval = 1.5 },
-		{ type = "Runner", count = 8,  gate = 2, interval = 1.5 },
-		{ type = "Tank",   count = 2,  gate = 3, interval = 4 },
-		{ type = "Zombie", count = 6,  gate = 4, interval = 2 },
-	},
-	[5] = { -- Gate 5 unlocks (NorthWest diagonal) + First Boss!
-		{ type = "Tank",   count = 4,  gate = 1, interval = 4 },
-		{ type = "Zombie", count = 15, gate = 2, interval = 1 },
-		{ type = "Runner", count = 10, gate = 3, interval = 1 },
-		{ type = "Zombie", count = 8,  gate = 4, interval = 1.5 },
-		{ type = "Runner", count = 5,  gate = 5, interval = 2 },
-		{ type = "Boss",   count = 1,  gate = 1, interval = 1 },
-	},
-	[6] = { -- Gate 6 unlocks (NorthEast diagonal) + 3FIRE unlocked!
-		{ type = "Zombie", count = 15, gate = 1, interval = 0.8 },
-		{ type = "Runner", count = 12, gate = 2, interval = 0.8 },
-		{ type = "Tank",   count = 5,  gate = 3, interval = 3 },
-		{ type = "Zombie", count = 10, gate = 4, interval = 1 },
-		{ type = "Runner", count = 8,  gate = 5, interval = 1.5 },
-		{ type = "Zombie", count = 6,  gate = 6, interval = 2 },
-		{ type = "Boss",   count = 1,  gate = 2, interval = 1 },
-	},
-	[7] = { -- Gate 7 unlocks (SouthWest diagonal) - Double Boss!
-		{ type = "Tank",   count = 6,  gate = 1, interval = 3 },
-		{ type = "Runner", count = 15, gate = 2, interval = 0.6 },
-		{ type = "Zombie", count = 12, gate = 3, interval = 1 },
-		{ type = "Tank",   count = 3,  gate = 4, interval = 4 },
-		{ type = "Zombie", count = 10, gate = 5, interval = 1.2 },
-		{ type = "Runner", count = 8,  gate = 6, interval = 1.5 },
-		{ type = "Zombie", count = 6,  gate = 7, interval = 2 },
-		{ type = "Boss",   count = 1,  gate = 1, interval = 1 },
-		{ type = "Boss",   count = 1,  gate = 3, interval = 1 },
-	},
-	[8] = { -- Gate 8 unlocks (SouthEast diagonal) - ALL GATES OPEN! Triple Boss!
-		{ type = "Zombie", count = 15, gate = 1, interval = 0.8 },
-		{ type = "Runner", count = 12, gate = 2, interval = 0.8 },
-		{ type = "Tank",   count = 5,  gate = 3, interval = 2.5 },
-		{ type = "Zombie", count = 10, gate = 4, interval = 1 },
-		{ type = "Runner", count = 10, gate = 5, interval = 1 },
-		{ type = "Tank",   count = 3,  gate = 6, interval = 3 },
-		{ type = "Zombie", count = 8,  gate = 7, interval = 1.2 },
-		{ type = "Runner", count = 6,  gate = 8, interval = 1.5 },
-		{ type = "Boss",   count = 1,  gate = 1, interval = 1 },
-		{ type = "Boss",   count = 1,  gate = 4, interval = 1 },
-		{ type = "Boss",   count = 1,  gate = 7, interval = 1 },
-	},
-}
+-- Enemy types for procedural generation
+local ENEMY_TYPES = {"Zombie", "Runner", "Tank"}
 
 
 --============================================================================
--- WAVE PREVIEW
+-- PROCEDURAL WAVE GENERATION
 --============================================================================
 
--- Generate preview string for next wave
--- Legend: . = Zombie, - = Runner, * = Tank, B = Boss
+-- Generate a random wave composition based on wave number
+-- Higher waves = more enemies, more bosses (up to 5), faster spawns
+function WaveManager.generateWave(waveNum)
+	local composition = {}
+
+	-- Base enemy count scales with wave (10 + wave * 3)
+	local baseCount = 10 + waveNum * 3
+	-- Add some randomness (+/- 20%)
+	local enemyCount = math.floor(baseCount * (0.8 + math.random() * 0.4))
+
+	-- Spawn interval gets faster with waves (starts 2s, min 0.5s)
+	local interval = math.max(0.5, 2 - waveNum * 0.1)
+
+	-- Generate random enemies (Zombie, Runner, Tank)
+	-- Higher waves unlock more enemy types
+	local availableTypes = {"Zombie"}
+	if waveNum >= 2 then table.insert(availableTypes, "Runner") end
+	if waveNum >= 4 then table.insert(availableTypes, "Tank") end
+
+	for i = 1, enemyCount do
+		local enemyType = availableTypes[math.random(#availableTypes)]
+		table.insert(composition, {
+			type = enemyType,
+			delay = (i - 1) * interval + math.random() * 0.2,
+		})
+	end
+
+	-- Boss count: higher waves = more chance for multiple bosses
+	-- Wave 1-2: 1 boss, Wave 3-5: 1-2, Wave 6-8: 1-3, Wave 9+: 1-5
+	local maxBosses = math.min(5, math.floor(waveNum / 2) + 1)
+	-- Probability increases with wave number
+	local bossCount = 1
+	for i = 2, maxBosses do
+		-- Each additional boss has (wave * 5)% chance
+		if math.random(100) < waveNum * 5 then
+			bossCount = bossCount + 1
+		end
+	end
+
+	-- Add bosses at the end (last boss is always last enemy)
+	local lastDelay = #composition > 0 and composition[#composition].delay or 0
+	for i = 1, bossCount do
+		table.insert(composition, {
+			type = "Boss",
+			delay = lastDelay + 2 + (i - 1) * 3, -- Bosses spawn after regular enemies, 3s apart
+		})
+	end
+
+	-- Store for preview
+	state.currentWaveComposition = composition
+
+	return composition
+end
+
+-- Get preview list for HUD (returns array of enemy type strings in spawn order)
 function WaveManager.getWavePreview()
+	-- Generate next wave if not cached
 	local nextWave = state.waveNumber + 1
-	local effectiveWave = nextWave
-	if nextWave > 8 then
-		effectiveWave = ((nextWave - 1) % 8) + 1
+	if #state.currentWaveComposition == 0 then
+		WaveManager.generateWave(nextWave)
 	end
 
-	local waveDef = WaveDefinitions[effectiveWave]
-	if not waveDef then
-		waveDef = WaveManager.generateProceduralWave(effectiveWave)
+	-- Return first 20 enemies as type names
+	local previewList = {}
+	for i = 1, math.min(#state.currentWaveComposition, 20) do
+		table.insert(previewList, state.currentWaveComposition[i].type)
 	end
 
-	-- Build preview string
-	local preview = ""
-	local symbols = {
-		Zombie = ".",
-		Runner = "-",
-		Tank = "*",
-		Boss = "B",
-	}
-
-	-- Flatten all groups into a single list ordered by spawn time
-	local allSpawns = {}
-	for _, group in ipairs(waveDef) do
-		for i = 1, group.count do
-			table.insert(allSpawns, {
-				type = group.type,
-				delay = (i - 1) * group.interval,
-			})
-		end
-	end
-
-	-- Sort by delay
-	table.sort(allSpawns, function(a, b) return a.delay < b.delay end)
-
-	-- Build preview (limit to 30 chars for display)
-	for i, spawn in ipairs(allSpawns) do
-		if i > 30 then
-			preview = preview .. "..."
-			break
-		end
-		preview = preview .. (symbols[spawn.type] or "?")
-	end
-
-	return preview
+	return previewList
 end
 
 --============================================================================
@@ -225,6 +184,9 @@ function WaveManager.init(dependencies)
 	Players.PlayerRemoving:Connect(function(player)
 		state.readyPlayers[player.UserId] = nil
 	end)
+
+	-- Pre-generate first wave preview for lobby
+	WaveManager.generateWave(1)
 
 	print("WaveManager: Initialized")
 end
@@ -519,65 +481,38 @@ function WaveManager.startWave()
 	local playerCount = #Players:GetPlayers()
 	local playerMultiplier = 1 + (playerCount - 1) * 0.5 -- +50% enemies per extra player
 
-	-- Check for NG+ transition (after wave 8, loop back with scaled HP)
-	local effectiveWave = state.waveNumber
-	if state.waveNumber > 8 then
-		-- Calculate NG+ level (each 8 waves = +1 NG+ level)
-		state.ngPlusLevel = math.floor((state.waveNumber - 1) / 8)
-		effectiveWave = ((state.waveNumber - 1) % 8) + 1
-
-		-- Set NG+ multiplier - more aggressive scaling!
-		-- Base: 2x per NG+ level, plus 10% per wave within the cycle
-		local baseMultiplier = math.pow(2, state.ngPlusLevel)
-		local waveBonus = 1 + (effectiveWave - 1) * 0.15 -- +15% per wave in cycle
-		local ngMultiplier = baseMultiplier * waveBonus
-		if EnemyManager then
-			EnemyManager.setNewGamePlusMultiplier(ngMultiplier)
-		end
-
-		print("WaveManager: NG+" .. state.ngPlusLevel .. " - Wave", state.waveNumber, "(effective wave",
-			effectiveWave .. ", multiplier: " .. string.format("%.1fx", ngMultiplier) .. ", " .. playerCount .. " players)")
-	else
-		-- Even in first cycle, add slight scaling per wave
-		local earlyMultiplier = 1 + (state.waveNumber - 1) * 0.1 -- +10% per wave
-		if EnemyManager then
-			EnemyManager.setNewGamePlusMultiplier(earlyMultiplier)
-		end
-		print("WaveManager: Starting wave", state.waveNumber, "with", playerCount, "players")
-	end
-
-	-- Update gate unlock (waves 1-8 each unlock a gate)
-	if effectiveWave > state.highestGateUnlocked then
-		state.highestGateUnlocked = effectiveWave
-		print("WaveManager: Gate", effectiveWave, "unlocked!")
-	end
-
-	-- Tell EnemyManager what wave we're on (for scaling)
+	-- Simple linear scaling for enemy stats (+10% per wave)
+	local waveMultiplier = 1 + (state.waveNumber - 1) * 0.1
 	if EnemyManager then
+		EnemyManager.setNewGamePlusMultiplier(waveMultiplier)
 		EnemyManager.setWave(state.waveNumber)
 	end
 
-	-- Get wave definition (use effective wave for NG+ looping)
-	local waveDef = WaveDefinitions[effectiveWave]
-	if not waveDef then
-		-- Generate procedural wave if no definition
-		waveDef = WaveManager.generateProceduralWave(effectiveWave)
+	print("WaveManager: Starting wave", state.waveNumber, "with", playerCount, "players, multiplier:", string.format("%.1fx", waveMultiplier))
+
+	-- Use pre-generated wave composition (or generate if not cached)
+	local waveComposition = state.currentWaveComposition
+	if #waveComposition == 0 then
+		waveComposition = WaveManager.generateWave(state.waveNumber)
 	end
 
-	-- Build spawn queue (scaled by player count)
+	-- Build spawn queue from composition (all enemies spawn from gate 1)
 	state.spawnQueue = {}
 	state.enemiesToSpawn = 0
 	state.enemiesSpawned = 0
 	state.enemiesRemaining = 0
 
-	for _, group in ipairs(waveDef) do
-		-- Scale enemy count based on player count
-		local scaledCount = math.ceil(group.count * playerMultiplier)
-		for i = 1, scaledCount do
+	for _, enemy in ipairs(waveComposition) do
+		-- Scale count for multiplayer (but bosses always spawn as-is)
+		local count = 1
+		if enemy.type ~= "Boss" then
+			count = math.ceil(playerMultiplier)
+		end
+		for i = 1, count do
 			table.insert(state.spawnQueue, {
-				type = group.type,
-				gate = group.gate,
-				delay = (i - 1) * group.interval,
+				type = enemy.type,
+				gate = 1, -- Single gate only
+				delay = enemy.delay + (i - 1) * 0.3, -- Slight offset for extra spawns
 			})
 			state.enemiesToSpawn = state.enemiesToSpawn + 1
 		end
@@ -588,16 +523,9 @@ function WaveManager.startWave()
 
 	state.waveStartTime = tick()
 	state.enemiesRemaining = state.enemiesToSpawn
-end
 
-function WaveManager.generateProceduralWave(waveNum)
-	-- Fallback for waves beyond definitions
-	local baseCount = 10 + waveNum * 5
-	return {
-		{ type = "Zombie", count = baseCount,                   gate = 1, interval = 1 },
-		{ type = "Runner", count = math.floor(baseCount * 0.5), gate = 2, interval = 0.8 },
-		{ type = "Tank",   count = math.floor(waveNum / 2),     gate = 3, interval = 3 },
-	}
+	-- Clear composition for next wave generation
+	state.currentWaveComposition = {}
 end
 
 function WaveManager.onEnemyKilled(enemyId, killerGolemId)
@@ -633,9 +561,12 @@ function WaveManager.waveComplete()
 		deps.BotRegistry.killTemporaryBots()
 	end
 
-	-- Bonus scrap for completing wave (scales with NG+ level)
-	local bonusScrap = state.waveNumber * 50 * (1 + state.ngPlusLevel * 0.5)
-	WaveManager.addScrap(math.floor(bonusScrap))
+	-- Bonus scrap for completing wave (50 * wave number)
+	local bonusScrap = state.waveNumber * 50
+	WaveManager.addScrap(bonusScrap)
+
+	-- Pre-generate next wave composition for preview
+	WaveManager.generateWave(state.waveNumber + 1)
 
 	-- Infinite waves - always go to build phase
 	WaveManager.setPhase("BUILD")
@@ -702,11 +633,13 @@ function WaveManager.restart()
 	state.spawnQueue = {}
 	state.enemiesRemaining = 0
 	state.enemiesSpawned = 0
-	state.ngPlusLevel = 0
-	state.highestGateUnlocked = 1
+	state.currentWaveComposition = {}
 
 	-- Reset scrap
 	state.scrap = deps.Config.STARTING_SCRAP or 200
+
+	-- Pre-generate first wave preview
+	WaveManager.generateWave(1)
 
 	-- Reset core visual
 	WaveManager.resetCoreVisual()
@@ -768,7 +701,6 @@ function WaveManager.broadcastState()
 	local stateData = {
 		phase = state.phase,
 		waveNumber = state.waveNumber,
-		totalWaves = 0, -- Infinite waves
 		coreHp = state.coreHp,
 		coreMaxHp = state.coreMaxHp,
 		buildTimeRemaining = state.buildTimeRemaining,
@@ -776,8 +708,6 @@ function WaveManager.broadcastState()
 		enemiesRemaining = state.enemiesRemaining,
 		readyCount = 0,
 		totalPlayers = #Players:GetPlayers(),
-		ngPlusLevel = state.ngPlusLevel,
-		highestGateUnlocked = state.highestGateUnlocked,
 		wavePreview = WaveManager.getWavePreview(), -- Preview of next wave
 	}
 

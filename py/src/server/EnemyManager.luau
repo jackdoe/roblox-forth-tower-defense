@@ -306,6 +306,9 @@ function EnemyManager.spawn(typeName, gateIndex, dependencies)
 
 	enemies[id] = enemy
 
+	-- Set attribute for client click detection
+	character:SetAttribute("EnemyId", id)
+
 	-- Register with EntityRegistry for targeting
 	if deps.EntityRegistry then
 		deps.EntityRegistry.register({
@@ -931,7 +934,6 @@ function EnemyManager.update(dt)
 
 		local myX, myZ = hrp.Position.X, hrp.Position.Z
 		local targetX, targetZ = corePos.x, corePos.z
-		local isAttackingBot = false
 
 		-- WAYPOINT PATHFINDING: Follow the path instead of beelining to core
 		if #enemyPath > 0 and enemy.currentWaypoint then
@@ -959,35 +961,16 @@ function EnemyManager.update(dt)
 			end
 		end
 
-		-- HUNTER LOGIC: Target bots instead of core (overrides waypoints)
-		if enemy.isHunter and BotRegistry then
-			local bot, botDist = BotRegistry.findNearest(myX, myZ, 40)
-
-			if bot and bot.character and not bot.shieldActive then
-				local botHrp = bot.character:FindFirstChild("HumanoidRootPart")
-				if botHrp then
-					targetX = botHrp.Position.X
-					targetZ = botHrp.Position.Z
-
-					-- Attack bot if close enough
-					if botDist < 4 then
-						isAttackingBot = true
-						if tick() - enemy.lastAttackTime > enemy.attackCooldown then
-							BotRegistry.damage(bot.id, enemy.damage)
-							enemy.lastAttackTime = tick()
-						end
-					end
-				end
-			end
-		end
-
-		-- Calculate direction to target
+		-- Calculate direction to target (current waypoint or core)
 		local dx = targetX - myX
 		local dz = targetZ - myZ
 		local distSq = dx * dx + dz * dz  -- Squared distance (no sqrt!)
 
-		-- Check if reached Core (only if not attacking a bot)
-		if not isAttackingBot and distSq < CORE_REACH_DIST_SQ then
+		-- Check if reached Core (only when past all waypoints)
+		local coreDx = corePos.x - myX
+		local coreDz = corePos.z - myZ
+		local coreDistSq = coreDx * coreDx + coreDz * coreDz
+		if coreDistSq < CORE_REACH_DIST_SQ then
 			-- Deal damage to Core
 			WaveManager.damageCore(enemy.damage, id)
 			WaveManager.onEnemyReachedCore(id)

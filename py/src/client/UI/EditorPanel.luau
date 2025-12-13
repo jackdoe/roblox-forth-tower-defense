@@ -70,11 +70,11 @@ function EditorPanel.create(parent, callbacks)
 	-- Track current mode for filtering examples
 	local currentMode = "player" -- "player", "golem", or "bot"
 
-	-- Main frame
+	-- Main frame (compact: ~6 lines of code visible, aligned with debugger below)
 	local frame = Instance.new("Frame")
 	frame.Name = "EditorPanel"
-	frame.Size = UDim2.new(0, 480, 0, 260)  -- Taller to fit suggestion bar
-	frame.Position = UDim2.new(0.5, -240, 1, -270)
+	frame.Size = UDim2.new(0, 340, 0, 150)  -- Same width as debugger (340px)
+	frame.Position = UDim2.new(1, -350, 1, -518)  -- Above debugger: -360 - 150 - 8 gap = -518
 	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 	frame.BorderSizePixel = 0
 	frame.Parent = parent
@@ -83,10 +83,21 @@ function EditorPanel.create(parent, callbacks)
 	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = frame
 
-	-- Top bar
+	-- Make frame consume/sink mouse clicks to prevent them from propagating
+	-- This prevents clicking on the IDE border from deselecting units
+	local inputSink = Instance.new("TextButton")
+	inputSink.Name = "InputSink"
+	inputSink.Size = UDim2.new(1, 0, 1, 0)
+	inputSink.Position = UDim2.new(0, 0, 0, 0)
+	inputSink.BackgroundTransparency = 1
+	inputSink.Text = ""
+	inputSink.ZIndex = 0  -- Behind all other elements
+	inputSink.Parent = frame
+
+	-- Top bar (compact)
 	local topBar = Instance.new("Frame")
 	topBar.Name = "TopBar"
-	topBar.Size = UDim2.new(1, 0, 0, 35)
+	topBar.Size = UDim2.new(1, 0, 0, 32)
 	topBar.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 	topBar.BorderSizePixel = 0
 	topBar.Parent = frame
@@ -119,13 +130,13 @@ function EditorPanel.create(parent, callbacks)
 	-- Exit golem button (hidden by default)
 	local exitGolemBtn = Instance.new("TextButton")
 	exitGolemBtn.Name = "ExitGolemBtn"
-	exitGolemBtn.Size = UDim2.new(0, 80, 0, 26)
-	exitGolemBtn.Position = UDim2.new(0, 295, 0, 4)
+	exitGolemBtn.Size = UDim2.new(0, 50, 0, 22)
+	exitGolemBtn.Position = UDim2.new(1, -55, 0, 5)  -- Right-aligned
 	exitGolemBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 40)
-	exitGolemBtn.Text = "EXIT (ESC)"
+	exitGolemBtn.Text = "EXIT"
 	exitGolemBtn.TextColor3 = Color3.fromRGB(255, 180, 120)
 	exitGolemBtn.Font = Enum.Font.GothamBold
-	exitGolemBtn.TextSize = 10
+	exitGolemBtn.TextSize = 9
 	exitGolemBtn.Visible = false
 	exitGolemBtn.Parent = topBar
 
@@ -139,62 +150,18 @@ function EditorPanel.create(parent, callbacks)
 		end
 	end)
 
-	-- Sell golem button (hidden by default)
-	local sellGolemBtn = Instance.new("TextButton")
-	sellGolemBtn.Name = "SellGolemBtn"
-	sellGolemBtn.Size = UDim2.new(0, 50, 0, 26)
-	sellGolemBtn.Position = UDim2.new(0, 380, 0, 4)
-	sellGolemBtn.BackgroundColor3 = Color3.fromRGB(150, 60, 60)
-	sellGolemBtn.Text = "SELL"
-	sellGolemBtn.TextColor3 = Color3.fromRGB(255, 200, 200)
-	sellGolemBtn.Font = Enum.Font.GothamBold
-	sellGolemBtn.TextSize = 10
-	sellGolemBtn.Visible = false
-	sellGolemBtn.Parent = topBar
+	-- SELL and MOVE buttons removed from IDE - now in HUD inspector panel
 
-	local sellCorner = Instance.new("UICorner")
-	sellCorner.CornerRadius = UDim.new(0, 4)
-	sellCorner.Parent = sellGolemBtn
-
-	sellGolemBtn.MouseButton1Click:Connect(function()
-		if panel.onSellGolem then
-			panel.onSellGolem()
-		end
-	end)
-
-	-- Move button (for turret relocation)
-	local moveBtn = Instance.new("TextButton")
-	moveBtn.Name = "MoveBtn"
-	moveBtn.Size = UDim2.new(0, 50, 0, 26)
-	moveBtn.Position = UDim2.new(0, 435, 0, 4)
-	moveBtn.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
-	moveBtn.Text = "MOVE"
-	moveBtn.TextColor3 = Color3.fromRGB(150, 180, 255)
-	moveBtn.Font = Enum.Font.GothamBold
-	moveBtn.TextSize = 10
-	moveBtn.Visible = false
-	moveBtn.Parent = topBar
-
-	local moveCorner = Instance.new("UICorner")
-	moveCorner.CornerRadius = UDim.new(0, 4)
-	moveCorner.Parent = moveBtn
-
-	moveBtn.MouseButton1Click:Connect(function()
-		if panel.onMoveGolem then
-			panel.onMoveGolem()
-		end
-	end)
-
-	-- Control buttons
+	-- Control buttons (compact)
 	local startBtn = Instance.new("TextButton")
 	startBtn.Name = "StartBtn"
-	startBtn.Size = UDim2.new(0, 60, 0, 26)
-	startBtn.Position = UDim2.new(0, 5, 0, 4)
+	startBtn.Size = UDim2.new(0, 50, 0, 22)
+	startBtn.Position = UDim2.new(0, 4, 0, 5)
 	startBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
 	startBtn.Text = "RUN ^1"
 	startBtn.TextColor3 = Color3.fromRGB(200, 255, 200)
 	startBtn.Font = Enum.Font.GothamBold
-	startBtn.TextSize = 10
+	startBtn.TextSize = 9
 	startBtn.Parent = topBar
 
 	local startBtnCorner = Instance.new("UICorner")
@@ -203,13 +170,13 @@ function EditorPanel.create(parent, callbacks)
 
 	local pauseBtn = Instance.new("TextButton")
 	pauseBtn.Name = "PauseBtn"
-	pauseBtn.Size = UDim2.new(0, 65, 0, 26)
-	pauseBtn.Position = UDim2.new(0, 70, 0, 4)
+	pauseBtn.Size = UDim2.new(0, 55, 0, 22)
+	pauseBtn.Position = UDim2.new(0, 58, 0, 5)
 	pauseBtn.BackgroundColor3 = Color3.fromRGB(100, 80, 60)
 	pauseBtn.Text = "PAUSE ^2"
 	pauseBtn.TextColor3 = Color3.fromRGB(255, 220, 200)
 	pauseBtn.Font = Enum.Font.GothamBold
-	pauseBtn.TextSize = 10
+	pauseBtn.TextSize = 9
 	pauseBtn.Parent = topBar
 
 	local pauseBtnCorner = Instance.new("UICorner")
@@ -218,13 +185,13 @@ function EditorPanel.create(parent, callbacks)
 
 	local stepBtn = Instance.new("TextButton")
 	stepBtn.Name = "StepBtn"
-	stepBtn.Size = UDim2.new(0, 55, 0, 26)
-	stepBtn.Position = UDim2.new(0, 140, 0, 4)
+	stepBtn.Size = UDim2.new(0, 50, 0, 22)
+	stepBtn.Position = UDim2.new(0, 117, 0, 5)
 	stepBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
 	stepBtn.Text = "STEP ^3"
 	stepBtn.TextColor3 = Color3.fromRGB(200, 200, 255)
 	stepBtn.Font = Enum.Font.GothamBold
-	stepBtn.TextSize = 10
+	stepBtn.TextSize = 9
 	stepBtn.Parent = topBar
 
 	local stepBtnCorner = Instance.new("UICorner")
@@ -233,13 +200,13 @@ function EditorPanel.create(parent, callbacks)
 
 	local helpBtn = Instance.new("TextButton")
 	helpBtn.Name = "HelpBtn"
-	helpBtn.Size = UDim2.new(0, 26, 0, 26)
-	helpBtn.Position = UDim2.new(0, 200, 0, 4)
+	helpBtn.Size = UDim2.new(0, 22, 0, 22)
+	helpBtn.Position = UDim2.new(0, 171, 0, 5)
 	helpBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 100)
 	helpBtn.Text = "?"
 	helpBtn.TextColor3 = Color3.fromRGB(150, 150, 255)
 	helpBtn.Font = Enum.Font.GothamBold
-	helpBtn.TextSize = 14
+	helpBtn.TextSize = 12
 	helpBtn.Parent = topBar
 
 	local helpBtnCorner = Instance.new("UICorner")
@@ -254,37 +221,38 @@ function EditorPanel.create(parent, callbacks)
 
 	local examplesBtn = Instance.new("TextButton")
 	examplesBtn.Name = "ExamplesBtn"
-	examplesBtn.Size = UDim2.new(0, 60, 0, 26)
-	examplesBtn.Position = UDim2.new(0, 230, 0, 4)
+	examplesBtn.Size = UDim2.new(0, 50, 0, 22)
+	examplesBtn.Position = UDim2.new(0, 197, 0, 5)
 	examplesBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-	examplesBtn.Text = "EXAMPLES"
+	examplesBtn.Text = "PROGS"
 	examplesBtn.TextColor3 = Color3.fromRGB(180, 180, 220)
 	examplesBtn.Font = Enum.Font.GothamBold
-	examplesBtn.TextSize = 10
+	examplesBtn.TextSize = 9
 	examplesBtn.Parent = topBar
 
 	local examplesBtnCorner = Instance.new("UICorner")
 	examplesBtnCorner.CornerRadius = UDim.new(0, 4)
 	examplesBtnCorner.Parent = examplesBtn
 
-	-- Character counter (shows current/max)
+	-- Character counter (shows current/max) - hidden by default, only for bot mode
 	local charCountLabel = Instance.new("TextLabel")
 	charCountLabel.Name = "CharCount"
-	charCountLabel.Size = UDim2.new(0, 75, 0, 26)
-	charCountLabel.Position = UDim2.new(1, -80, 0, 4)
+	charCountLabel.Size = UDim2.new(0, 55, 0, 22)
+	charCountLabel.Position = UDim2.new(1, -110, 0, 5)  -- Left of exit button
 	charCountLabel.BackgroundTransparency = 1
 	charCountLabel.Text = "0/" .. MAX_CHARS
 	charCountLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
 	charCountLabel.Font = Enum.Font.Code
-	charCountLabel.TextSize = 11
+	charCountLabel.TextSize = 9
 	charCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+	charCountLabel.Visible = false  -- Only show in bot mode
 	charCountLabel.Parent = topBar
 
 	-- Line numbers (inside its own scrolling frame to sync with code)
 	local lineScroll = Instance.new("ScrollingFrame")
 	lineScroll.Name = "LineScroll"
-	lineScroll.Size = UDim2.new(0, 30, 1, -85)  -- Room for suggestion bar
-	lineScroll.Position = UDim2.new(0, 5, 0, 40)
+	lineScroll.Size = UDim2.new(0, 25, 1, -82)  -- Room for top bar + suggestion bar + hints (compact)
+	lineScroll.Position = UDim2.new(0, 2, 0, 33)
 	lineScroll.BackgroundTransparency = 1
 	lineScroll.BorderSizePixel = 0
 	lineScroll.ScrollBarThickness = 0 -- Hidden, synced with code scroll
@@ -309,11 +277,11 @@ function EditorPanel.create(parent, callbacks)
 	-- Code input container (ScrollingFrame for scrolling long programs)
 	local codeScroll = Instance.new("ScrollingFrame")
 	codeScroll.Name = "CodeScroll"
-	codeScroll.Size = UDim2.new(1, -45, 1, -85)  -- Room for suggestion bar
-	codeScroll.Position = UDim2.new(0, 40, 0, 40)
+	codeScroll.Size = UDim2.new(1, -35, 1, -82)  -- Room for top bar + suggestion bar + hints (compact)
+	codeScroll.Position = UDim2.new(0, 30, 0, 33)
 	codeScroll.BackgroundTransparency = 1
 	codeScroll.BorderSizePixel = 0
-	codeScroll.ScrollBarThickness = 6
+	codeScroll.ScrollBarThickness = 4
 	codeScroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
 	codeScroll.CanvasSize = UDim2.new(0, 0, 0, 500) -- Will be updated dynamically
 	codeScroll.ScrollingEnabled = true
@@ -346,8 +314,8 @@ function EditorPanel.create(parent, callbacks)
 	-- Suggestion bar (autocomplete snippets)
 	local suggestBar = Instance.new("ScrollingFrame")
 	suggestBar.Name = "SuggestBar"
-	suggestBar.Size = UDim2.new(1, -10, 0, 22)
-	suggestBar.Position = UDim2.new(0, 5, 1, -40)
+	suggestBar.Size = UDim2.new(1, -6, 0, 20)
+	suggestBar.Position = UDim2.new(0, 3, 1, -35)
 	suggestBar.BackgroundColor3 = Color3.fromRGB(25, 30, 35)
 	suggestBar.BorderSizePixel = 0
 	suggestBar.ScrollBarThickness = 0
@@ -372,18 +340,18 @@ function EditorPanel.create(parent, callbacks)
 	suggestPadding.Parent = suggestBar
 
 	-- Pool of suggestion buttons
-	local MAX_SUGGESTIONS = 12
+	local MAX_SUGGESTIONS = 10
 	local suggestionBtns = {}
 	local suggestionConns = {}  -- Store click connections separately
 	for i = 1, MAX_SUGGESTIONS do
 		local btn = Instance.new("TextButton")
 		btn.Name = "Suggest" .. i
-		btn.Size = UDim2.new(0, 80, 0, 18)
+		btn.Size = UDim2.new(0, 70, 0, 16)
 		btn.BackgroundColor3 = Color3.fromRGB(50, 60, 70)
 		btn.Text = ""
 		btn.TextColor3 = Color3.fromRGB(180, 200, 220)
 		btn.Font = Enum.Font.Code
-		btn.TextSize = 10
+		btn.TextSize = 9
 		btn.AutomaticSize = Enum.AutomaticSize.X
 		btn.Visible = false
 		btn.LayoutOrder = i
@@ -405,15 +373,15 @@ function EditorPanel.create(parent, callbacks)
 	-- Help tooltip (shows above suggestion bar when 1 match)
 	local helpTooltip = Instance.new("TextLabel")
 	helpTooltip.Name = "HelpTooltip"
-	helpTooltip.Size = UDim2.new(1, -10, 0, 16)
-	helpTooltip.Position = UDim2.new(0, 5, 1, -58)
+	helpTooltip.Size = UDim2.new(1, -6, 0, 14)
+	helpTooltip.Position = UDim2.new(0, 3, 1, -50)
 	helpTooltip.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
 	helpTooltip.BackgroundTransparency = 0.1
 	helpTooltip.BorderSizePixel = 0
 	helpTooltip.Text = ""
 	helpTooltip.TextColor3 = Color3.fromRGB(150, 200, 150)
 	helpTooltip.Font = Enum.Font.Code
-	helpTooltip.TextSize = 10
+	helpTooltip.TextSize = 9
 	helpTooltip.TextXAlignment = Enum.TextXAlignment.Left
 	helpTooltip.Visible = false
 	helpTooltip.Parent = frame
@@ -429,14 +397,14 @@ function EditorPanel.create(parent, callbacks)
 	-- Program memory indicator (for bots - shows instruction count)
 	local memoryLabel = Instance.new("TextLabel")
 	memoryLabel.Name = "MemoryLabel"
-	memoryLabel.Size = UDim2.new(0, 80, 0, 18)
-	memoryLabel.Position = UDim2.new(1, -85, 1, -38)
+	memoryLabel.Size = UDim2.new(0, 70, 0, 16)
+	memoryLabel.Position = UDim2.new(1, -75, 1, -33)
 	memoryLabel.BackgroundColor3 = Color3.fromRGB(30, 40, 50)
 	memoryLabel.BackgroundTransparency = 0.3
 	memoryLabel.Text = "RAM: 0/30"
 	memoryLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
 	memoryLabel.Font = Enum.Font.Code
-	memoryLabel.TextSize = 11
+	memoryLabel.TextSize = 9
 	memoryLabel.Visible = false  -- Only visible in bot mode
 	memoryLabel.Parent = frame
 
@@ -447,13 +415,13 @@ function EditorPanel.create(parent, callbacks)
 	-- Hints bar
 	local hintsBar = Instance.new("TextLabel")
 	hintsBar.Name = "HintsBar"
-	hintsBar.Size = UDim2.new(1, -10, 0, 15)
-	hintsBar.Position = UDim2.new(0, 5, 1, -18)
+	hintsBar.Size = UDim2.new(1, -6, 0, 13)
+	hintsBar.Position = UDim2.new(0, 3, 1, -14)
 	hintsBar.BackgroundTransparency = 1
 	hintsBar.Text = "^Q: Unfocus  |  ^1: Run  |  ^2: Pause  |  ^3: Step"
 	hintsBar.TextColor3 = Color3.fromRGB(90, 90, 110)
 	hintsBar.Font = Enum.Font.Code
-	hintsBar.TextSize = 10
+	hintsBar.TextSize = 9
 	hintsBar.Parent = frame
 
 	-- Update line numbers and sync canvas sizes
@@ -609,9 +577,8 @@ function EditorPanel.create(parent, callbacks)
 		{word = "is_full", snippet = "is_full()", help = "is_full() -> bool | Inventory full?"},
 		{word = "is_idle", snippet = "is_idle()", help = "is_idle() -> bool | Not busy?"},
 		{word = "is_moving", snippet = "is_moving()", help = "is_moving() -> bool | Walking?"},
-		{word = "alive", snippet = "alive()", help = "alive() -> bool | Has HP?"},
+		{word = "alive", snippet = "alive()", help = "alive() -> bool | Bot exists?"},
 		{word = "exists", snippet = "exists()", help = "exists() -> bool | Unit exists?"},
-		{word = "hp", snippet = "hp()", help = "hp() -> int | Current health"},
 		{word = "status", snippet = "status()", help = "status() -> str | Current state"},
 		{word = "spot", snippet = "spot()", help = "spot() -> int | Spawn slot (1-4)"},
 		-- Collection & Supply
@@ -646,13 +613,12 @@ function EditorPanel.create(parent, callbacks)
 	local TURRET_METHODS = {
 		-- State
 		{word = "exists", snippet = "exists()", help = "exists() -> bool | Turret exists?"},
-		{word = "alive", snippet = "alive()", help = "alive() -> bool | Has HP?"},
+		{word = "alive", snippet = "alive()", help = "alive() -> bool | Turret exists?"},
 		{word = "spot", snippet = "spot()", help = "spot() -> int | Slot number (1-4)"},
 		{word = "id", snippet = "id()", help = "id() -> str | Unique ID"},
 		{word = "position", snippet = "position()", help = "position() -> [x,z] | Location"},
 		{word = "ammo", snippet = "ammo()", help = "ammo() -> int | Current ammo"},
 		{word = "max_ammo", snippet = "max_ammo()", help = "max_ammo() -> int | Max ammo"},
-		{word = "hp", snippet = "hp()", help = "hp() -> int | Current health"},
 		{word = "range", snippet = "range()", help = "range() -> int | Attack range"},
 		{word = "is_empty", snippet = "is_empty()", help = "is_empty() -> bool | No ammo?"},
 		{word = "ammo_ratio", snippet = "ammo_ratio()", help = "ammo_ratio() -> float | 0.0-1.0"},
@@ -691,7 +657,6 @@ function EditorPanel.create(parent, callbacks)
 		{word = "set_range", snippet = "set_range(30)", help = "set_range(10-60) | Low=damage, high=reach"},
 		{word = "is_empty", snippet = "is_empty()", help = "is_empty() -> bool | No ammo?"},
 		{word = "position", snippet = "position()", help = "position() -> [x,z] | Location"},
-		{word = "hp", snippet = "hp()", help = "hp() -> int | Current health"},
 		{word = "danger", snippet = "danger()", help = "danger() -> int | Dist to enemy"},
 	}
 
@@ -1350,6 +1315,9 @@ function EditorPanel.create(parent, callbacks)
 		programsPopup.Visible = false
 	end
 
+	-- Track current weapon for player mode indicator
+	local currentWeaponName = "BULLET"
+
 	-- Generic mode setter: "player", "golem", or "bot"
 	function panel:setMode(mode, spotId)
 		currentMode = mode or "player"
@@ -1359,17 +1327,21 @@ function EditorPanel.create(parent, callbacks)
 		topBar.BackgroundColor3 = theme.topBarBg
 
 		if currentMode == "player" then
-			-- Player mode: hidden (no programming)
-			modeIndicator.Visible = false
-			exitGolemBtn.Visible = false
-			sellGolemBtn.Visible = false
-			moveBtn.Visible = false
-			startBtn.Visible = false
-			pauseBtn.Visible = false
-			stepBtn.Visible = false
+			-- Player mode: READ-ONLY but with debugger controls
+			modeIndicator.Text = "WEAPON: " .. currentWeaponName
+			modeIndicator.TextColor3 = theme.modeColor
+			modeIndicator.BackgroundColor3 = theme.topBarBg
+			modeIndicator.Visible = true
+			exitGolemBtn.Visible = false  -- Can't exit player mode
+			startBtn.Visible = false  -- No RUN - weapons auto-run
+			pauseBtn.Visible = true   -- Can pause weapon
+			stepBtn.Visible = true    -- Can step through
 			memoryLabel.Visible = false
-			textBox.TextEditable = true
-			hintsBar.Text = "^Q: Unfocus  |  ^1: Run  |  ^2: Pause  |  ^3: Step"
+			charCountLabel.Visible = false  -- No char limit for weapons
+			examplesBtn.Visible = false  -- No PROGS for player
+			textBox.TextEditable = false  -- READ-ONLY (change weapons with 1-4)
+			textBox.Active = false  -- Prevent focus/click capture so WASD still works
+			hintsBar.Text = "READ-ONLY  |  1-4: Switch Weapon  |  ^2: Pause  |  ^3: Step"
 		elseif currentMode == "golem" then
 			-- Turret mode: READ-ONLY (view code, can't edit)
 			modeIndicator.Text = "TURRET #" .. (spotId or "?") .. " (READ-ONLY)"
@@ -1377,16 +1349,16 @@ function EditorPanel.create(parent, callbacks)
 			modeIndicator.BackgroundColor3 = theme.topBarBg
 			modeIndicator.Visible = true
 			exitGolemBtn.Visible = true
-			sellGolemBtn.Visible = true
-			sellGolemBtn.Text = "SELL"
-			moveBtn.Visible = true
 			-- Hide run/pause/step - turrets are read-only
 			startBtn.Visible = false
 			pauseBtn.Visible = false
 			stepBtn.Visible = true  -- Allow stepping to see bytecode execution
 			memoryLabel.Visible = false
+			charCountLabel.Visible = false  -- No char limit for turrets
+			examplesBtn.Visible = false  -- No PROGS for turrets
 			textBox.TextEditable = false  -- READ-ONLY
-			hintsBar.Text = "READ-ONLY  |  MOVE: Relocate  |  SELL: Reclaim scrap"
+			textBox.Active = false  -- Prevent focus/click capture so WASD still works
+			hintsBar.Text = "READ-ONLY  |  Use panel buttons to MOVE/SELL"
 		elseif currentMode == "bot" then
 			-- Bot mode: FULL PROGRAMMING
 			modeIndicator.Text = "BOT #" .. (spotId or "?")
@@ -1394,15 +1366,15 @@ function EditorPanel.create(parent, callbacks)
 			modeIndicator.BackgroundColor3 = theme.topBarBg
 			modeIndicator.Visible = true
 			exitGolemBtn.Visible = true
-			sellGolemBtn.Visible = true
-			sellGolemBtn.Text = "SELL"
-			moveBtn.Visible = false
 			startBtn.Visible = true
 			startBtn.BackgroundColor3 = theme.startBtn
 			pauseBtn.Visible = true
 			stepBtn.Visible = true
 			memoryLabel.Visible = true  -- Show memory usage for bots
+			charCountLabel.Visible = true  -- Show char limit for bots
+			examplesBtn.Visible = true  -- Show PROGS for bots only
 			textBox.TextEditable = true
+			textBox.Active = true  -- Allow focus/editing for bot programming
 			hintsBar.Text = "BOT PROGRAMMING  |  ^1: Run  |  ^2: Pause  |  ^3: Step"
 		end
 	end
@@ -1428,6 +1400,14 @@ function EditorPanel.create(parent, callbacks)
 		return currentMode
 	end
 
+	-- Update weapon name in player mode indicator
+	function panel:setWeaponName(name)
+		currentWeaponName = name or "BULLET"
+		if currentMode == "player" then
+			modeIndicator.Text = "WEAPON: " .. currentWeaponName
+		end
+	end
+
 	-- Update memory display (instruction count)
 	function panel:setMemoryUsage(used, max)
 		max = max or 30
@@ -1447,8 +1427,6 @@ function EditorPanel.create(parent, callbacks)
 
 	-- Callbacks for golem/bot mode
 	panel.onExitGolem = nil
-	panel.onSellGolem = nil
-	panel.onMoveGolem = nil
 
 	return panel
 end

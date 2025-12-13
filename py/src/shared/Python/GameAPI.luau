@@ -169,7 +169,8 @@ local function addConstants(env)
 	env.ROCKET = 2
 	env.LASER = 3
 	env.ICE = 4
-	env.FREEZE = 5
+	env.GRENADE = 5
+	env.FREEZE = 6
 end
 
 -- Add common utility functions to an environment
@@ -264,12 +265,9 @@ local function createTurretProxy(spotId, deps, directGolem)
 		return GolemRegistry and GolemRegistry.getBySpotId and GolemRegistry.getBySpotId(spotId)
 	end
 
-	-- Check if golem exists AND is alive
+	-- Turrets are always alive (no HP system)
 	local function isAlive()
-		local golem = getGolem()
-		if not golem then return false end
-		local hp = golem.interpreter and golem.interpreter.hp or 0
-		return hp > 0
+		return getGolem() ~= nil
 	end
 
 	-- Basic properties
@@ -300,11 +298,6 @@ local function createTurretProxy(spotId, deps, directGolem)
 	proxy.max_ammo = function()
 		local golem = getGolem()
 		return golem and golem.interpreter and (golem.interpreter.maxAmmo or 300) or 300
-	end
-
-	proxy.hp = function()
-		local golem = getGolem()
-		return golem and golem.interpreter and (golem.interpreter.hp or 0) or 0
 	end
 
 	proxy.range = function()
@@ -479,11 +472,9 @@ local function createBotProxy(spotId, deps, directBot)
 		return BotRegistry and BotRegistry.getBySpotId and BotRegistry.getBySpotId(spotId)
 	end
 
-	-- Check if bot exists AND is alive
+	-- Bots are always alive (no HP system)
 	local function isAlive()
-		local bot = getBot()
-		if not bot then return false end
-		return (bot.hp or 0) > 0
+		return getBot() ~= nil
 	end
 
 	-- Basic properties
@@ -513,11 +504,6 @@ local function createBotProxy(spotId, deps, directBot)
 	proxy.max_cargo = function()
 		local bot = getBot()
 		return bot and (bot.maxCapacity or 50) or 50
-	end
-
-	proxy.hp = function()
-		local bot = getBot()
-		return bot and (bot.hp or 0) or 0
 	end
 
 	-- State queries
@@ -1350,7 +1336,7 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 	-- COMBAT
 	-- =========================================================
 
-	-- self.hit() - Attack nearest enemy
+	-- self.hit() - Melee attack nearest enemy
 	env.self.hit = function()
 		if deps.attackHitEvent and interp.character then
 			local hrp = getHRP()
@@ -1363,6 +1349,155 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 				end
 			end
 		end
+		return false
+	end
+
+	-- self.scan() - Find enemies in range (like turrets)
+	env.self.scan = function()
+		local hrp = getHRP()
+		if not hrp or not deps.EnemyManager then return {} end
+
+		local x, z = getPlayerPos()
+		local range = 50  -- Player has 50 stud range
+
+		local enemies = deps.EnemyManager.findInRange(x, z, range)
+		local results = {}
+		for _, e in ipairs(enemies) do
+			table.insert(results, {
+				id = e.id,
+				type = e.typeName or "Zombie",
+				hp = e.hp or 0,
+				max_hp = e.maxHp or 1,
+				burning = e.burning or false,
+				frozen = (e.slowAmount and e.slowAmount >= 0.5) or false,
+				slowed = (e.slowAmount and e.slowAmount > 0) or false,
+				oiled = e.oiled or false,
+			})
+		end
+		return results
+	end
+
+	-- nearest(enemies) - Get nearest enemy from list
+	env.nearest = function(enemyList)
+		if not enemyList or #enemyList == 0 then return nil end
+
+		local hrp = getHRP()
+		if not hrp or not deps.EnemyManager then return enemyList[1] end
+
+		local px, pz = getPlayerPos()
+		local nearestEnemy, nearestDist = nil, math.huge
+
+		for _, enemy in ipairs(enemyList) do
+			local fullEnemy = deps.EnemyManager.get(enemy.id)
+			if fullEnemy and fullEnemy.character then
+				local eHrp = fullEnemy.character:FindFirstChild("HumanoidRootPart")
+				if eHrp then
+					local dx = eHrp.Position.X - px
+					local dz = eHrp.Position.Z - pz
+					local dist = math.sqrt(dx * dx + dz * dz)
+					if dist < nearestDist then
+						nearestDist = dist
+						nearestEnemy = enemy
+					end
+				end
+			end
+		end
+		return nearestEnemy or enemyList[1]
+	end
+
+	-- weakest(enemies) - Get enemy with lowest HP
+	env.weakest = function(enemyList)
+		if not enemyList or #enemyList == 0 then return nil end
+
+		local weakestEnemy, lowestHp = nil, math.huge
+		for _, enemy in ipairs(enemyList) do
+			if enemy.hp < lowestHp then
+				lowestHp = enemy.hp
+				weakestEnemy = enemy
+			end
+		end
+		return weakestEnemy
+	end
+
+	-- strongest(enemies) - Get enemy with highest HP
+	env.strongest = function(enemyList)
+		if not enemyList or #enemyList == 0 then return nil end
+
+		local strongestEnemy, highestHp = nil, 0
+		for _, enemy in ipairs(enemyList) do
+			if enemy.hp > highestHp then
+				highestHp = enemy.hp
+				strongestEnemy = enemy
+			end
+		end
+		return strongestEnemy
+	end
+
+	-- self.fire(enemy, ammoType) - Ranged attack with projectile
+	-- enemy: target from scan() (optional, will auto-target if nil)
+	-- ammoType: 1=BULLET, 2=ROCKET, 3=LASER, 4=GRENADE, 5=ICE
+	env.self.fire = function(enemy, ammoType)
+		-- Handle old call style: self.fire(ammoType)
+		if type(enemy) == "number" then
+			ammoType = enemy
+			enemy = nil
+		end
+
+		ammoType = ammoType or 1
+		local hrp = getHRP()
+		if not hrp or not deps.EnemyManager then return false end
+
+		local lookDir = hrp.CFrame.LookVector
+
+		-- If no enemy specified, find one in front of player
+		if not enemy then
+			local x, z = getPlayerPos()
+
+			local enemies = deps.EnemyManager.findInRange(x, z, 50)
+			local bestScore = -1
+
+			for _, e in ipairs(enemies) do
+				local eChar = e.character
+				local eHrp = eChar and eChar:FindFirstChild("HumanoidRootPart")
+				if eHrp then
+					local toEnemy = (eHrp.Position - hrp.Position).Unit
+					local dot = lookDir.X * toEnemy.X + lookDir.Z * toEnemy.Z
+					-- Only consider enemies in FRONT (dot > 0.3 = roughly 70 degree cone)
+					if dot > 0.3 then
+						local dist = (eHrp.Position - hrp.Position).Magnitude
+						local score = dot * (1 - dist / 50)
+						if score > bestScore then
+							bestScore = score
+							enemy = e
+						end
+					end
+				end
+			end
+		else
+			-- Convert from scan() result to full enemy
+			enemy = deps.EnemyManager.get(enemy.id)
+
+			-- Check if enemy is in front of player (can't shoot behind)
+			if enemy and enemy.character then
+				local eHrp = enemy.character:FindFirstChild("HumanoidRootPart")
+				if eHrp then
+					local toEnemy = (eHrp.Position - hrp.Position).Unit
+					local dot = lookDir.X * toEnemy.X + lookDir.Z * toEnemy.Z
+					-- Must be in front (dot > 0.3 = roughly 70 degree cone)
+					if dot <= 0.3 then
+						return false  -- Enemy is behind player, can't shoot
+					end
+				end
+			end
+		end
+
+		if not enemy then return false end
+
+		-- Fire at the enemy using PlayerCombat module
+		if deps.PlayerCombat and deps.PlayerCombat.fire then
+			return deps.PlayerCombat.fire(interp, enemy, ammoType)
+		end
+
 		return false
 	end
 

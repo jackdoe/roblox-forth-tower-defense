@@ -178,43 +178,77 @@ function Effects.attackHit(data)
 		end
 	end
 
-	-- Simple hit indicator (floating damage text)
+	-- Floating damage number
 	if hitCount > 0 then
-			local anchor = Instance.new("Part")
-			anchor.Size = Vector3.new(0.1, 0.1, 0.1)
-			anchor.CFrame = CFrame.new(data.targetPos + Vector3.new(0, 2, 0))
-			anchor.Anchored = true
-			anchor.CanCollide = false
-			anchor.Transparency = 1
-			anchor.Parent = workspace
+		local damage = data.damage or 0
+		local anchor = Instance.new("Part")
+		anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+		-- Random horizontal offset so numbers don't stack
+		local offsetX = (math.random() - 0.5) * 1.5
+		local offsetZ = (math.random() - 0.5) * 1.5
+		anchor.CFrame = CFrame.new(data.targetPos + Vector3.new(offsetX, 2.5, offsetZ))
+		anchor.Anchored = true
+		anchor.CanCollide = false
+		anchor.Transparency = 1
+		anchor.Parent = workspace
 
-			local billboard = Instance.new("BillboardGui")
-			billboard.Size = UDim2.new(0, 60, 0, 30)
-			billboard.StudsOffset = Vector3.new(0, 0, 0)
-			billboard.Adornee = anchor
-			billboard.AlwaysOnTop = false
-			billboard.Parent = anchor
+		local billboard = Instance.new("BillboardGui")
+		billboard.Size = UDim2.new(0, 80, 0, 40)
+		billboard.StudsOffset = Vector3.new(0, 0, 0)
+		billboard.Adornee = anchor
+		billboard.AlwaysOnTop = true  -- Always visible
+		billboard.Parent = anchor
 
-			local hitLabel = Instance.new("TextLabel")
-			hitLabel.Size = UDim2.new(1, 0, 1, 0)
-			hitLabel.BackgroundTransparency = 1
-			hitLabel.Text = (data.damage or 0) .. ""
-			hitLabel.TextColor3 = data.isKill and Color3.fromRGB(220, 120, 120) or Color3.fromRGB(200, 180, 140)
-			hitLabel.TextStrokeTransparency = 0.5
-			hitLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-			hitLabel.Font = Enum.Font.GothamBold
-			hitLabel.TextSize = 14
-			hitLabel.Parent = billboard
+		-- Color based on damage type or amount
+		local textColor = Color3.fromRGB(255, 255, 100)  -- Default yellow
+		local textSize = 18
 
-			-- Gentle float up
-			task.spawn(function()
-				for j = 1, 12 do
-					anchor.CFrame = anchor.CFrame + Vector3.new(0, 0.08, 0)
-					hitLabel.TextTransparency = j / 12
-					task.wait(0.025)
-				end
-				anchor:Destroy()
-			end)
+		if data.isKill then
+			textColor = Color3.fromRGB(255, 80, 80)  -- Red for kills
+			textSize = 24
+		elseif data.isCrit or damage >= 50 then
+			textColor = Color3.fromRGB(255, 150, 50)  -- Orange for big hits
+			textSize = 22
+		elseif data.damageType == "ice" or data.damageType == "freeze" then
+			textColor = Color3.fromRGB(100, 200, 255)  -- Cyan for ice
+		elseif data.damageType == "laser" then
+			textColor = Color3.fromRGB(255, 100, 100)  -- Red for laser
+		elseif data.damageType == "rocket" or data.damageType == "grenade" then
+			textColor = Color3.fromRGB(255, 150, 50)  -- Orange for explosives
+		end
+
+		local hitLabel = Instance.new("TextLabel")
+		hitLabel.Size = UDim2.new(1, 0, 1, 0)
+		hitLabel.BackgroundTransparency = 1
+		hitLabel.Text = tostring(damage)
+		hitLabel.TextColor3 = textColor
+		hitLabel.TextStrokeTransparency = 0
+		hitLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+		hitLabel.Font = Enum.Font.GothamBlack
+		hitLabel.TextSize = textSize
+		hitLabel.TextScaled = false
+		hitLabel.Parent = billboard
+
+		-- Pop-up and float animation
+		task.spawn(function()
+			-- Initial pop (scale up quickly)
+			local startSize = textSize
+			hitLabel.TextSize = startSize * 0.5
+			for i = 1, 4 do
+				hitLabel.TextSize = startSize * (0.5 + i * 0.15)
+				task.wait(0.02)
+			end
+			hitLabel.TextSize = startSize
+
+			-- Float up and fade
+			for j = 1, 20 do
+				anchor.CFrame = anchor.CFrame + Vector3.new(0, 0.06, 0)
+				hitLabel.TextTransparency = j / 20
+				hitLabel.TextStrokeTransparency = j / 20
+				task.wait(0.025)
+			end
+			anchor:Destroy()
+		end)
 	end
 
 	-- Kill effect (using pool)

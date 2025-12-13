@@ -35,7 +35,6 @@ local nextGolemNumber = 1 -- For generating sequential IDs
 local GolemStats = {
 	name = "Golem",
 	modelName = "Turret", -- Use turret model for all
-	hp = 200,          -- Was 100. More durable.
 	maxAmmo = 300,     -- Was 100. Capacity tripled.
 	range = 40,        -- Was 30. See enemies sooner.
 	cost = 100,        -- Keep cost low for army building.
@@ -482,8 +481,6 @@ function GolemRegistry.create(x, z)
 	interp.isGolem = true
 
 	-- Golem-specific state (unified for all golems)
-	interp.hp = GolemStats.hp
-	interp.maxHp = GolemStats.hp
 	interp.ammo = GolemStats.maxAmmo
 	interp.maxAmmo = GolemStats.maxAmmo
 	interp.range = GolemStats.range
@@ -541,8 +538,6 @@ function GolemRegistry.create(x, z)
 			id = id,
 			isGolem = true,
 			character = character,
-			hp = interp.hp,
-			maxHp = interp.maxHp,
 		})
 	end
 
@@ -967,11 +962,7 @@ function GolemRegistry.update(dt)
 			continue
 		end
 
-		-- Dead?
-		if interp.hp <= 0 then
-			GolemRegistry.destroy(id)
-			continue
-		end
+		-- Turrets don't have HP - they never die from damage
 
 		-- RELOAD PROCESSING
 		-- If reload is pending, wait for stockpile and collect over time
@@ -1643,17 +1634,20 @@ function GolemRegistry.getStateForPlayer(player)
 				id = id,
 				spotId = golem.spotId,
 				typeName = golem.typeData.name,
-				hp = interp.hp,
-				maxHp = interp.maxHp,
 				ammo = interp.ammo,
 				maxAmmo = interp.maxAmmo,
 				dynamicRange = interp.dynamicRange or 40,
 				status = interp.ammo <= 0 and "EMPTY" or (interp.target and "FIRING" or "IDLE"),
 				ownerId = golem.ownerId,
+				paused = interp.paused or false,
 			})
 		end
 	end
-	return { golems = golemList }
+
+	-- Include next turret cost for this player
+	local nextCost = GolemRegistry.getNextTurretCost(player)
+
+	return { golems = golemList, nextTurretCost = nextCost }
 end
 
 function GolemRegistry.broadcastState()

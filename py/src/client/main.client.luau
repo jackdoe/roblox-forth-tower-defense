@@ -12,13 +12,12 @@ local playerGui = player:WaitForChild("PlayerGui")
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
 local SoundConfig = require(PythonTD.SoundConfig)
-local HelpDatabase = require(PythonTD.HelpDatabase)
-
 -- Client modules
 local EditorPanel = require(script.Parent.UI.EditorPanel)
 local ProgramPanel = require(script.Parent.UI.ProgramPanel)
 local BytecodePanel = require(script.Parent.UI.BytecodePanel)
-local UnitListPanel = require(script.Parent.UI.UnitListPanel)
+local HUD = require(script.Parent.UI.HUD)
+local HelpPopup = require(script.Parent.UI.HelpPopup)
 local Effects = require(script.Parent.Effects)
 local PlayerHpBillboard = require(script.Parent.PlayerHpBillboard)
 local DragModule = require(script.Parent.UI.DragModule)
@@ -34,6 +33,7 @@ local playerHurtEvent = PythonTD:WaitForChild("PlayerHurt")
 local beepEvent = PythonTD:WaitForChild("Beep")
 local playAnimationEvent = PythonTD:WaitForChild("PlayAnimation")
 local manualAttackEvent = PythonTD:WaitForChild("ManualAttack")
+local playerFireEvent = PythonTD:WaitForChild("PlayerFire")
 
 -- TD-specific events
 local golemStateEvent = PythonTD:WaitForChild("GolemState")
@@ -99,20 +99,29 @@ screenGui.Parent = playerGui
 
 -- Forward declarations
 local editor, program
-local showHelp -- Forward declaration for help button callback
 local showBytecodePanel -- Forward declaration for step button callback
 
+-- Create help popup
+local helpPopup = HelpPopup.create(screenGui, DragModule)
+local function showHelp(targetWord)
+	helpPopup.show(targetWord)
+end
+
 -- Helper to show/hide IDE based on target type
+-- Now player IDE is always visible to show weapon programs
 local function updateIDEVisibility()
 	local isPlayer = (currentInterpreterTarget.type == "player")
 	if editor and editor.frame then
-		editor.frame.Visible = not isPlayer
+		-- Always show IDE (player sees weapon programs, turrets/bots see their code)
+		editor.frame.Visible = true
 	end
 	if program and program.frame then
-		program.frame.Visible = not isPlayer
+		-- Show program panel (debugger) for all modes including player
+		program.frame.Visible = true
 	end
 	if bytecodePanel then
-		bytecodePanel:setVisible(not isPlayer and bytecodeVisible)
+		-- Show bytecode panel if enabled (for all modes)
+		bytecodePanel:setVisible(bytecodeVisible)
 	end
 end
 
@@ -181,25 +190,74 @@ end
 -- Forward declarations for mind mode callbacks
 local enterGolemMindWrapper
 local enterBotMindWrapper
+local exitBotMindWrapper  -- Forward declaration for exitBotMind
+local enterPlacementMode
+local enterBotPlacementMode
 
--- Unit List Panel (shows both Turrets and Bots)
-local unitList = UnitListPanel.create(screenGui, {
-	onSelectGolem = function(golemId)
-		-- When clicking a turret in the list, enter golem mind mode
-		if enterGolemMindWrapper then
-			enterGolemMindWrapper(golemId)
+-- Forward declaration for hud (needed for callbacks)
+local hud
+
+-- Create the new unified HUD
+hud = HUD.create(screenGui, {
+	onBuildTurret = function()
+		if enterPlacementMode then
+			enterPlacementMode()
 		end
 	end,
-	onSelectBot = function(botId)
-		-- When clicking a bot in the list, enter bot mind mode
-		if enterBotMindWrapper then
-			enterBotMindWrapper(botId)
+	onBuildBot = function()
+		if enterBotPlacementMode then
+			enterBotPlacementMode()
+		end
+	end,
+	onEditCode = function(id, unitType)
+		if unitType == "golem" and enterGolemMindWrapper then
+			enterGolemMindWrapper(id)
+		elseif unitType == "bot" and enterBotMindWrapper then
+			enterBotMindWrapper(id)
+		end
+	end,
+	onMove = function(id, unitType)
+		if unitType == "golem" then
+			-- Trigger move logic for turret
+			isMovingGolem = true
+			movingGolemId = id
+			hud.deselect()
+			print("Click on the map to move the turret...")
+		end
+	end,
+	onSell = function(id, unitType)
+		if unitType == "golem" then
+			golemSellEvent:FireServer(id)
+		elseif unitType == "bot" then
+			botSellEvent:FireServer(id)
+		end
+		hud.deselect()
+	end,
+	onUpgrade = function(id, unitType)
+		-- TODO: Implement upgrade system
+		print("Upgrade not yet implemented for", unitType, id)
+	end,
+	onReady = function()
+		playerReadyEvent:FireServer()
+	end,
+	onSkipBuild = function()
+		skipBuildEvent:FireServer()
+	end,
+	-- Action bar callbacks (1-4: load weapon programs, 5-6: build)
+	onLoadWeapon = function(weaponIndex)
+		-- Handled below after weapon system is set up
+		if loadWeaponProgram then
+			loadWeaponProgram(weaponIndex)
 		end
 	end,
 })
 
+-- Move state for turrets (used by HUD onMove callback)
+local isMovingGolem = false
+local movingGolemId = nil
+
 --============================================================================
--- TOWER DEFENSE HUD - Unified Panel (Bottom Left)
+-- STATE TRACKING
 --============================================================================
 
 local currentScrap = 0       -- Track locally for UI updates
@@ -208,262 +266,120 @@ local MAX_TURRETS = 10
 local currentBotCount = 0 -- Track bot count for cap display
 local MAX_BOTS = 5
 
--- Main panel container
-local tdPanel = Instance.new("Frame")
-tdPanel.Name = "TDPanel"
-tdPanel.Size = UDim2.new(0, 200, 0, 260)
-tdPanel.Position = UDim2.new(0, 10, 1, -270)
-tdPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-tdPanel.BackgroundTransparency = 0.1
-tdPanel.BorderSizePixel = 0
-tdPanel.Parent = screenGui
+-- Track current phase for visibility logic
+local currentPhase = "LOBBY"
 
-local tdPanelCorner = Instance.new("UICorner")
-tdPanelCorner.CornerRadius = UDim.new(0, 8)
-tdPanelCorner.Parent = tdPanel
+--============================================================================
+-- WEAPON PROGRAM SYSTEM
+--============================================================================
 
-local tdPanelStroke = Instance.new("UIStroke")
-tdPanelStroke.Color = Color3.fromRGB(60, 60, 80)
-tdPanelStroke.Thickness = 1
-tdPanelStroke.Parent = tdPanel
+-- Weapon programs (loaded into player's Python VM)
+local WEAPON_PROGRAMS = {
+	[1] = {
+		name = "BULLET",
+		color = Color3.fromRGB(255, 255, 150),
+		fireRate = 0.3,
+		source = [[# BULLET - Fast single target
+while True:
+    enemies = self.scan()
+    if len(enemies) > 0:
+        self.fire(nearest(enemies), BULLET)
+]]
+	},
+	[2] = {
+		name = "ROCKET",
+		color = Color3.fromRGB(255, 100, 50),
+		fireRate = 1.0,
+		source = [[# ROCKET - Explosive splash damage
+while True:
+    enemies = self.scan()
+    if len(enemies) > 0:
+        self.fire(nearest(enemies), ROCKET)
+]]
+	},
+	[3] = {
+		name = "LASER",
+		color = Color3.fromRGB(255, 50, 50),
+		fireRate = 0.5,
+		source = [[# LASER - Burning damage over time
+while True:
+    enemies = self.scan()
+    if len(enemies) > 0:
+        self.fire(nearest(enemies), LASER)
+]]
+	},
+	[4] = {
+		name = "GRENADE",
+		color = Color3.fromRGB(100, 255, 100),
+		fireRate = 1.5,
+		source = [[# GRENADE - Thrown AOE explosive
+while True:
+    enemies = self.scan()
+    if len(enemies) > 0:
+        self.fire(nearest(enemies), GRENADE)
+]]
+	},
+}
 
--- Wave header (big and prominent)
-local waveLabel = Instance.new("TextLabel")
-waveLabel.Name = "Wave"
-waveLabel.Size = UDim2.new(1, 0, 0, 28)
-waveLabel.Position = UDim2.new(0, 0, 0, 6)
-waveLabel.BackgroundTransparency = 1
-waveLabel.Text = "WAVE 0"
-waveLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-waveLabel.Font = Enum.Font.GothamBold
-waveLabel.TextSize = 20
-waveLabel.Parent = tdPanel
+local currentWeapon = 1
+local isReloading = false
+local reloadEndTime = 0
+local RELOAD_DURATION = 2.0  -- 2 seconds to switch weapons
 
--- Phase label (below wave)
-local phaseLabel = Instance.new("TextLabel")
-phaseLabel.Name = "Phase"
-phaseLabel.Size = UDim2.new(1, 0, 0, 16)
-phaseLabel.Position = UDim2.new(0, 0, 0, 32)
-phaseLabel.BackgroundTransparency = 1
-phaseLabel.Text = "LOBBY"
-phaseLabel.TextColor3 = Color3.fromRGB(150, 150, 180)
-phaseLabel.Font = Enum.Font.GothamBold
-phaseLabel.TextSize = 12
-phaseLabel.Parent = tdPanel
+-- Load a weapon program (always updates player's weapon, even when in bot/golem mind)
+function loadWeaponProgram(weaponIndex)
+	if weaponIndex < 1 or weaponIndex > 5 then return end
+	if isReloading then return end
+	if currentWeapon == weaponIndex then return end  -- Already loaded
 
--- Divider line
-local divider1 = Instance.new("Frame")
-divider1.Size = UDim2.new(0.9, 0, 0, 1)
-divider1.Position = UDim2.new(0.05, 0, 0, 52)
-divider1.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-divider1.BorderSizePixel = 0
-divider1.Parent = tdPanel
+	-- Start reload
+	isReloading = true
+	reloadEndTime = tick() + RELOAD_DURATION
 
--- Core HP row
-local coreLabel = Instance.new("TextLabel")
-coreLabel.Name = "Core"
-coreLabel.Size = UDim2.new(1, -10, 0, 18)
-coreLabel.Position = UDim2.new(0, 5, 0, 58)
-coreLabel.BackgroundTransparency = 1
-coreLabel.Text = "CORE: 1000/1000"
-coreLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-coreLabel.TextXAlignment = Enum.TextXAlignment.Left
-coreLabel.Font = Enum.Font.Code
-coreLabel.TextSize = 12
-coreLabel.Parent = tdPanel
+	-- Get weapon data
+	local weaponData = WEAPON_PROGRAMS[weaponIndex]
+	if not weaponData then return end
 
--- Enemies row
-local enemiesLabel = Instance.new("TextLabel")
-enemiesLabel.Name = "Enemies"
-enemiesLabel.Size = UDim2.new(1, -10, 0, 18)
-enemiesLabel.Position = UDim2.new(0, 5, 0, 76)
-enemiesLabel.BackgroundTransparency = 1
-enemiesLabel.Text = "ENEMIES: 0"
-enemiesLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
-enemiesLabel.TextXAlignment = Enum.TextXAlignment.Left
-enemiesLabel.Font = Enum.Font.Code
-enemiesLabel.TextSize = 12
-enemiesLabel.Parent = tdPanel
+	-- Update HUD (always shows player's current weapon)
+	hud.setCurrentWeapon(weaponIndex)
+	hud.highlightWeapon(weaponIndex)
+	hud.triggerReloadCooldown(RELOAD_DURATION, weaponIndex)
 
--- Turrets row (shows current / max turrets)
-local turretsLabel = Instance.new("TextLabel")
-turretsLabel.Name = "Turrets"
-turretsLabel.Size = UDim2.new(1, -10, 0, 18)
-turretsLabel.Position = UDim2.new(0, 5, 0, 94)
-turretsLabel.BackgroundTransparency = 1
-turretsLabel.Text = "TURRETS: 0/10"
-turretsLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-turretsLabel.TextXAlignment = Enum.TextXAlignment.Left
-turretsLabel.Font = Enum.Font.Code
-turretsLabel.TextSize = 12
-turretsLabel.Parent = tdPanel
+	-- Only update editor if in player mode (not editing a bot/golem)
+	if editor and editor:getMode() == "player" then
+		editor:setTextFormatted(weaponData.source)
+		editor:setWeaponName(weaponData.name)
+	end
 
--- Scrap row (currency - prominent)
-local scrapLabel = Instance.new("TextLabel")
-scrapLabel.Name = "Scrap"
-scrapLabel.Size = UDim2.new(1, -10, 0, 22)
-scrapLabel.Position = UDim2.new(0, 5, 0, 114)
-scrapLabel.BackgroundTransparency = 1
-scrapLabel.Text = "SCRAP: 600"
-scrapLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
-scrapLabel.TextXAlignment = Enum.TextXAlignment.Left
-scrapLabel.Font = Enum.Font.GothamBold
-scrapLabel.TextSize = 14
-scrapLabel.Parent = tdPanel
+	-- Play reload sound (if we have one)
+	-- TODO: Add reload sound
 
--- Bag row (player's physical scrap inventory - cyan)
-local bagLabel = Instance.new("TextLabel")
-bagLabel.Name = "Bag"
-bagLabel.Size = UDim2.new(1, -10, 0, 18)
-bagLabel.Position = UDim2.new(0, 5, 0, 136)
-bagLabel.BackgroundTransparency = 1
-bagLabel.Text = "BAG: 0/50"
-bagLabel.TextColor3 = Color3.fromRGB(0, 200, 255) -- Cyan for physical inventory
-bagLabel.TextXAlignment = Enum.TextXAlignment.Left
-bagLabel.Font = Enum.Font.Code
-bagLabel.TextSize = 12
-bagLabel.Parent = tdPanel
+	-- Send to server to load the player's program (always, even when in bot/golem mind)
+	runProgramEvent:FireServer(weaponData.source, { type = "player" })
 
--- Timer row (build phase countdown)
-local timerLabel = Instance.new("TextLabel")
-timerLabel.Name = "Timer"
-timerLabel.Size = UDim2.new(1, -10, 0, 18)
-timerLabel.Position = UDim2.new(0, 5, 0, 154)
-timerLabel.BackgroundTransparency = 1
-timerLabel.Text = ""
-timerLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
-timerLabel.TextXAlignment = Enum.TextXAlignment.Left
-timerLabel.Font = Enum.Font.Code
-timerLabel.TextSize = 12
-timerLabel.Parent = tdPanel
+	-- After reload completes, update state
+	task.delay(RELOAD_DURATION, function()
+		if hud.getCurrentWeapon() == weaponIndex then
+			currentWeapon = weaponIndex
+			isReloading = false
+		end
+	end)
+end
 
--- Divider line 2
-local divider2 = Instance.new("Frame")
-divider2.Size = UDim2.new(0.9, 0, 0, 1)
-divider2.Position = UDim2.new(0.05, 0, 0, 176)
-divider2.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-divider2.BorderSizePixel = 0
-divider2.Parent = tdPanel
-
--- BUILD TURRET BUTTON (left half) - HIDDEN: Pre-placed units, no building phase
-local buildBtn = Instance.new("TextButton")
-buildBtn.Name = "BuildButton"
-buildBtn.Size = UDim2.new(0.44, 0, 0, 32)
-buildBtn.Position = UDim2.new(0.03, 0, 0, 184)
-buildBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-buildBtn.BorderSizePixel = 0
-buildBtn.Text = "TURRET [B]"
-buildBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-buildBtn.Font = Enum.Font.GothamBold
-buildBtn.TextSize = 11
-buildBtn.Visible = false -- HIDDEN: No building phase
-buildBtn.Parent = tdPanel
-
-local buildBtnCorner = Instance.new("UICorner")
-buildBtnCorner.CornerRadius = UDim.new(0, 6)
-buildBtnCorner.Parent = buildBtn
-
--- BUILD BOT BUTTON (right half) - HIDDEN: Pre-placed units, no building phase
-local buildBotBtn = Instance.new("TextButton")
-buildBotBtn.Name = "BuildBotButton"
-buildBotBtn.Size = UDim2.new(0.44, 0, 0, 32)
-buildBotBtn.Position = UDim2.new(0.53, 0, 0, 184)
-buildBotBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 180)
-buildBotBtn.BorderSizePixel = 0
-buildBotBtn.Text = "BOT [N]"
-buildBotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-buildBotBtn.Font = Enum.Font.GothamBold
-buildBotBtn.TextSize = 11
-buildBotBtn.Visible = false -- HIDDEN: No building phase
-buildBotBtn.Parent = tdPanel
-
-local buildBotBtnCorner = Instance.new("UICorner")
-buildBotBtnCorner.CornerRadius = UDim.new(0, 6)
-buildBotBtnCorner.Parent = buildBotBtn
-
--- READY BUTTON (for LOBBY phase - replaces build button position)
-local readyButton = Instance.new("TextButton")
-readyButton.Name = "ReadyButton"
-readyButton.Size = UDim2.new(0.9, 0, 0, 32)
-readyButton.Position = UDim2.new(0.05, 0, 0, 220)
-readyButton.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-readyButton.BorderSizePixel = 0
-readyButton.Text = "READY"
-readyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-readyButton.Font = Enum.Font.GothamBold
-readyButton.TextSize = 13
-readyButton.Visible = false
-readyButton.Parent = tdPanel
-
-local readyCorner = Instance.new("UICorner")
-readyCorner.CornerRadius = UDim.new(0, 6)
-readyCorner.Parent = readyButton
-
--- SKIP BUTTON (for BUILD phase)
-local skipButton = Instance.new("TextButton")
-skipButton.Name = "SkipButton"
-skipButton.Size = UDim2.new(0.9, 0, 0, 32)
-skipButton.Position = UDim2.new(0.05, 0, 0, 220)
-skipButton.BackgroundColor3 = Color3.fromRGB(180, 120, 50)
-skipButton.BorderSizePixel = 0
-skipButton.Text = "SKIP BUILD"
-skipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-skipButton.Font = Enum.Font.GothamBold
-skipButton.TextSize = 13
-skipButton.Visible = false
-skipButton.Parent = tdPanel
-
-local skipCorner = Instance.new("UICorner")
-skipCorner.CornerRadius = UDim.new(0, 6)
-skipCorner.Parent = skipButton
-
--- Forward declarations for placement mode functions
-local enterPlacementMode, exitPlacementMode
-local enterBotPlacementMode, exitBotPlacementMode
+-- Initialize with bullet program on startup
+task.defer(function()
+	-- Set editor to player mode first
+	if editor then
+		editor:setMode("player")
+	end
+	-- Then load default weapon
+	loadWeaponProgram(1)
+	isReloading = false  -- Don't count initial load as reload
+end)
 
 -- Bot placement state
 local botPlacementMode = false
 local ghostBot = nil
-
-buildBtn.MouseButton1Click:Connect(function()
-	if botPlacementMode then exitBotPlacementMode() end
-	if placementMode then
-		exitPlacementMode()
-	else
-		enterPlacementMode()
-	end
-end)
-
-buildBotBtn.MouseButton1Click:Connect(function()
-	if placementMode then exitPlacementMode() end
-	if botPlacementMode then
-		exitBotPlacementMode()
-	else
-		enterBotPlacementMode()
-	end
-end)
-
-readyButton.MouseButton1Click:Connect(function()
-	playerReadyEvent:FireServer()
-	readyButton.Text = "WAITING..."
-	readyButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-end)
-
-skipButton.MouseButton1Click:Connect(function()
-	skipBuildEvent:FireServer()
-end)
-
--- Update button appearance based on Scrap and caps (runs every frame)
--- NOTE: Build buttons are now hidden since we have pre-placed units
-game:GetService("RunService").Heartbeat:Connect(function()
-	-- Building is disabled - buttons stay hidden
-	-- Keep this loop minimal since buttons are not visible
-end)
-
--- Track current phase for button visibility
-local currentPhase = "LOBBY"
-
--- PLAYERS PANEL removed - cleaner UI
 
 --============================================================================
 -- DEATH OVERLAY
@@ -646,407 +562,6 @@ local function showNotification(title, word, hint, duration)
 end
 
 --============================================================================
--- HELP POPUP
---============================================================================
-
-local helpPopup = Instance.new("Frame")
-helpPopup.Name = "HelpPopup"
-helpPopup.Size = UDim2.new(0, 550, 0, 450)
-helpPopup.Position = UDim2.new(0.5, -275, 0.5, -225)
-helpPopup.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-helpPopup.BorderSizePixel = 0
-helpPopup.Visible = false
-helpPopup.ZIndex = 300
-helpPopup.Parent = screenGui
-
-local helpCorner = Instance.new("UICorner")
-helpCorner.CornerRadius = UDim.new(0, 10)
-helpCorner.Parent = helpPopup
-
-local helpStroke = Instance.new("UIStroke")
-helpStroke.Color = Color3.fromRGB(100, 150, 255)
-helpStroke.Thickness = 2
-helpStroke.Parent = helpPopup
-
--- Header
-local helpHeader = Instance.new("Frame")
-helpHeader.Name = "Header"
-helpHeader.Size = UDim2.new(1, 0, 0, 40)
-helpHeader.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-helpHeader.BorderSizePixel = 0
-helpHeader.Parent = helpPopup
-
-local helpHeaderCorner = Instance.new("UICorner")
-helpHeaderCorner.CornerRadius = UDim.new(0, 10)
-helpHeaderCorner.Parent = helpHeader
-
-DragModule.makeDraggable(helpPopup, helpHeader)
-
-local helpTitle = Instance.new("TextLabel")
-helpTitle.Name = "Title"
-helpTitle.Size = UDim2.new(0, 150, 1, 0)
-helpTitle.Position = UDim2.new(0, 15, 0, 0)
-helpTitle.BackgroundTransparency = 1
-helpTitle.Text = "PYTHON HELP"
-helpTitle.TextColor3 = Color3.fromRGB(100, 200, 255)
-helpTitle.TextXAlignment = Enum.TextXAlignment.Left
-helpTitle.Font = Enum.Font.GothamBold
-helpTitle.TextSize = 16
-helpTitle.ZIndex = 301
-helpTitle.Parent = helpHeader
-
--- Search box
-local searchBox = Instance.new("TextBox")
-searchBox.Name = "SearchBox"
-searchBox.Size = UDim2.new(0, 200, 0, 26)
-searchBox.Position = UDim2.new(0, 170, 0, 7)
-searchBox.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-searchBox.Text = ""
-searchBox.PlaceholderText = "Search words..."
-searchBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 120)
-searchBox.TextColor3 = Color3.fromRGB(220, 220, 240)
-searchBox.Font = Enum.Font.Code
-searchBox.TextSize = 13
-searchBox.ClearTextOnFocus = false
-searchBox.ZIndex = 301
-searchBox.Parent = helpHeader
-
-local searchBoxCorner = Instance.new("UICorner")
-searchBoxCorner.CornerRadius = UDim.new(0, 4)
-searchBoxCorner.Parent = searchBox
-
-local searchBoxPadding = Instance.new("UIPadding")
-searchBoxPadding.PaddingLeft = UDim.new(0, 8)
-searchBoxPadding.Parent = searchBox
-
--- Back button (hidden initially)
-local backBtn = Instance.new("TextButton")
-backBtn.Name = "BackBtn"
-backBtn.Size = UDim2.new(0, 60, 0, 26)
-backBtn.Position = UDim2.new(0, 380, 0, 7)
-backBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-backBtn.Text = "< BACK"
-backBtn.TextColor3 = Color3.fromRGB(180, 180, 220)
-backBtn.Font = Enum.Font.GothamBold
-backBtn.TextSize = 10
-backBtn.Visible = false
-backBtn.ZIndex = 301
-backBtn.Parent = helpHeader
-
-local backBtnCorner = Instance.new("UICorner")
-backBtnCorner.CornerRadius = UDim.new(0, 4)
-backBtnCorner.Parent = backBtn
-
-local helpCloseBtn = Instance.new("TextButton")
-helpCloseBtn.Name = "CloseBtn"
-helpCloseBtn.Size = UDim2.new(0, 30, 0, 30)
-helpCloseBtn.Position = UDim2.new(1, -35, 0, 5)
-helpCloseBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
-helpCloseBtn.Text = "X"
-helpCloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-helpCloseBtn.Font = Enum.Font.GothamBold
-helpCloseBtn.TextSize = 14
-helpCloseBtn.ZIndex = 301
-helpCloseBtn.Parent = helpHeader
-
-local helpCloseBtnCorner = Instance.new("UICorner")
-helpCloseBtnCorner.CornerRadius = UDim.new(0, 6)
-helpCloseBtnCorner.Parent = helpCloseBtn
-
-helpCloseBtn.MouseButton1Click:Connect(function()
-	helpPopup.Visible = false
-end)
-
--- Content area
-local helpContent = Instance.new("ScrollingFrame")
-helpContent.Name = "Content"
-helpContent.Size = UDim2.new(1, -20, 1, -50)
-helpContent.Position = UDim2.new(0, 10, 0, 45)
-helpContent.BackgroundTransparency = 1
-helpContent.ScrollBarThickness = 6
-helpContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-helpContent.ZIndex = 301
-helpContent.Parent = helpPopup
-
-local helpLayout = Instance.new("UIListLayout")
-helpLayout.Padding = UDim.new(0, 4)
-helpLayout.SortOrder = Enum.SortOrder.LayoutOrder
-helpLayout.Parent = helpContent
-
--- Forward declare for mutual reference
-local showWordHelp
-local showFilteredWords
-
--- Function to show help for a specific word
-showWordHelp = function(word)
-	-- Clear content
-	for _, child in ipairs(helpContent:GetChildren()) do
-		if not child:IsA("UIListLayout") then
-			child:Destroy()
-		end
-	end
-
-	local info = HelpDatabase.getWordHelp(word)
-	if not info then
-		local notFound = Instance.new("TextLabel")
-		notFound.Size = UDim2.new(1, 0, 0, 40)
-		notFound.BackgroundTransparency = 1
-		notFound.Text = "Word '" .. word .. "' not found"
-		notFound.TextColor3 = Color3.fromRGB(255, 150, 150)
-		notFound.Font = Enum.Font.Gotham
-		notFound.TextSize = 14
-		notFound.ZIndex = 302
-		notFound.Parent = helpContent
-		helpContent.CanvasSize = UDim2.new(0, 0, 0, 50)
-		return
-	end
-
-	helpTitle.Text = "HELP: " .. word
-	backBtn.Visible = true
-	searchBox.Visible = false
-
-	-- Word name
-	local wordLabel = Instance.new("TextLabel")
-	wordLabel.Size = UDim2.new(1, 0, 0, 35)
-	wordLabel.BackgroundTransparency = 1
-	wordLabel.Text = word
-	wordLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-	wordLabel.Font = Enum.Font.Code
-	wordLabel.TextSize = 24
-	wordLabel.TextXAlignment = Enum.TextXAlignment.Left
-	wordLabel.ZIndex = 302
-	wordLabel.Parent = helpContent
-
-	-- Stack effect
-	local stackLabel = Instance.new("TextLabel")
-	stackLabel.Size = UDim2.new(1, 0, 0, 25)
-	stackLabel.BackgroundTransparency = 1
-	stackLabel.Text = info.stack
-	stackLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-	stackLabel.Font = Enum.Font.Code
-	stackLabel.TextSize = 14
-	stackLabel.TextXAlignment = Enum.TextXAlignment.Left
-	stackLabel.ZIndex = 302
-	stackLabel.Parent = helpContent
-
-	-- Category
-	local catLabel = Instance.new("TextLabel")
-	catLabel.Size = UDim2.new(1, 0, 0, 20)
-	catLabel.BackgroundTransparency = 1
-	catLabel.Text = "Category: " .. (info.category or "General")
-	catLabel.TextColor3 = Color3.fromRGB(150, 150, 180)
-	catLabel.Font = Enum.Font.Gotham
-	catLabel.TextSize = 11
-	catLabel.TextXAlignment = Enum.TextXAlignment.Left
-	catLabel.ZIndex = 302
-	catLabel.Parent = helpContent
-
-	-- Description
-	local descLabel = Instance.new("TextLabel")
-	descLabel.Size = UDim2.new(1, 0, 0, 50)
-	descLabel.BackgroundTransparency = 1
-	descLabel.Text = info.desc
-	descLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
-	descLabel.Font = Enum.Font.Gotham
-	descLabel.TextSize = 14
-	descLabel.TextXAlignment = Enum.TextXAlignment.Left
-	descLabel.TextYAlignment = Enum.TextYAlignment.Top
-	descLabel.TextWrapped = true
-	descLabel.ZIndex = 302
-	descLabel.Parent = helpContent
-
-	-- Example header
-	local exHeader = Instance.new("TextLabel")
-	exHeader.Size = UDim2.new(1, 0, 0, 25)
-	exHeader.BackgroundTransparency = 1
-	exHeader.Text = "Example:"
-	exHeader.TextColor3 = Color3.fromRGB(150, 200, 255)
-	exHeader.Font = Enum.Font.GothamBold
-	exHeader.TextSize = 12
-	exHeader.TextXAlignment = Enum.TextXAlignment.Left
-	exHeader.ZIndex = 302
-	exHeader.Parent = helpContent
-
-	-- Example code
-	local exCode = Instance.new("TextLabel")
-	exCode.Size = UDim2.new(1, 0, 0, 60)
-	exCode.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-	exCode.Text = "  " .. info.example
-	exCode.TextColor3 = Color3.fromRGB(200, 200, 220)
-	exCode.Font = Enum.Font.Code
-	exCode.TextSize = 13
-	exCode.TextXAlignment = Enum.TextXAlignment.Left
-	exCode.TextYAlignment = Enum.TextYAlignment.Top
-	exCode.TextWrapped = true
-	exCode.ZIndex = 302
-	exCode.Parent = helpContent
-
-	local exCodeCorner = Instance.new("UICorner")
-	exCodeCorner.CornerRadius = UDim.new(0, 4)
-	exCodeCorner.Parent = exCode
-
-	helpContent.CanvasSize = UDim2.new(0, 0, 0, 250)
-end
-
--- Helper to create a word row
-local function createWordRow(wordInfo, parent, layoutOrder)
-	local wordBtn = Instance.new("TextButton")
-	wordBtn.Size = UDim2.new(1, 0, 0, 28)
-	wordBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-	wordBtn.Text = ""
-	wordBtn.ZIndex = 302
-	wordBtn.LayoutOrder = layoutOrder
-	wordBtn.Parent = parent
-
-	local wordBtnCorner = Instance.new("UICorner")
-	wordBtnCorner.CornerRadius = UDim.new(0, 4)
-	wordBtnCorner.Parent = wordBtn
-
-	local wordName = Instance.new("TextLabel")
-	wordName.Size = UDim2.new(0, 90, 1, 0)
-	wordName.Position = UDim2.new(0, 8, 0, 0)
-	wordName.BackgroundTransparency = 1
-	wordName.Text = wordInfo.word
-	wordName.TextColor3 = Color3.fromRGB(100, 255, 100)
-	wordName.Font = Enum.Font.Code
-	wordName.TextSize = 12
-	wordName.TextXAlignment = Enum.TextXAlignment.Left
-	wordName.ZIndex = 303
-	wordName.Parent = wordBtn
-
-	local wordStack = Instance.new("TextLabel")
-	wordStack.Size = UDim2.new(0, 130, 1, 0)
-	wordStack.Position = UDim2.new(0, 100, 0, 0)
-	wordStack.BackgroundTransparency = 1
-	wordStack.Text = wordInfo.info.stack
-	wordStack.TextColor3 = Color3.fromRGB(255, 200, 100)
-	wordStack.Font = Enum.Font.Code
-	wordStack.TextSize = 10
-	wordStack.TextXAlignment = Enum.TextXAlignment.Left
-	wordStack.ZIndex = 303
-	wordStack.Parent = wordBtn
-
-	local wordDesc = Instance.new("TextLabel")
-	wordDesc.Size = UDim2.new(1, -240, 1, 0)
-	wordDesc.Position = UDim2.new(0, 235, 0, 0)
-	wordDesc.BackgroundTransparency = 1
-	wordDesc.Text = wordInfo.info.desc
-	wordDesc.TextColor3 = Color3.fromRGB(160, 160, 180)
-	wordDesc.Font = Enum.Font.Gotham
-	wordDesc.TextSize = 10
-	wordDesc.TextXAlignment = Enum.TextXAlignment.Left
-	wordDesc.TextTruncate = Enum.TextTruncate.AtEnd
-	wordDesc.ZIndex = 303
-	wordDesc.Parent = wordBtn
-
-	wordBtn.MouseButton1Click:Connect(function()
-		showWordHelp(wordInfo.word)
-	end)
-
-	return wordBtn
-end
-
--- Function to show filtered words (for search)
-showFilteredWords = function(filter)
-	-- Clear content
-	for _, child in ipairs(helpContent:GetChildren()) do
-		if not child:IsA("UIListLayout") then
-			child:Destroy()
-		end
-	end
-
-	helpTitle.Text = "PYTHON HELP"
-	backBtn.Visible = false
-	searchBox.Visible = true
-
-	local filterUpper = filter and string.upper(filter) or ""
-	local totalHeight = 0
-	local hasResults = false
-	local layoutOrder = 0
-
-	for _, category in ipairs(HelpDatabase.categories) do
-		local words = HelpDatabase.getWordsInCategory(category)
-		local matchingWords = {}
-
-		-- Filter words if search is active
-		for _, wordInfo in ipairs(words) do
-			if filterUpper == "" or string.find(string.upper(wordInfo.word), filterUpper, 1, true)
-				or string.find(string.upper(wordInfo.info.desc), filterUpper, 1, true) then
-				table.insert(matchingWords, wordInfo)
-			end
-		end
-
-		if #matchingWords > 0 then
-			hasResults = true
-
-			-- Category header
-			local catHeader = Instance.new("TextLabel")
-			catHeader.Size = UDim2.new(1, 0, 0, 22)
-			catHeader.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
-			catHeader.Text = "  " .. category .. " (" .. #matchingWords .. ")"
-			catHeader.TextColor3 = Color3.fromRGB(100, 200, 255)
-			catHeader.Font = Enum.Font.GothamBold
-			catHeader.TextSize = 11
-			catHeader.TextXAlignment = Enum.TextXAlignment.Left
-			catHeader.ZIndex = 302
-			catHeader.LayoutOrder = layoutOrder
-			catHeader.Parent = helpContent
-			totalHeight = totalHeight + 26
-			layoutOrder = layoutOrder + 1
-
-			local catCorner = Instance.new("UICorner")
-			catCorner.CornerRadius = UDim.new(0, 4)
-			catCorner.Parent = catHeader
-
-			-- Words in this category (always expanded)
-			for _, wordInfo in ipairs(matchingWords) do
-				createWordRow(wordInfo, helpContent, layoutOrder)
-				totalHeight = totalHeight + 32
-				layoutOrder = layoutOrder + 1
-			end
-		end
-	end
-
-	if not hasResults then
-		local noResults = Instance.new("TextLabel")
-		noResults.Size = UDim2.new(1, 0, 0, 40)
-		noResults.BackgroundTransparency = 1
-		noResults.Text = "No words found matching '" .. filter .. "'"
-		noResults.TextColor3 = Color3.fromRGB(180, 150, 150)
-		noResults.Font = Enum.Font.Gotham
-		noResults.TextSize = 13
-		noResults.ZIndex = 302
-		noResults.LayoutOrder = 0
-		noResults.Parent = helpContent
-		totalHeight = 50
-	end
-
-	helpContent.CanvasSize = UDim2.new(0, 0, 0, totalHeight + 10)
-end
-
--- Search box handler
-searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-	showFilteredWords(searchBox.Text)
-end)
-
--- Back button handler
-backBtn.MouseButton1Click:Connect(function()
-	searchBox.Text = ""
-	showFilteredWords("")
-end)
-
--- Show help function (called from ? button)
-showHelp = function(targetWord)
-	helpPopup.Visible = true
-	searchBox.Text = ""
-	if targetWord then
-		showWordHelp(targetWord)
-	else
-		showFilteredWords("")
-	end
-end
-
---============================================================================
 -- HP BILLBOARD
 --============================================================================
 
@@ -1102,79 +617,33 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		hpBillboard:update(state.hp or 100, state.maxHp or 100)
 	end
 
-	-- Update TD HUD (only when wave data is present to avoid flickering)
+	-- Update new HUD (only when wave data is present to avoid flickering)
 	if state.waveNumber then
-		waveLabel.Text = "WAVE " .. state.waveNumber
-
 		local phase = state.phase or "LOBBY"
 		currentPhase = phase
-		phaseLabel.Text = phase
 
-		if phase == "BUILD" then
-			phaseLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
-		elseif phase == "COMBAT" then
-			phaseLabel.TextColor3 = Color3.fromRGB(255, 150, 100)
-		else
-			phaseLabel.TextColor3 = Color3.fromRGB(150, 150, 180)
-		end
+		-- Update HUD elements
+		hud.updateWave(state.waveNumber, state.wavePreview)
+		hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
 
-		-- Show/hide buttons based on phase (building disabled - pre-placed units)
-		if phase == "LOBBY" then
-			readyButton.Visible = true
-			skipButton.Visible = false
-			-- Reset ready button if we returned to lobby
-			readyButton.Text = "READY"
-			readyButton.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-		elseif phase == "BUILD" then
-			readyButton.Visible = false
-			skipButton.Visible = true
-		else
-			readyButton.Visible = false
-			skipButton.Visible = false
-		end
-		-- Build buttons stay hidden (pre-placed units, no building phase)
-
-		local coreHp = state.coreHp or 0
-		local coreMax = state.coreMaxHp or 1000
-		coreLabel.Text = "CORE: " .. math.floor(coreHp) .. "/" .. math.floor(coreMax)
-		local corePercent = coreHp / coreMax
-		if corePercent > 0.5 then
-			coreLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-		elseif corePercent > 0.25 then
-			coreLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-		else
-			coreLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-		end
-
-		enemiesLabel.Text = "ENEMIES: " .. (state.enemiesRemaining or 0)
-		scrapLabel.Text = "SCRAP: " .. (state.scrap or 0)
-		currentScrap = state.scrap or 0 -- Track for build button
-
-		-- Update bag display (physical scrap inventory)
-		local bagAmount = state.scrapInventory or 0
-		local bagMax = state.maxCapacity or 50
-		bagLabel.Text = "BAG: " .. bagAmount .. "/" .. bagMax
-		-- Color feedback: cyan normally, gold when full
-		if bagAmount >= bagMax then
-			bagLabel.TextColor3 = Color3.fromRGB(255, 200, 50) -- Gold when full
-		elseif bagAmount > 0 then
-			bagLabel.TextColor3 = Color3.fromRGB(0, 200, 255) -- Cyan with stuff
-		else
-			bagLabel.TextColor3 = Color3.fromRGB(100, 120, 140) -- Gray when empty
-		end
-
+		local buildTimer = nil
 		if state.buildTimeRemaining and state.buildTimeRemaining > 0 then
-			timerLabel.Text = "BUILD TIME: " .. math.ceil(state.buildTimeRemaining) .. "s"
-			timerLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
-		else
-			timerLabel.Text = ""
+			buildTimer = math.ceil(state.buildTimeRemaining)
+		end
+		hud.updatePhase(phase, buildTimer)
+
+		-- Track scrap for economy updates
+		currentScrap = state.scrap or 0
+
+		-- Update cargo indicator if player is carrying scrap
+		if state.scrapInventory then
+			hud.updateCargo(state.scrapInventory, state.maxCapacity or 50)
 		end
 
 		-- Game over states
 		if phase == "GAMEOVER" then
 			gameOverOverlay.Visible = true
 			victoryOverlay.Visible = false
-			-- Update restart countdown
 			local restartTime = state.restartTimeRemaining or 0
 			restartCountdownLabel.Text = "Restarting in " .. math.ceil(restartTime) .. "..."
 		elseif phase == "VICTORY" then
@@ -1223,6 +692,7 @@ end)
 -- Golem state updates
 local previousTurretCount = 0 -- Track previous count to detect reaching cap
 local golemStatesRaw = {} -- Store list for the panel
+local nextTurretCost = 100 -- Dynamic cost from server
 golemStateEvent.OnClientEvent:Connect(function(data)
 	-- Convert golem list to lookup by ID
 	golemStates = {}
@@ -1236,27 +706,22 @@ golemStateEvent.OnClientEvent:Connect(function(data)
 		end
 	end
 
-	-- Update the UnitListPanel (pass both golems and bots)
-	unitList:update(golemStatesRaw, botStatesRaw)
+	-- Update next turret cost from server
+	if data and data.nextTurretCost then
+		nextTurretCost = data.nextTurretCost
+	end
 
-	-- Update turret count in HUD
-	turretsLabel.Text = "TURRETS: " .. currentTurretCount .. "/" .. MAX_TURRETS
-	-- Color changes based on count
-	if currentTurretCount >= MAX_TURRETS then
-		turretsLabel.TextColor3 = Color3.fromRGB(255, 100, 100) -- Red when at cap
-		-- Show warning when just reached cap
-		if previousTurretCount < MAX_TURRETS then
-			showNotification(
-				"TURRET LIMIT REACHED",
-				"Max " .. MAX_TURRETS .. " turrets!",
-				"Sell a turret to build more (click turret + DELETE)",
-				4
-			)
-		end
-	elseif currentTurretCount >= MAX_TURRETS - 3 then
-		turretsLabel.TextColor3 = Color3.fromRGB(255, 200, 100) -- Yellow when close
-	else
-		turretsLabel.TextColor3 = Color3.fromRGB(100, 200, 255) -- Cyan normally
+	-- Update HUD economy display
+	hud.updateEconomy(currentScrap, nextTurretCost, 75) -- TODO: Get bot cost from server
+
+	-- Show warning when reaching turret cap
+	if currentTurretCount >= MAX_TURRETS and previousTurretCount < MAX_TURRETS then
+		showNotification(
+			"TURRET LIMIT REACHED",
+			"Max " .. MAX_TURRETS .. " turrets!",
+			"Sell a turret to build more (click turret)",
+			4
+		)
 	end
 	previousTurretCount = currentTurretCount
 
@@ -1279,6 +744,22 @@ golemStateEvent.OnClientEvent:Connect(function(data)
 			end
 		end
 	end
+
+	-- Update inspector if a golem is selected
+	if hud.selection and hud.selection.type == "golem" then
+		local golemData = golemStates[hud.selection.id]
+		if golemData then
+			hud.select({
+				id = golemData.id,
+				type = "golem",
+				spotId = golemData.spotId,
+				ammo = golemData.ammo,
+				maxAmmo = golemData.maxAmmo or 300,
+				dynamicRange = golemData.dynamicRange or 40,
+				status = golemData.paused and "PAUSED" or "ACTIVE",
+			})
+		end
+	end
 end)
 
 -- Bot state updates
@@ -1293,8 +774,22 @@ botStateEvent.OnClientEvent:Connect(function(data)
 			currentBotCount = currentBotCount + 1
 		end
 	end
-	-- Update the UnitListPanel with both datasets
-	unitList:update(golemStatesRaw, botStatesRaw)
+
+	-- Update inspector if a bot is selected
+	if hud.selection and hud.selection.type == "bot" then
+		local botData = botStates[hud.selection.id]
+		if botData then
+			hud.select({
+				id = botData.id,
+				type = "bot",
+				spotId = botData.spotId,
+				ammo = botData.ammo or 0,
+				maxAmmo = botData.maxAmmo or 100,
+				dynamicRange = 20, -- Bots have fixed range
+				status = botData.paused and "PAUSED" or "ACTIVE",
+			})
+		end
+	end
 end)
 
 -- Golem placement result feedback
@@ -1497,10 +992,11 @@ local function exitGolemMind()
 	-- Unregister as viewer
 	golemUnregisterViewerEvent:FireServer(golemId)
 
-	editor:setGolemMode(false, nil)
+	-- Return to player mode with current weapon
+	editor:setMode("player")
 	program:setTheme("player")
 	bytecodePanel:setTheme("player")
-	updateIDEVisibility() -- Hide IDE when back to player
+	updateIDEVisibility()
 
 	-- Destroy range indicator ring
 	if golemMindRangeRing then
@@ -1508,10 +1004,11 @@ local function exitGolemMind()
 		golemMindRangeRing = nil
 	end
 
-	-- Restore player program
-	if savedPlayerProgram then
-		editor:setText(savedPlayerProgram)
-		savedPlayerProgram = nil
+	-- Restore current weapon program
+	local weaponData = WEAPON_PROGRAMS[currentWeapon]
+	if weaponData and editor then
+		editor:setTextFormatted(weaponData.source)
+		editor:setWeaponName(weaponData.name)
 	end
 	golemProgramLoaded = false
 end
@@ -1552,12 +1049,11 @@ golemMoveEvent.OnClientEvent:Connect(function(success, msg)
 	end
 end)
 
--- Handle mouse clicks for moving turrets
+-- Handle mouse clicks for selecting units and moving turrets
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 
-	if input.UserInputType == Enum.UserInputType.MouseButton1 and isMovingGolem and movingGolemId then
-		-- Raycast to find where player clicked on the ground
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		local mouse = player:GetMouse()
 		local ray = workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y)
 		local raycastParams = RaycastParams.new()
@@ -1565,9 +1061,74 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		raycastParams.FilterDescendantsInstances = {player.Character}
 
 		local result = workspace:Raycast(ray.Origin, ray.Direction * 500, raycastParams)
-		if result then
+
+		-- If in moving mode, move the turret
+		if isMovingGolem and movingGolemId and result then
 			local hitPos = result.Position
 			golemMoveEvent:FireServer(movingGolemId, hitPos.X, hitPos.Z)
+			return
+		end
+
+		-- Otherwise try to select a unit or attack an enemy by clicking
+		if result and result.Instance then
+			local hitPart = result.Instance
+			local model = hitPart:FindFirstAncestorOfClass("Model")
+
+			-- Check if clicked on an enemy - fire manual attack
+			if model then
+				local enemyId = model:GetAttribute("EnemyId")
+				if enemyId then
+					-- Fire manual attack - server will check range and damage
+					manualAttackEvent:FireServer()
+					return
+				end
+			end
+
+			-- Check if clicked on a turret (golem) or bot using attributes
+			if model then
+				local golemId = model:GetAttribute("GolemId")
+				local botId = model:GetAttribute("BotId")
+
+				if golemId and golemStates[golemId] then
+					local golemData = golemStates[golemId]
+					hud.select({
+						id = golemId,
+						type = "golem",
+						spotId = golemData.spotId,
+						ammo = golemData.ammo,
+						maxAmmo = golemData.maxAmmo or 300,
+						dynamicRange = golemData.dynamicRange or 40,
+						status = golemData.paused and "PAUSED" or "ACTIVE",
+					})
+					-- Auto-enter golem mind mode (shows IDE with read-only code)
+					enterGolemMind(golemId)
+					return
+				elseif botId and botStates[botId] then
+					local botData = botStates[botId]
+					hud.select({
+						id = botId,
+						type = "bot",
+						spotId = botData.spotId,
+						ammo = botData.ammo or 0,
+						maxAmmo = botData.maxAmmo or 100,
+						dynamicRange = 20,
+						status = botData.paused and "PAUSED" or "ACTIVE",
+					})
+					-- Auto-enter bot mind mode (shows IDE with editable code)
+					if enterBotMindWrapper then
+						enterBotMindWrapper(botId)
+					end
+					return
+				end
+			end
+
+			-- If clicked on ground/nothing, deselect and exit mind mode
+			hud.deselect()
+			if currentInterpreterTarget.type == "golem" then
+				exitGolemMind()
+			elseif currentInterpreterTarget.type == "bot" and exitBotMindWrapper then
+				exitBotMindWrapper()
+			end
 		end
 	end
 end)
@@ -1652,19 +1213,23 @@ local function exitBotMind()
 	-- Unregister as viewer
 	botUnregisterViewerEvent:FireServer(botId)
 
-	-- Update UI back to player mode
-	editor:setMode("player", nil)
+	-- Return to player mode with current weapon
+	editor:setMode("player")
 	program:setTheme("player")
 	bytecodePanel:setTheme("player")
-	updateIDEVisibility() -- Hide IDE when back to player
+	updateIDEVisibility()
 
-	-- Restore player program
-	if savedPlayerProgram then
-		editor:setText(savedPlayerProgram)
-		savedPlayerProgram = nil
+	-- Restore current weapon program
+	local weaponData = WEAPON_PROGRAMS[currentWeapon]
+	if weaponData and editor then
+		editor:setTextFormatted(weaponData.source)
+		editor:setWeaponName(weaponData.name)
 	end
 	golemProgramLoaded = false
 end
+
+-- Link the exit wrapper for forward declarations
+exitBotMindWrapper = exitBotMind
 
 -- Wire up exit bot button (reuses onExitGolem for simplicity)
 local originalExitGolem = editor.onExitGolem
@@ -1706,58 +1271,37 @@ end)
 -- Track placement validity for click handler
 local isPlacementValid = false
 
+-- Ground level from Config
+local GROUND_Y = Config.PLATFORM_Y
+
 local function createGhostTurret()
 	local model = Instance.new("Model")
 	model.Name = "GhostTurret"
 
-	-- 1. Range Indicator (Cylinder) - Shows what the turret can shoot
-	local range = 40 -- Match GolemStats.range
+	-- Simple cyan square block for turret placement
+	local base = Instance.new("Part")
+	base.Name = "Base"
+	base.Size = Vector3.new(5, 5, 5)
+	base.Anchored = true
+	base.CanCollide = false
+	base.Material = Enum.Material.Neon
+	base.Color = Color3.fromRGB(0, 255, 200) -- Cyan
+	base.Transparency = 0.4
+	base.Parent = model
+
+	-- Range ring (flat cylinder)
+	local range = 40
 	local ring = Instance.new("Part")
 	ring.Name = "RangeRing"
 	ring.Shape = Enum.PartType.Cylinder
-	-- Cylinders are rotated 90 deg on Z by default. Size is (Height, Dia, Dia)
 	ring.Size = Vector3.new(0.2, range * 2, range * 2)
 	ring.Orientation = Vector3.new(0, 0, 90)
 	ring.Anchored = true
 	ring.CanCollide = false
 	ring.Material = Enum.Material.ForceField
 	ring.Color = Color3.fromRGB(0, 255, 255)
-	ring.Transparency = 0.8
+	ring.Transparency = 0.85
 	ring.Parent = model
-
-	-- 2. The Turret Hologram (Neon material for hologram look)
-	local base = Instance.new("Part")
-	base.Name = "Base"
-	base.Shape = Enum.PartType.Cylinder
-	base.Size = Vector3.new(3, 4, 4)
-	base.Orientation = Vector3.new(0, 0, 90)
-	base.Anchored = true
-	base.CanCollide = false
-	base.Material = Enum.Material.Neon -- Neon looks more like a hologram
-	base.Color = Color3.fromRGB(100, 255, 100)
-	base.Transparency = 0.6
-	base.Parent = model
-
-	local head = Instance.new("Part")
-	head.Name = "Head"
-	head.Size = Vector3.new(2.5, 2.5, 3)
-	head.Anchored = true
-	head.CanCollide = false
-	head.Material = Enum.Material.Neon
-	head.Color = Color3.fromRGB(100, 255, 100)
-	head.Transparency = 0.6
-	head.Parent = model
-
-	local barrel = Instance.new("Part")
-	barrel.Name = "Barrel"
-	barrel.Shape = Enum.PartType.Cylinder
-	barrel.Size = Vector3.new(3, 0.8, 0.8)
-	barrel.Anchored = true
-	barrel.CanCollide = false
-	barrel.Material = Enum.Material.Neon
-	barrel.Color = Color3.fromRGB(100, 255, 100)
-	barrel.Transparency = 0.6
-	barrel.Parent = model
 
 	model.PrimaryPart = base
 	return model
@@ -1787,8 +1331,8 @@ local function updateGhostPosition(x, z)
 	local distToCore = (Vector3.new(x, 0, z) - Vector3.new(150, 0, 150)).Magnitude
 	local tooCloseToCore = distToCore < 20
 
-	-- Check if player has enough scrap
-	local hasScrap = currentScrap >= 100
+	-- Check if player has enough scrap (use dynamic cost)
+	local hasScrap = currentScrap >= nextTurretCost
 
 	-- Final Validity - paths are fine, but not on core or stacked
 	local isValid = inBounds and not tooClose and not tooCloseToCore and hasScrap
@@ -1796,26 +1340,16 @@ local function updateGhostPosition(x, z)
 	-- Color Logic: Green if valid, Red if invalid
 	local color = isValid and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
 
-	-- Update Parts
+	-- Update Parts (use GROUND_Y for proper height)
 	local base = ghostTurret:FindFirstChild("Base")
-	local head = ghostTurret:FindFirstChild("Head")
-	local barrel = ghostTurret:FindFirstChild("Barrel")
 	local ring = ghostTurret:FindFirstChild("RangeRing")
 
 	if base then
-		base.Position = Vector3.new(x, 1.5, z)
+		base.Position = Vector3.new(x, GROUND_Y + 2.5, z)
 		base.Color = color
 	end
-	if head then
-		head.Position = Vector3.new(x, 3.5, z)
-		head.Color = color
-	end
-	if barrel then
-		barrel.CFrame = CFrame.new(x, 3.5, z - 3.5) * CFrame.Angles(0, math.rad(90), 0)
-		barrel.Color = color
-	end
 	if ring then
-		ring.Position = Vector3.new(x, 0.5, z)
+		ring.Position = Vector3.new(x, GROUND_Y + 0.2, z)
 		ring.Color = color
 	end
 
@@ -1837,9 +1371,9 @@ enterPlacementMode = function()
 		return
 	end
 
-	-- Check if player can afford before entering
-	if currentScrap < 100 then
-		print("Not enough scrap to build! Need 100, have " .. currentScrap)
+	-- Check if player can afford before entering (use dynamic cost)
+	if currentScrap < nextTurretCost then
+		print("Not enough scrap to build! Need " .. nextTurretCost .. ", have " .. currentScrap)
 		return
 	end
 
@@ -1848,6 +1382,14 @@ enterPlacementMode = function()
 	-- Create ghost turret with range ring
 	ghostTurret = createGhostTurret()
 	ghostTurret.Parent = workspace
+
+	-- Initial position update at mouse location
+	local mouseTarget = player:GetMouse().Hit
+	if mouseTarget then
+		local x = math.floor(mouseTarget.Position.X + 0.5)
+		local z = math.floor(mouseTarget.Position.Z + 0.5)
+		updateGhostPosition(x, z)
+	end
 
 	print("Entered placement mode - click to place, B or right-click to cancel")
 end
@@ -1877,16 +1419,15 @@ local function createGhostBot()
 	local model = Instance.new("Model")
 	model.Name = "GhostBot"
 
-	-- Simple bot body (sphere on cylinder base)
+	-- Simple orange square block for bot placement
 	local body = Instance.new("Part")
 	body.Name = "Body"
-	body.Shape = Enum.PartType.Ball
-	body.Size = Vector3.new(3, 3, 3)
+	body.Size = Vector3.new(4, 4, 4)
 	body.Anchored = true
 	body.CanCollide = false
 	body.Material = Enum.Material.Neon
-	body.Color = Color3.fromRGB(0, 200, 200)
-	body.Transparency = 0.5
+	body.Color = Color3.fromRGB(255, 180, 50) -- Orange
+	body.Transparency = 0.4
 	body.Parent = model
 
 	-- Range indicator (pickup range = 8)
@@ -1898,7 +1439,7 @@ local function createGhostBot()
 	ring.Anchored = true
 	ring.CanCollide = false
 	ring.Material = Enum.Material.ForceField
-	ring.Color = Color3.fromRGB(0, 200, 200)
+	ring.Color = Color3.fromRGB(255, 180, 50)
 	ring.Transparency = 0.85
 	ring.Parent = model
 
@@ -1921,18 +1462,18 @@ local function updateGhostBotPosition(x, z)
 
 	local isValid = inBounds and not tooCloseToCore and hasScrap
 
-	-- Color
-	local color = isValid and Color3.fromRGB(0, 255, 200) or Color3.fromRGB(255, 50, 50)
+	-- Color: Orange if valid, Red if invalid
+	local color = isValid and Color3.fromRGB(255, 180, 50) or Color3.fromRGB(255, 50, 50)
 
 	local body = ghostBot:FindFirstChild("Body")
 	local ring = ghostBot:FindFirstChild("RangeRing")
 
 	if body then
-		body.Position = Vector3.new(x, 2, z)
+		body.Position = Vector3.new(x, GROUND_Y + 2, z)
 		body.Color = color
 	end
 	if ring then
-		ring.Position = Vector3.new(x, 0.3, z)
+		ring.Position = Vector3.new(x, GROUND_Y + 0.2, z)
 		ring.Color = color
 	end
 
@@ -1957,6 +1498,14 @@ enterBotPlacementMode = function()
 	botPlacementMode = true
 	ghostBot = createGhostBot()
 	ghostBot.Parent = workspace
+
+	-- Initial position update at mouse location
+	local mouseTarget = player:GetMouse().Hit
+	if mouseTarget then
+		local x = math.floor(mouseTarget.Position.X + 0.5)
+		local z = math.floor(mouseTarget.Position.Z + 0.5)
+		updateGhostBotPosition(x, z)
+	end
 
 	print("Entered bot placement mode - click to place, N or right-click to cancel")
 end
@@ -2180,8 +1729,132 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	-- Other shortcuts only work when NOT typing in a TextBox
 	if gameProcessed then return end
 
-	if input.KeyCode == Enum.KeyCode.B then
-		-- B key: Toggle turret placement mode
+	-- Action bar hotkeys (1-6): 1-4 load weapon programs, 5-6 build
+	if input.KeyCode == Enum.KeyCode.One then
+		-- 1: Load Bullet program
+		loadWeaponProgram(1)
+		return
+	elseif input.KeyCode == Enum.KeyCode.Two then
+		-- 2: Load Rocket program
+		loadWeaponProgram(2)
+		return
+	elseif input.KeyCode == Enum.KeyCode.Three then
+		-- 3: Load Laser program
+		loadWeaponProgram(3)
+		return
+	elseif input.KeyCode == Enum.KeyCode.Four then
+		-- 4: Load Ice program
+		loadWeaponProgram(4)
+		return
+	elseif input.KeyCode == Enum.KeyCode.Five then
+		-- 5: Build Bot
+		if placementMode then exitPlacementMode() end
+		if botPlacementMode then
+			exitBotPlacementMode()
+		else
+			enterBotPlacementMode()
+		end
+		return
+	elseif input.KeyCode == Enum.KeyCode.Six then
+		-- 6: Build Turret
+		if botPlacementMode then exitBotPlacementMode() end
+		if placementMode then
+			exitPlacementMode()
+		else
+			enterPlacementMode()
+		end
+		return
+	elseif input.KeyCode == Enum.KeyCode.Tab then
+		-- Tab: Select nearest unit in front of player
+		local character = player.Character
+		if character then
+			local hrp = character:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local playerPos = hrp.Position
+				local lookDir = hrp.CFrame.LookVector
+
+				-- Find nearest turret or bot in front of player
+				local nearestId, nearestType, nearestDist = nil, nil, math.huge
+
+				-- Check turrets
+				for id, golem in pairs(golemStates) do
+					-- Find the turret's character in workspace
+					for _, obj in pairs(workspace:GetDescendants()) do
+						if obj:GetAttribute("GolemId") == id then
+							local objPos = obj:IsA("Model") and obj.PrimaryPart and obj.PrimaryPart.Position
+								or obj:IsA("BasePart") and obj.Position
+							if objPos then
+								local toObj = (objPos - playerPos)
+								local dist = toObj.Magnitude
+								-- Check if in front (dot product > 0)
+								local dot = lookDir:Dot(toObj.Unit)
+								if dot > 0 and dist < nearestDist then
+									nearestDist = dist
+									nearestId = id
+									nearestType = "golem"
+								end
+							end
+							break
+						end
+					end
+				end
+
+				-- Check bots
+				for id, bot in pairs(botStates) do
+					for _, obj in pairs(workspace:GetDescendants()) do
+						if obj:GetAttribute("BotId") == id then
+							local objPos = obj:IsA("Model") and obj.PrimaryPart and obj.PrimaryPart.Position
+								or obj:IsA("BasePart") and obj.Position
+							if objPos then
+								local toObj = (objPos - playerPos)
+								local dist = toObj.Magnitude
+								local dot = lookDir:Dot(toObj.Unit)
+								if dot > 0 and dist < nearestDist then
+									nearestDist = dist
+									nearestId = id
+									nearestType = "bot"
+								end
+							end
+							break
+						end
+					end
+				end
+
+				-- Select the found unit
+				if nearestId then
+					if nearestType == "golem" then
+						local golemData = golemStates[nearestId]
+						hud.select({
+							id = nearestId,
+							type = "golem",
+							spotId = golemData.spotId,
+							ammo = golemData.ammo,
+							maxAmmo = golemData.maxAmmo or 300,
+							dynamicRange = golemData.dynamicRange or 40,
+							status = golemData.paused and "PAUSED" or "ACTIVE",
+						})
+						enterGolemMind(nearestId)
+					elseif nearestType == "bot" then
+						local botData = botStates[nearestId]
+						hud.select({
+							id = nearestId,
+							type = "bot",
+							spotId = botData.spotId,
+							ammo = botData.ammo or 0,
+							maxAmmo = botData.maxAmmo or 100,
+							dynamicRange = 20,
+							status = botData.paused and "PAUSED" or "ACTIVE",
+						})
+						if enterBotMindWrapper then
+							enterBotMindWrapper(nearestId)
+						end
+					end
+				end
+			end
+		end
+		return
+	elseif input.KeyCode == Enum.KeyCode.B then
+		-- B key: Toggle turret placement mode (legacy, same as 6)
 		if botPlacementMode then exitBotPlacementMode() end
 		if placementMode then
 			exitPlacementMode()
@@ -2190,7 +1863,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		end
 		return
 	elseif input.KeyCode == Enum.KeyCode.N then
-		-- N key: Toggle bot placement mode
+		-- N key: Toggle bot placement mode (legacy, same as 5)
 		if placementMode then exitPlacementMode() end
 		if botPlacementMode then
 			exitBotPlacementMode()
@@ -2265,5 +1938,10 @@ setupAmbientSound()
 
 -- Request current state from server (golems, bots) now that client is ready
 requestStateEvent:FireServer()
+
+--============================================================================
+-- COMBAT STATUS UPDATE LOOP
+--============================================================================
+-- Combat status indicator was removed from HUD for cleaner UI
 
 print("PythonTD: Iron Defense client initialized")

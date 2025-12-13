@@ -29,6 +29,9 @@ local GolemRegistry = require(script.Parent.GolemRegistry)
 local ScrapManager = require(script.Parent.ScrapManager)
 local BotRegistry = require(script.Parent.BotRegistry)
 
+-- Player combat module
+local PlayerCombat = require(script.Parent.PlayerCombat)
+
 -- Load Arena map
 local ArenaMap = require(script.Parent.maps.Arena)
 
@@ -49,6 +52,7 @@ local stateUpdateEvent = createRemoteEvent("StateUpdate")
 local attackHitEvent = createRemoteEvent("AttackHit")
 local playerHurtEvent = createRemoteEvent("PlayerHurt")
 local manualAttackEvent = createRemoteEvent("ManualAttack")
+local playerFireEvent = createRemoteEvent("PlayerFire")
 local beepEvent = createRemoteEvent("Beep")
 local playAnimationEvent = createRemoteEvent("PlayAnimation")
 local requestStateEvent = createRemoteEvent("RequestState")
@@ -66,11 +70,13 @@ local playerInterpreters = {}
 local nextPlayerId = 1
 
 -- Default program for player (Python!)
--- Player uses WASD movement now, so program is just a NOP
+-- Player starts with BULLET weapon program
 local DEFAULT_PLAYER_PROGRAM = [[
-# Player controls: WASD to move, click to attack
-# Turrets and bots are programmed separately
-pass
+# BULLET - Fast single target
+while True:
+    enemies = self.scan()
+    if len(enemies) > 0:
+        self.fire(nearest(enemies), BULLET)
 ]]
 
 -- Track which interpreter each player is viewing
@@ -106,13 +112,12 @@ local deps = {
 	GolemRegistry = nil,
 	ScrapManager = nil,
 	BotRegistry = nil,
+	PlayerCombat = nil,
 }
 
 --============================================================================
 -- PROGRESSIVE UNIT SPAWNING
 --============================================================================
-local spawnedGolems = {}
-local spawnedBots = {}
 local spawnUnitsForWave
 local spawnUnitsForPlayer  -- Forward declaration
 
@@ -165,6 +170,10 @@ deps.ScrapManager = ScrapManager
 BotRegistry.init(deps, Interpreter)
 BotRegistry.setWaveManager(WaveManager)
 deps.BotRegistry = BotRegistry
+
+-- Initialize PlayerCombat
+PlayerCombat.init(deps)
+deps.PlayerCombat = PlayerCombat
 
 -- Listen to viewer registration events
 local golemRegisterViewerEvent, golemUnregisterViewerEvent = GolemRegistry.getViewerEvents()
@@ -465,18 +474,22 @@ local function onPlayerRemoving(player)
 	end
 
 	-- Remove player's turrets
-	for key, golemId in pairs(spawnedGolems) do
-		if string.match(key, "^" .. userId .. "_golem_") then
-			GolemRegistry.destroy(golemId)
-			spawnedGolems[key] = nil
+	if spawnedGolems then
+		for key, golemId in pairs(spawnedGolems) do
+			if string.match(key, "^" .. userId .. "_golem_") then
+				GolemRegistry.destroy(golemId)
+				spawnedGolems[key] = nil
+			end
 		end
 	end
 
 	-- Remove player's bots
-	for key, botId in pairs(spawnedBots) do
-		if string.match(key, "^" .. userId .. "_bot_") then
-			BotRegistry.destroy(botId)
-			spawnedBots[key] = nil
+	if spawnedBots then
+		for key, botId in pairs(spawnedBots) do
+			if string.match(key, "^" .. userId .. "_bot_") then
+				BotRegistry.destroy(botId)
+				spawnedBots[key] = nil
+			end
 		end
 	end
 
@@ -620,8 +633,8 @@ pauseProgramEvent.OnServerEvent:Connect(function(player, interpreterTarget)
 		if not interp then return end
 	end
 
-	-- Pause always pauses (use RUN to resume)
-	interp.paused = true
+	-- Toggle pause/resume
+	interp.paused = not interp.paused
 	sendInterpreterState(player, interpreterTarget)
 end)
 
@@ -691,6 +704,25 @@ playerMoveCompleteEvent.OnServerEvent:Connect(function(player)
 	if interp and interp.runtime and interp.runtime.vm then
 		interp.runtime.vm:unblock()
 	end
+end)
+
+-- Player fire event (ranged projectile attack)
+playerFireEvent.OnServerEvent:Connect(function(player, ammoType)
+	if not checkRateLimit(player, "fire", 0.15) then return end
+
+	local interp = playerInterpreters[player.UserId]
+	if not interp then return end
+
+	if player.Character then
+		interp.character = player.Character
+	end
+
+	-- Call fire function from game environment
+	if interp.gameEnv and interp.gameEnv.self and interp.gameEnv.self.fire then
+		interp.gameEnv.self.fire(ammoType or 1)
+	end
+
+	stateUpdateEvent:FireClient(player, interp:getState())
 end)
 
 --============================================================================

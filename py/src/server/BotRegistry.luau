@@ -41,10 +41,9 @@ while True:
         self.collect(s[0])
 ]]
 
--- Bot stats
+-- Bot stats (bots don't have HP - they're invulnerable)
 local BotStats = {
 	name = "SupplyBot",
-	hp = 50,
 	speed = 14,
 	maxCapacity = 50, -- Can carry 50 scrap
 	pickupRange = 10, -- Range to suck up scraps
@@ -205,9 +204,7 @@ function BotRegistry.create(x, z)
 		spotId = nil,
 		ownerId = nil,
 
-		-- Bot state
-		hp = BotStats.hp,
-		maxHp = BotStats.hp,
+		-- Bot state (no HP - bots are invulnerable)
 		scrapInventory = 0,
 		maxCapacity = BotStats.maxCapacity,
 		speed = BotStats.speed,
@@ -268,8 +265,6 @@ function BotRegistry.create(x, z)
 			id = id,
 			isBot = true,
 			character = character,
-			hp = bot.hp,
-			maxHp = bot.maxHp,
 		})
 	end
 
@@ -740,11 +735,6 @@ function BotRegistry.update(dt)
 			continue
 		end
 
-		-- Dead?
-		if bot.hp <= 0 then
-			BotRegistry.destroy(id)
-			continue
-		end
 
 		local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
 		if not hrp then continue end
@@ -1199,53 +1189,8 @@ function BotRegistry.isStunned(botId)
 end
 
 --============================================================================
--- DAMAGE & DEATH
+-- DEATH (only from selling or self-destruct)
 --============================================================================
-
-function BotRegistry.damage(botId, amount)
-	local bot = bots[botId]
-	if not bot then return end
-
-	-- Shield blocks damage
-	if bot.shieldActive then return end
-
-	bot.hp = bot.hp - amount
-
-	-- Visual Feedback: Flash red
-	local char = bot.character
-	if char then
-		for _, p in pairs(char:GetChildren()) do
-			if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
-				local oldColor = p.Color
-				p.Color = Color3.fromRGB(255, 50, 50)
-				task.delay(0.1, function()
-					if p and p.Parent then p.Color = oldColor end
-				end)
-			end
-		end
-
-		-- Flash eyes red
-		local head = char:FindFirstChild("Head")
-		if head then
-			local lEye = head:FindFirstChild("LeftEye")
-			local rEye = head:FindFirstChild("RightEye")
-			if lEye then lEye.Color = Color3.fromRGB(255, 0, 0) end
-			if rEye then rEye.Color = Color3.fromRGB(255, 0, 0) end
-			task.delay(0.2, function()
-				if lEye and lEye.Parent then lEye.Color = Color3.fromRGB(0, 255, 255) end
-				if rEye and rEye.Parent then rEye.Color = Color3.fromRGB(0, 255, 255) end
-			end)
-		end
-	end
-
-	-- Update billboard
-	BotRegistry.updateBillboard(bot)
-
-	-- Check for death
-	if bot.hp <= 0 then
-		BotRegistry.kill(botId)
-	end
-end
 
 local RESPAWN_TIME = 30  -- Respawn after 30 seconds
 
@@ -1428,15 +1373,15 @@ function BotRegistry.getStateForPlayer(player)
 	for id, bot in pairs(bots) do
 		-- Only include bots owned by this player
 		if playerId == nil or bot.ownerId == playerId then
+			local interp = bot.interpreter
 			table.insert(botList, {
 				id = id,
 				spotId = bot.spotId,
 				ownerId = bot.ownerId,
 				scrapInventory = bot.scrapInventory or 0,
 				maxCapacity = bot.maxCapacity or 50,
-				hp = bot.hp,
-				maxHp = bot.maxHp,
 				status = bot.status or "IDLE",
+				paused = interp and interp.paused or false,
 			})
 		end
 	end
