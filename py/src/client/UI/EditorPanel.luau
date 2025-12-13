@@ -1,16 +1,13 @@
--- EditorPanel.luau
--- Simple code editor (no tabs, no word editing)
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local DragModule = require(script.Parent.DragModule)
+local UITheme = require(script.Parent.UITheme)
 local HelpDatabase = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("HelpDatabase"))
 local Python = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("Python"))
 
 local EditorPanel = {}
 
 local MAX_CHARS = 300
-
 local DEFAULT_RAM = 32
 
 local function formatCode(source)
@@ -19,39 +16,33 @@ local function formatCode(source)
 		local cleaned = string.gsub(line, "%s+$", "")
 		table.insert(lines, cleaned)
 	end
-
 	while #lines > 0 and lines[#lines] == "" do
 		table.remove(lines)
 	end
-
 	return table.concat(lines, "\n")
 end
 
--- Theme definitions
--- Player = blue/green, Golem (turret) = silver, Bot = orange
 local THEMES = {
 	player = {
-		topBarBg = Color3.fromRGB(40, 40, 55),
-		frameBg = Color3.fromRGB(30, 30, 40),
+		topBarBg = UITheme.THEMES.player.headerBg,
+		frameBg = UITheme.THEMES.player.frameBg,
 		startBtn = Color3.fromRGB(60, 100, 60),
-		accent = Color3.fromRGB(100, 180, 100),
-		modeColor = Color3.fromRGB(100, 180, 100),
+		accent = UITheme.THEMES.player.accent,
+		modeColor = UITheme.THEMES.player.accent,
 	},
 	golem = {
-		-- Silver/grey theme for turrets
-		topBarBg = Color3.fromRGB(50, 50, 55),
-		frameBg = Color3.fromRGB(35, 35, 40),
+		topBarBg = UITheme.THEMES.golem.headerBg,
+		frameBg = UITheme.THEMES.golem.frameBg,
 		startBtn = Color3.fromRGB(80, 80, 90),
-		accent = Color3.fromRGB(180, 180, 200),
+		accent = UITheme.THEMES.golem.accent,
 		modeColor = Color3.fromRGB(200, 200, 220),
 	},
 	bot = {
-		-- Orange theme for bots
-		topBarBg = Color3.fromRGB(55, 40, 25),
-		frameBg = Color3.fromRGB(40, 30, 20),
+		topBarBg = UITheme.THEMES.bot.headerBg,
+		frameBg = UITheme.THEMES.bot.frameBg,
 		startBtn = Color3.fromRGB(120, 80, 40),
-		accent = Color3.fromRGB(255, 160, 80),
-		modeColor = Color3.fromRGB(255, 180, 100),
+		accent = UITheme.THEMES.bot.accent,
+		modeColor = UITheme.THEMES.bot.varName,
 	}
 }
 
@@ -964,14 +955,6 @@ function EditorPanel.create(parent, callbacks)
 			charCountLabel.Visible = true  -- Show char limit for bots
 			textBox.TextEditable = true
 			textBox.Active = true  -- Allow focus/editing for bot programming
-		end
-	end
-
-	function panel:setGolemMode(isGolemMode, spotId, maxRAM)
-		if isGolemMode then
-			panel:setMode("golem", spotId, maxRAM)
-		else
-			panel:setMode("player")
 		end
 	end
 

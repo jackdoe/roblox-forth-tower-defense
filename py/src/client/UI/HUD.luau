@@ -1,46 +1,12 @@
--- HUD.luau
--- "Project Dirac" - Elegant Commander's Console
--- Combines mathematical precision with high-end visual feedback
-
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local UITheme = require(script.Parent.UITheme)
+
 local HUD = {}
-
--- Dirac Visual Theme (Glass + Neon)
-local COLORS = {
-	bg = Color3.fromRGB(12, 16, 22),        -- Deep space black
-	panel = Color3.fromRGB(20, 25, 35),     -- Translucent panel
-	accent = Color3.fromRGB(0, 255, 200),   -- Cyan neon
-	danger = Color3.fromRGB(255, 60, 80),   -- Warning red
-	success = Color3.fromRGB(60, 255, 120), -- Confirm green
-	warning = Color3.fromRGB(255, 200, 50), -- Alert gold
-	text = Color3.fromRGB(240, 245, 255),   -- Clean white
-	subtext = Color3.fromRGB(120, 130, 150),-- Muted info
-	glass = Color3.fromRGB(255, 255, 255),  -- Glass edge highlight
-}
-
--- Enemy visual mapping
-local ENEMY_ICONS = {
-	Zombie = "●",
-	Runner = "◆",
-	Tank = "■",
-	Boss = "★",
-}
-
-local ENEMY_COLORS = {
-	Zombie = Color3.fromRGB(100, 200, 120),  -- Green horde
-	Runner = Color3.fromRGB(255, 180, 80),   -- Orange speed
-	Tank = Color3.fromRGB(140, 160, 220),    -- Blue armor
-	Boss = Color3.fromRGB(255, 60, 100),     -- Red danger
-}
-
--- Enemy pip sizes (visual weight)
-local ENEMY_SIZES = {
-	Zombie = 10,
-	Runner = 12,
-	Tank = 18,
-	Boss = 22,
-}
+local COLORS = UITheme.COLORS
+local ENEMY_ICONS = UITheme.ENEMY_ICONS
+local ENEMY_COLORS = UITheme.ENEMY_COLORS
+local ENEMY_SIZES = UITheme.ENEMY_SIZES
 
 function HUD.create(parent, callbacks)
 	local hud = {
@@ -208,14 +174,7 @@ function HUD.create(parent, callbacks)
 		return btn, stroke
 	end
 
-	-- Ammo type colors (Dirac palette)
-	local AMMO_COLORS = {
-		passive = Color3.fromRGB(120, 120, 140), -- Muted gray
-		bullet = Color3.fromRGB(255, 240, 120),  -- Warm yellow
-		rocket = Color3.fromRGB(255, 120, 60),   -- Hot orange
-		laser = Color3.fromRGB(255, 80, 100),    -- Plasma red
-		grenade = Color3.fromRGB(120, 255, 140), -- Toxic green
-	}
+	local AMMO_COLORS = UITheme.AMMO_COLORS
 
 	-- Actions: 0=Passive, 1=Bullet, 2=Rocket, 3=Laser, 4=Grenade, 5=Bot, 6=Turret
 	local passiveBtn, passiveStroke = createActionSlot("0", "○", "Passive", AMMO_COLORS.passive, nil)
@@ -895,14 +854,8 @@ function HUD.create(parent, callbacks)
 	partyLabel.TextSize = 9
 	partyLabel.Parent = partyFrame
 
-	-- Create 4 bot slots
 	local botSlots = {}
-	local BOT_COLORS = {
-		Color3.fromRGB(255, 100, 100),  -- B1: Red
-		Color3.fromRGB(100, 180, 255),  -- B2: Blue
-		Color3.fromRGB(100, 255, 150),  -- B3: Green
-		Color3.fromRGB(255, 200, 100),  -- B4: Orange
-	}
+	local BOT_COLORS = UITheme.BOT_COLORS
 
 	for i = 1, 4 do
 		local slot = Instance.new("TextButton")
@@ -1058,18 +1011,6 @@ function HUD.create(parent, callbacks)
 		currentWaveNum = waveNum or 1
 	end
 
-	-- Legacy function - no longer used but kept for compatibility
-	function hud.updateEnemyMinimap(enemies, pathLength)
-		-- Minimap removed - next wave info is sufficient
-	end
-
-	-- Legacy function - no longer used but kept for compatibility
-	function hud.updateWaveProgress(spawnedCount)
-		-- No longer used
-	end
-
-	-- Update next wave preview (shows enemy types in upcoming wave)
-	-- preview: table mapping enemy type to count, e.g. {Zombie = 5, Runner = 3, Tank = 1}
 	function hud.updateNextWave(waveNum, preview)
 		nextWaveTitle.Text = "WAVE " .. (waveNum or "?") .. ":"
 
