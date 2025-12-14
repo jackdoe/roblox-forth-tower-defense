@@ -12,6 +12,17 @@ local function pyToString(value, depth)
 	elseif type(value) == "function" then return "<function>"
 	elseif type(value) == "table" then
 		if value._isFunction then return "<function>" end
+		if value.__type then
+			if value.__type == "Enemy" and value.hp then
+				return string.format("Enemy(%s, hp=%d)", value.type or "?", value.hp)
+			elseif value.__type == "Scrap" and value.x then
+				return string.format("Scrap(%d, %d)", math.floor(value.x), math.floor(value.z))
+			elseif value.__type == "Core" then
+				return "Core"
+			else
+				return string.format("@%s", value.__type)
+			end
+		end
 		local isArray, maxIdx = true, 0
 		for k in pairs(value) do
 			if type(k) ~= "number" or k < 1 then isArray = false; break end
@@ -19,7 +30,8 @@ local function pyToString(value, depth)
 		end
 		if isArray and maxIdx > 0 then
 			local parts = {}
-			for i = 1, maxIdx do table.insert(parts, pyToString(value[i], depth + 1)) end
+			for i = 1, math.min(maxIdx, 10) do table.insert(parts, pyToString(value[i], depth + 1)) end
+			if maxIdx > 10 then table.insert(parts, "...") end
 			return "[" .. table.concat(parts, ", ") .. "]"
 		end
 		return "{...}"
@@ -29,12 +41,12 @@ end
 
 local function makeDeps(registries)
 	local deps = {
-		BotRegistry = registries.BotRegistry,
-		GolemRegistry = registries.GolemRegistry,
 		EnemyManager = registries.EnemyManager,
 		ScrapManager = registries.ScrapManager,
 		WaveManager = registries.WaveManager,
 		PlayerCombat = registries.PlayerCombat,
+		GolemStats = registries.GolemStats,
+		GolemModel = registries.GolemModel,
 	}
 
 	function deps.getCoreOffset()
@@ -57,24 +69,6 @@ local function makeDeps(registries)
 	end
 
 	return deps
-end
-
-local function buildLazyProxy(className, getInstance, deps)
-	local classDef = Classes[className]
-	if not classDef or not classDef.members then return {} end
-
-	return setmetatable({ __type = className }, {
-		__index = function(_, key)
-			local instance = getInstance()
-			if not instance then return nil end
-			local member = classDef.members[key]
-			if not member then return nil end
-			if member.kind == "method" then
-				return function(...) return member.impl(deps, instance, ...) end
-			end
-			return member.get(deps, instance)
-		end
-	})
 end
 
 local function addUtilities(env, interp)
@@ -146,24 +140,7 @@ local function addEnemySelectors(env, getPos, deps)
 	end
 end
 
-local function addRefs(env, deps)
-	for i = 1, 4 do
-		env["B" .. i] = buildLazyProxy("Bot", function()
-			return deps.BotRegistry and deps.BotRegistry.getBySpotId(i)
-		end, deps)
-	end
-
-	setmetatable(env, {
-		__index = function(_, key)
-			local n = tonumber(key:match("^T(%d+)$"))
-			if n and n >= 1 and n <= 30 then
-				return buildLazyProxy("Turret", function()
-					return deps.GolemRegistry and deps.GolemRegistry.getBySpotId(n)
-				end, deps)
-			end
-		end
-	})
-
+local function addCore(env, deps)
 	env.CORE = setmetatable({}, {
 		__index = function(_, key)
 			if key == "position" then return {0, 0} end
@@ -187,14 +164,16 @@ local function createEnv(className, instance, registries, getPosOverride)
 
 	addEnemySelectors(env, getPos, deps)
 	addUtilities(env, instance.interpreter or {})
-	addRefs(env, deps)
+	addCore(env, deps)
 
 	return env
 end
 
 function GameAPI.createGolemEnvironment(golem, registries)
-	local x, z = makeDeps(registries).getCharacterPos(golem.character)
-	return createEnv("Turret", golem, registries, function() return x, z end)
+	local deps = makeDeps(registries)
+	return createEnv("Turret", golem, registries, function()
+		return deps.getCharacterPos(golem.character)
+	end)
 end
 
 function GameAPI.createBotEnvironment(bot, registries)

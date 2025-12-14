@@ -24,5 +24,10 @@ RemoteEvents.playerReady = create("PlayerReady")
 RemoteEvents.waveState = create("WaveState")
 RemoteEvents.playerTeleport = create("PlayerTeleport")
 RemoteEvents.playerMoveComplete = create("PlayerMoveComplete")
+RemoteEvents.golemPlaceAt = create("GolemPlaceAt")
+RemoteEvents.golemSell = create("GolemSell")
+RemoteEvents.golemUpgrade = create("GolemUpgrade")
+RemoteEvents.botBuild = create("BotBuild")
+RemoteEvents.botSell = create("BotSell")
 
 return RemoteEvents

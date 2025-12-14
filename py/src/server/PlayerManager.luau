@@ -5,71 +5,48 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
 local EntityRegistry = require(PythonTD.Modules.EntityRegistry)
-local Interpreter = require(PythonTD.Interpreter)
-local Python = require(PythonTD.Python)
 
 local PlayerManager = {}
 
 PhysicsService:RegisterCollisionGroup("Players")
 PhysicsService:CollisionGroupSetCollidable("Players", "Players", false)
 
-local interpreters = {}
+local playerPids = {}
 local nextPlayerId = 1
-local viewingGolem = {}
-local viewingBot = {}
 local rateLimits = {}
 
 local deps = nil
 local arenaMap = nil
 local unitSpawning = nil
+local Interpreters = nil
 
-local DEFAULT_PROGRAM = [[
-while True:
-    enemies = self.scan()
-    if len(enemies) > 0:
-        self.set_target(nearest(enemies))
-        self.fire(BULLET)
-]]
-
-function PlayerManager.init(dependencies, map, spawning)
+function PlayerManager.init(dependencies, map, spawning, interpretersModule)
 	deps = dependencies
 	arenaMap = map
 	unitSpawning = spawning
+	Interpreters = interpretersModule
 end
 
 function PlayerManager.get(userId)
-	return interpreters[userId]
+	local pid = playerPids[userId]
+	if not pid then return nil end
+	local data = Interpreters.get(pid)
+	return data and data.interpreter
+end
+
+function PlayerManager.getPid(userId)
+	return playerPids[userId]
 end
 
 function PlayerManager.getAll()
-	return interpreters
-end
-
-function PlayerManager.getViewingGolem(userId)
-	return viewingGolem[userId]
-end
-
-function PlayerManager.setViewingGolem(userId, golemId)
-	viewingGolem[userId] = golemId
-	if golemId then
-		viewingBot[userId] = nil
+	local result = {}
+	for userId, pid in pairs(playerPids) do
+		local data = Interpreters.get(pid)
+		if data then
+			result[userId] = data.interpreter
+		end
 	end
-end
-
-function PlayerManager.getViewingBot(userId)
-	return viewingBot[userId]
-end
-
-function PlayerManager.setViewingBot(userId, botId)
-	viewingBot[userId] = botId
-	if botId then
-		viewingGolem[userId] = nil
-	end
-end
-
-function PlayerManager.clearViewing(userId)
-	viewingGolem[userId] = nil
-	viewingBot[userId] = nil
+	return result
 end
 
 function PlayerManager.checkRateLimit(player, action, cooldown)
@@ -98,25 +75,21 @@ end
 local function onCharacterAdded(player, playerId, character)
 	setPlayerCollisionGroup(character)
 
-	local interp = Interpreter.new(player, false, deps)
-	interp.character = character
-	interp.playerId = playerId
+	local oldPid = playerPids[player.UserId]
+	if oldPid then
+		Interpreters.destroy(oldPid)
+	end
+
+	local pid = Interpreters.createPlayer(player.UserId, character, playerId)
+	local data = Interpreters.get(pid)
+	local interp = data.interpreter
+
 	interp.playerName = player.Name
-	interp.selfType = "Player"
-	interp.cpuHz = Config.PLAYER_CPU_HZ or 10
-	interp.maxBytecode = Config.PLAYER_MAX_BYTECODE or 128
 	interp.ammoInventory = Config.STARTING_AMMO or 100
 	interp.scrapInventory = 0
 	interp.maxCapacity = Config.PLAYER_CAPACITY or 5
 
-	local gameEnv = Python.createPlayerEnvironment(player, interp, deps)
-	interp:setGameEnvironment(gameEnv)
-
-	interp:load(DEFAULT_PROGRAM)
-	interp.lastProgram = DEFAULT_PROGRAM
-
-	EntityRegistry.register(interp)
-	interpreters[player.UserId] = interp
+	playerPids[player.UserId] = pid
 
 	task.defer(function()
 		local spawnPos = arenaMap.playerSpawn
@@ -129,7 +102,7 @@ local function onCharacterAdded(player, playerId, character)
 		end
 	end)
 
-	deps.stateUpdateEvent:FireClient(player, interp:getState())
+	Interpreters.sendFullSync(player)
 end
 
 function PlayerManager.onPlayerAdded(player)
@@ -149,8 +122,6 @@ function PlayerManager.onPlayerAdded(player)
 		local currentWave = waveState.waveNumber or 0
 		if currentWave >= 1 then
 			unitSpawning.spawnForPlayer(player, currentWave)
-			deps.GolemRegistry.broadcastState()
-			deps.BotRegistry.broadcastState()
 		end
 	end
 end
@@ -158,18 +129,17 @@ end
 function PlayerManager.onPlayerRemoving(player)
 	local userId = player.UserId
 
-	local interp = interpreters[userId]
-	if interp then
-		EntityRegistry.unregister(interp.id)
-		interpreters[userId] = nil
+	local pid = playerPids[userId]
+	if pid then
+		Interpreters.destroy(pid)
+		playerPids[userId] = nil
 	end
+
+	Interpreters.clearPlayerCache(userId)
 
 	if unitSpawning then
 		unitSpawning.removePlayerUnits(userId)
 	end
-
-	deps.GolemRegistry.broadcastState()
-	deps.BotRegistry.broadcastState()
 end
 
 function PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
@@ -197,43 +167,8 @@ function PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
 	end
 end
 
-function PlayerManager.buildClientState(userId, interp)
-	local state
-
-	local golemId = viewingGolem[userId]
-	local botId = viewingBot[userId]
-
-	if golemId then
-		local golem = deps.GolemRegistry.get(golemId)
-		if golem and golem.interpreter then
-			state = golem.interpreter:getDynamicState()
-			state.golemId = golemId
-			state.spotId = golem.spotId
-			state.typeName = golem.typeData and golem.typeData.name
-			state.isGolem = true
-			state.source = golem.interpreter.source
-		else
-			state = interp:getDynamicState()
-			state.source = interp.source
-			viewingGolem[userId] = nil
-		end
-	elseif botId then
-		local bot = deps.BotRegistry.get(botId)
-		if bot and bot.interpreter then
-			state = bot.interpreter:getDynamicState()
-			state.botId = botId
-			state.spotId = bot.spotId
-			state.isBot = true
-			state.source = bot.interpreter.source
-		else
-			state = interp:getDynamicState()
-			state.source = interp.source
-			viewingBot[userId] = nil
-		end
-	else
-		state = interp:getDynamicState()
-		state.source = interp.source
-	end
+function PlayerManager.buildGameState(userId, interp)
+	local state = {}
 
 	local allPlayers = {}
 	for _, entity in pairs(EntityRegistry.getAll()) do

@@ -11,7 +11,6 @@ local GROUND_Y = Config.PLATFORM_Y
 
 local deps = nil
 local EnemyManager = nil
-local GolemRegistry = nil
 
 local onWaveStartCallback = nil
 local onRestartCallback = nil
@@ -94,10 +93,6 @@ end
 
 function WaveManager.setEnemyManager(enemyMgr)
 	EnemyManager = enemyMgr
-end
-
-function WaveManager.setGolemRegistry(golemReg)
-	GolemRegistry = golemReg
 end
 
 function WaveManager.createGateVisuals(gates)
@@ -380,10 +375,6 @@ function WaveManager.onEnemyReachedCore()
 end
 
 function WaveManager.waveComplete()
-	if deps.BotRegistry then
-		deps.BotRegistry.killTemporaryBots()
-	end
-
 	WaveManager.addScrap(state.waveNumber * 50)
 	WaveManager.startWave()
 end
@@ -425,16 +416,12 @@ function WaveManager.restart()
 		EnemyManager.setNewGamePlusMultiplier(1)
 	end
 
-	if GolemRegistry then
-		GolemRegistry.clear()
+	if deps.Interpreters then
+		deps.Interpreters.destroyAllUnits()
 	end
 
 	if deps.ScrapManager then
 		deps.ScrapManager.clear()
-	end
-
-	if deps.BotRegistry then
-		deps.BotRegistry.clear()
 	end
 
 	state.phase = "LOBBY"

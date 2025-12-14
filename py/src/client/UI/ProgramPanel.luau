@@ -11,6 +11,8 @@ function ProgramPanel.create(parent)
 	local outputCleared = false
 	local errorCleared = false
 	local currentTheme = "player"
+	local cachedBytecode = {}
+	local cachedSource = ""
 
 	local MAX_VARIABLES = 20
 	local MIN_PANEL_HEIGHT = 350
@@ -658,19 +660,23 @@ function ProgramPanel.create(parent)
 		end
 
 		-- Code display - show Python source with line numbers
-		-- Derive tokens from source, currentLine from bytecode[ip].line
 		-- Important: preserve empty lines so line numbers match bytecode
-		local source = state.source or ""
+		if state.source then
+			cachedSource = state.source
+		end
+		if state.bytecode then
+			cachedBytecode = state.bytecode
+		end
+
+		local source = cachedSource
 		local tokens = {}
 		for line in (source .. "\n"):gmatch("(.-)\n") do
 			table.insert(tokens, line)
 		end
 
-		local bytecode = state.bytecode or {}
-		local ip = state.vm and state.vm.ip or 1
-		local currentLine = bytecode[ip] and bytecode[ip].line or 0
+		local currentLine = state.currentLine or 0
 
-		panel:setMemoryUsage(#bytecode, state.maxBytecode or 32)
+		panel:setMemoryUsage(#cachedBytecode, state.maxBytecode or 32)
 
 		if #tokens > 0 then
 			local lines = {}
@@ -777,6 +783,11 @@ function ProgramPanel.create(parent)
 		if not errorCleared then
 			errorLabelEl.Text = currentError
 		end
+	end
+
+	function panel:clearCache()
+		cachedBytecode = {}
+		cachedSource = ""
 	end
 
 	return panel

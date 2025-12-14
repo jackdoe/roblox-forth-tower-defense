@@ -130,43 +130,53 @@ function UITheme.formatValue(value, maxLen, depth)
 	elseif type(value) == "string" then
 		str = '"' .. value .. '"'
 	elseif type(value) == "table" then
-		local isArray = true
-		local arrayLen = 0
-		for k, _ in pairs(value) do
-			if type(k) == "number" and k == math.floor(k) and k > 0 then
-				arrayLen = math.max(arrayLen, k)
+		if value.__type then
+			if value.__type == "Enemy" and value.hp then
+				str = string.format("Enemy(%s, hp=%d)", value.type or "?", value.hp)
+			elseif value.__type == "Scrap" and value.x then
+				str = string.format("Scrap(%d, %d)", math.floor(value.x), math.floor(value.z))
+			elseif value.__type == "Core" then
+				str = "Core"
 			else
-				isArray = false
-				break
+				str = string.format("@%s", value.__type)
 			end
-		end
-		if isArray then
-			for i = 1, arrayLen do
-				if value[i] == nil then
+		else
+			local isArray = true
+			local arrayLen = 0
+			for k, _ in pairs(value) do
+				if type(k) == "number" and k == math.floor(k) and k > 0 then
+					arrayLen = math.max(arrayLen, k)
+				else
 					isArray = false
 					break
 				end
 			end
-		end
-
-		if isArray then
-			local items = {}
-			local count = 0
-			for i, v in ipairs(value) do
-				count = count + 1
-				if count > 5 then
-					table.insert(items, "...")
-					break
-				end
-				if type(v) == "table" and depth < 2 then
-					table.insert(items, UITheme.formatValue(v, 20, depth + 1))
-				else
-					table.insert(items, UITheme.formatValue(v, 10, depth + 1))
+			if isArray then
+				for i = 1, arrayLen do
+					if value[i] == nil then
+						isArray = false
+						break
+					end
 				end
 			end
-			str = "[" .. table.concat(items, ", ") .. "]"
-		else
-			if value.id and value.type and value.hp then
+
+			if isArray then
+				local items = {}
+				local count = 0
+				for i, v in ipairs(value) do
+					count = count + 1
+					if count > 5 then
+						table.insert(items, "...")
+						break
+					end
+					if type(v) == "table" and depth < 2 then
+						table.insert(items, UITheme.formatValue(v, 20, depth + 1))
+					else
+						table.insert(items, UITheme.formatValue(v, 10, depth + 1))
+					end
+				end
+				str = "[" .. table.concat(items, ", ") .. "]"
+			elseif value.id and value.type and value.hp then
 				str = string.format("%s(hp=%d)", value.type or "Enemy", value.hp or 0)
 			elseif value.id and value.x and value.z then
 				str = string.format("Scrap@(%d,%d)", math.floor(value.x or 0), math.floor(value.z or 0))
@@ -209,8 +219,12 @@ function UITheme.formatStackValue(v)
 			return "fn"
 		elseif v.items then
 			return "iter"
+		elseif v.__type then
+			return "@" .. v.__type
 		else
-			return "[" .. #v .. "]"
+			local count = 0
+			for _ in pairs(v) do count = count + 1 end
+			return "[" .. count .. "]"
 		end
 	elseif type(v) == "string" then
 		if #v > 8 then

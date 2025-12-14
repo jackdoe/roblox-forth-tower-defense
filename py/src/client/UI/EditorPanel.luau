@@ -861,7 +861,6 @@ function EditorPanel.create(parent, callbacks)
 			textBox.TextEditable = true
 			textBox.Active = true
 		end
-		updateCompileStatus()
 	end
 
 	function panel:isGolemMode()

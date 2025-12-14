@@ -11,6 +11,7 @@ local formatStackValue = UITheme.formatStackValue
 function BytecodePanel.create(parent)
 	local panel = {}
 	local currentTheme = "player"
+	local cachedBytecode = {}
 
 	local frame = Instance.new("Frame")
 	frame.Name = "BytecodePanel"
@@ -214,9 +215,12 @@ function BytecodePanel.create(parent)
 	end)
 
 	function panel:update(state)
-		local bytecode = state.bytecode or {}
+		if state.bytecode then
+			cachedBytecode = state.bytecode
+		end
+		local bytecode = cachedBytecode
 		local vm = state.vm or {}
-		local ip = vm.ip or 0
+		local ip = vm.ip or (state.currentLine and 0) or 0
 		local stack = vm.stack or {}
 
 		-- Store IP for copy button
@@ -325,6 +329,10 @@ function BytecodePanel.create(parent)
 
 	function panel:setVisible(visible)
 		frame.Visible = visible
+	end
+
+	function panel:clearCache()
+		cachedBytecode = {}
 	end
 
 	return panel

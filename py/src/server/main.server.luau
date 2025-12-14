@@ -8,12 +8,11 @@ local EntityRegistry = require(PythonTD.Modules.EntityRegistry)
 
 local WaveManager = require(script.Parent.WaveManager)
 local EnemyManager = require(script.Parent.EnemyManager)
-local GolemRegistry = require(script.Parent.GolemRegistry)
 local ScrapManager = require(script.Parent.ScrapManager)
-local BotRegistry = require(script.Parent.BotRegistry)
 local PlayerCombat = require(script.Parent.PlayerCombat)
 local MapGenerator = require(script.Parent.maps.MapGenerator)
 local PathMap = require(script.Parent.PathMap)
+local Interpreters = require(script.Parent.Interpreters)
 
 local RemoteEvents = require(script.Parent.RemoteEvents)
 local PlayerManager = require(script.Parent.PlayerManager)
@@ -39,11 +38,13 @@ local deps = {
 	stateUpdateEvent = RemoteEvents.stateUpdate,
 	WaveManager = nil,
 	EnemyManager = nil,
-	GolemRegistry = nil,
 	ScrapManager = nil,
-	BotRegistry = nil,
 	PlayerCombat = nil,
+	Interpreters = nil,
 }
+
+Interpreters.init(deps)
+deps.Interpreters = Interpreters
 
 WaveManager.init(deps)
 deps.WaveManager = WaveManager
@@ -52,20 +53,10 @@ EnemyManager.init(deps)
 EnemyManager.setWaveManager(WaveManager)
 deps.EnemyManager = EnemyManager
 
-GolemRegistry.init(deps, require(PythonTD.Interpreter))
-GolemRegistry.setWaveManager(WaveManager)
-GolemRegistry.setEnemyManager(EnemyManager)
-deps.GolemRegistry = GolemRegistry
-
 WaveManager.setEnemyManager(EnemyManager)
-WaveManager.setGolemRegistry(GolemRegistry)
 
 ScrapManager.init(deps)
 deps.ScrapManager = ScrapManager
-
-BotRegistry.init(deps, require(PythonTD.Interpreter))
-BotRegistry.setWaveManager(WaveManager)
-deps.BotRegistry = BotRegistry
 
 PlayerCombat.init(deps)
 deps.PlayerCombat = PlayerCombat
@@ -81,8 +72,8 @@ local mapConfig = {
 }
 mapConfig.core.hp = Config.CORE_HP
 
-UnitSpawning.init(GolemRegistry, BotRegistry, mapConfig)
-PlayerManager.init(deps, mapConfig, UnitSpawning)
+UnitSpawning.init(mapConfig, Interpreters)
+PlayerManager.init(deps, mapConfig, UnitSpawning, Interpreters)
 
 WaveManager.setOnWaveStart(function(waveNumber)
 	UnitSpawning.spawnForWave(waveNumber)
@@ -92,56 +83,13 @@ WaveManager.setOnRestart(function()
 	UnitSpawning.reset()
 end)
 
-local golemRegisterViewerEvent, golemUnregisterViewerEvent = GolemRegistry.getViewerEvents()
-
-golemRegisterViewerEvent.OnServerEvent:Connect(function(player, golemId)
-	PlayerManager.setViewingGolem(player.UserId, golemId)
-
-	local golem = GolemRegistry.get(golemId)
-	if golem and golem.interpreter then
-		local state = golem.interpreter:getState()
-		state.golemId = golemId
-		state.spotId = golem.spotId
-		state.typeName = golem.typeData and golem.typeData.name
-		state.source = golem.interpreter.source
-		state.isGolem = true
-		RemoteEvents.stateUpdate:FireClient(player, state)
-	end
-end)
-
-golemUnregisterViewerEvent.OnServerEvent:Connect(function(player)
-	PlayerManager.clearViewing(player.UserId)
-end)
-
-local botRegisterViewerEvent, botUnregisterViewerEvent = BotRegistry.getViewerEvents()
-
-botRegisterViewerEvent.OnServerEvent:Connect(function(player, botId)
-	PlayerManager.setViewingBot(player.UserId, botId)
-
-	local bot = BotRegistry.get(botId)
-	if bot and bot.interpreter then
-		local state = bot.interpreter:getState()
-		state.botId = botId
-		state.spotId = bot.spotId
-		state.source = bot.interpreter.source
-		state.isBot = true
-		RemoteEvents.stateUpdate:FireClient(player, state)
-	end
-end)
-
-botUnregisterViewerEvent.OnServerEvent:Connect(function(player)
-	PlayerManager.clearViewing(player.UserId)
-end)
-
 EnemyManager.startUpdateLoop()
-GolemRegistry.startUpdateLoop()
-BotRegistry.startUpdateLoop()
+Interpreters.startUpdateLoop()
 
 local function loadMap()
 	WaveManager.createCore(mapConfig.core)
 	WaveManager.createGateVisuals(mapConfig.spawnGates)
 	EnemyManager.setSpawnGates(mapConfig.spawnGates)
-	GolemRegistry.setPathMap(PathMap)
 
 	local worldW, worldH = PathMap.getWorldSize()
 	local floor = Instance.new("Part")
@@ -166,69 +114,29 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 RemoteEvents.requestState.OnServerEvent:Connect(function(player)
-	GolemRegistry.sendStateToPlayer(player)
-	BotRegistry.sendStateToPlayer(player)
-
-	local interp = PlayerManager.get(player.UserId)
-	if interp then
-		local state = interp:getState()
-		state.source = interp.source
-		RemoteEvents.stateUpdate:FireClient(player, state)
-	end
+	Interpreters.sendFullSync(player)
 end)
 
-local function getTargetInterpreter(player, target)
-	target = target or { type = "player" }
-
-	if target.type == "golem" then
-		local golem = GolemRegistry.get(target.golemId)
-		return golem and golem.interpreter, golem
-	elseif target.type == "bot" then
-		local bot = BotRegistry.get(target.botId)
-		return bot and bot.interpreter, nil, bot
-	else
-		return PlayerManager.get(player.UserId)
-	end
+local function getInterpreterByPid(player, pid)
+	local data = Interpreters.get(pid)
+	if not data then return nil end
+	if data.ownerId ~= player.UserId then return nil end
+	return data.interpreter, data
 end
 
-local function sendInterpreterState(player, target)
-	local interp, golem, bot = getTargetInterpreter(player, target)
-	if not interp then return end
-
-	local state = interp:getState()
-	state.source = interp.source
-
-	if golem then
-		state.golemId = target.golemId
-		state.spotId = golem.spotId
-		state.typeName = golem.typeData and golem.typeData.name
-		state.isGolem = true
-	end
-
-	if bot then
-		state.botId = target.botId
-		state.spotId = bot.spotId
-		state.isBot = true
-	end
-
-	RemoteEvents.stateUpdate:FireClient(player, state)
-end
-
-RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, target)
-	target = target or { type = "player" }
-
-	local interp, golem = getTargetInterpreter(player, target)
+RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, pid)
+	local interp, data = getInterpreterByPid(player, pid)
 	if not interp then return end
 
 	if type(source) ~= "string" then return end
 	if #source > MAX_PROGRAM_LENGTH then
 		interp.error = "PROGRAM TOO LONG (max " .. MAX_PROGRAM_LENGTH .. " chars)"
 		interp.status = "ERROR"
-		sendInterpreterState(player, target)
+		Interpreters.sendFullSync(player)
 		return
 	end
 
-	if target.type == "player" and player.Character then
+	if data.type == "player" and player.Character then
 		interp.character = player.Character
 	end
 
@@ -241,34 +149,33 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, target)
 		local loadSuccess, _, instructionCount = interp:load(source)
 		if loadSuccess then
 			instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
-			if target.type == "bot" then
+			if data.type == "bot" then
 				if instructionCount > MAX_BOT_INSTRUCTIONS then
 					interp.error = "PROGRAM TOO COMPLEX (" .. instructionCount .. "/" .. MAX_BOT_INSTRUCTIONS .. " instructions)"
 					interp.status = "ERROR"
-					sendInterpreterState(player, target)
+					Interpreters.sendFullSync(player)
 					return
 				end
-			elseif target.type == "golem" then
-				if golem then
-					local maxBytecode = GolemRegistry.getMaxBytecode(golem.ramTier)
-					if instructionCount > maxBytecode then
-						interp.error = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions)"
-						interp.status = "ERROR"
-						sendInterpreterState(player, target)
-						return
-					end
+			elseif data.type == "golem" and data.entity then
+				local maxBytecode = interp.maxBytecode or 128
+				if instructionCount > maxBytecode then
+					interp.error = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions)"
+					interp.status = "ERROR"
+					Interpreters.sendFullSync(player)
+					return
 				end
 			end
 			interp.lastProgram = source
+			Interpreters.incrementGen(pid)
 		end
 		interp.paused = false
 	end
 
-	sendInterpreterState(player, target)
+	Interpreters.sendFullSync(player)
 end)
 
-RemoteEvents.pauseProgram.OnServerEvent:Connect(function(player, target)
-	local interp = getTargetInterpreter(player, target)
+RemoteEvents.pauseProgram.OnServerEvent:Connect(function(player, pid)
+	local interp = getInterpreterByPid(player, pid)
 	if not interp then return end
 
 	interp.paused = not interp.paused
@@ -277,15 +184,16 @@ RemoteEvents.pauseProgram.OnServerEvent:Connect(function(player, target)
 		interp.runtime:resume()
 	end
 
-	sendInterpreterState(player, target)
+	Interpreters.sendFullSync(player)
 end)
 
-RemoteEvents.stepProgram.OnServerEvent:Connect(function(player, source, target)
-	local interp = getTargetInterpreter(player, target)
+RemoteEvents.stepProgram.OnServerEvent:Connect(function(player, source, pid)
+	local interp = getInterpreterByPid(player, pid)
 	if not interp then return end
 
 	if interp.status ~= "RUNNING" and interp.status ~= "PAUSED" then
 		interp:load(source)
+		Interpreters.incrementGen(pid)
 	end
 
 	interp.paused = true
@@ -294,19 +202,17 @@ RemoteEvents.stepProgram.OnServerEvent:Connect(function(player, source, target)
 		interp:stepOnce()
 	end
 
-	sendInterpreterState(player, target)
+	Interpreters.sendFullSync(player)
 end)
 
-RemoteEvents.resetProgram.OnServerEvent:Connect(function(player, target)
-	target = target or { type = "player" }
-
-	local interp, golem, bot = getTargetInterpreter(player, target)
+RemoteEvents.resetProgram.OnServerEvent:Connect(function(player, pid)
+	local interp, data = getInterpreterByPid(player, pid)
 	if not interp then return end
 
 	local defaultProgram
-	if target.type == "golem" then
+	if data.type == "golem" then
 		defaultProgram = GolemStats.DEFAULT_PROGRAM
-	elseif target.type == "bot" then
+	elseif data.type == "bot" then
 		defaultProgram = BotStats.DEFAULT_PROGRAM
 	else
 		defaultProgram = DEFAULT_PROGRAM
@@ -314,8 +220,9 @@ RemoteEvents.resetProgram.OnServerEvent:Connect(function(player, target)
 
 	interp:load(defaultProgram)
 	interp.lastProgram = defaultProgram
+	Interpreters.incrementGen(pid)
 
-	sendInterpreterState(player, target)
+	Interpreters.sendFullSync(player)
 end)
 
 RemoteEvents.playerMoveComplete.OnServerEvent:Connect(function(player)
@@ -342,6 +249,109 @@ RemoteEvents.playerFire.OnServerEvent:Connect(function(player, ammoType)
 	RemoteEvents.stateUpdate:FireClient(player, interp:getState())
 end)
 
+RemoteEvents.golemPlaceAt.OnServerEvent:Connect(function(player, x, z)
+	local count = 0
+	for _, data in pairs(Interpreters.getByType("golem")) do
+		if data.ownerId == player.UserId then
+			count = count + 1
+		end
+	end
+
+	local maxTurrets = Config.MAX_TURRETS or 10
+	if count >= maxTurrets then
+		RemoteEvents.golemPlaceAt:FireClient(player, false, "Max turrets reached")
+		return
+	end
+
+	local cost = math.floor(GolemStats.TURRET_BASE_COST * (GolemStats.TURRET_COST_MULTIPLIER ^ count))
+	local scrap = WaveManager.getScrap()
+	if scrap < cost then
+		RemoteEvents.golemPlaceAt:FireClient(player, false, "Not enough scrap")
+		return
+	end
+
+	WaveManager.removeScrap(cost)
+	local pid = Interpreters.create("golem", player.UserId, x, z)
+	if pid then
+		RemoteEvents.golemPlaceAt:FireClient(player, true, {pid = pid})
+		Interpreters.sendFullSync(player)
+	else
+		WaveManager.addScrap(cost)
+		RemoteEvents.golemPlaceAt:FireClient(player, false, "Failed to create turret")
+	end
+end)
+
+RemoteEvents.golemSell.OnServerEvent:Connect(function(player, pid)
+	local data = Interpreters.get(pid)
+	if not data or data.ownerId ~= player.UserId or data.type ~= "golem" then return end
+
+	local tier = data.entity and data.entity.tier or 1
+	local baseCost = GolemStats.BASE.cost
+	local refund = math.floor(baseCost * 0.5 * tier)
+
+	Interpreters.destroy(pid)
+	WaveManager.addScrap(refund)
+	Interpreters.sendFullSync(player)
+end)
+
+RemoteEvents.golemUpgrade.OnServerEvent:Connect(function(player, pid, upgradeType)
+	local data = Interpreters.get(pid)
+	if not data or data.ownerId ~= player.UserId or data.type ~= "golem" then return end
+
+	local success, result
+	if upgradeType == "cpu" then
+		success, result = Interpreters.upgradeCPU(pid)
+	elseif upgradeType == "ram" then
+		success, result = Interpreters.upgradeRAM(pid)
+	end
+
+	RemoteEvents.golemUpgrade:FireClient(player, success, result)
+	Interpreters.sendFullSync(player)
+end)
+
+RemoteEvents.botBuild.OnServerEvent:Connect(function(player, x, z)
+	local count = 0
+	for _, data in pairs(Interpreters.getByType("bot")) do
+		if data.ownerId == player.UserId then
+			count = count + 1
+		end
+	end
+
+	local maxBots = Config.MAX_BOTS or 4
+	if count >= maxBots then
+		RemoteEvents.botBuild:FireClient(player, false, "Max bots reached")
+		return
+	end
+
+	local cost = BotStats.BASE.cost
+	local scrap = WaveManager.getScrap()
+	if scrap < cost then
+		RemoteEvents.botBuild:FireClient(player, false, "Not enough scrap")
+		return
+	end
+
+	WaveManager.removeScrap(cost)
+	local pid = Interpreters.create("bot", player.UserId, x, z)
+	if pid then
+		RemoteEvents.botBuild:FireClient(player, true, {pid = pid})
+		Interpreters.sendFullSync(player)
+	else
+		WaveManager.addScrap(cost)
+		RemoteEvents.botBuild:FireClient(player, false, "Failed to create bot")
+	end
+end)
+
+RemoteEvents.botSell.OnServerEvent:Connect(function(player, pid)
+	local data = Interpreters.get(pid)
+	if not data or data.ownerId ~= player.UserId or data.type ~= "bot" then return end
+
+	local refund = math.floor(BotStats.BASE.cost * 0.5)
+
+	Interpreters.destroy(pid)
+	WaveManager.addScrap(refund)
+	Interpreters.sendFullSync(player)
+end)
+
 local tickAccum = 0
 
 RunService.Heartbeat:Connect(function(dt)
@@ -365,12 +375,11 @@ RunService.Heartbeat:Connect(function(dt)
 
 				PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
 
-				local state = PlayerManager.buildClientState(userId, interp)
-				RemoteEvents.stateUpdate:FireClient(player, state)
+				local gameState = PlayerManager.buildGameState(userId, interp)
+				RemoteEvents.stateUpdate:FireClient(player, gameState)
 			end
 		end
 
-		GolemRegistry.broadcastState()
-		BotRegistry.broadcastState()
+		Interpreters.broadcastAll()
 	end
 end)

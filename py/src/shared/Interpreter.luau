@@ -215,16 +215,18 @@ function Interpreter:getDynamicState()
 	end
 
 	local vmState = nil
-	local bytecode = {}
+	local currentLine = 0
 	if self.runtime then
 		local runtimeState = self.runtime:getState()
 		vmState = runtimeState.vm
-		bytecode = runtimeState.bytecode or {}
+		local bytecode = runtimeState.bytecode or {}
+		local ip = vmState and vmState.ip or 1
+		currentLine = bytecode[ip] and bytecode[ip].line or 0
 	end
 
 	return {
 		vm = vmState,
-		bytecode = bytecode,
+		currentLine = currentLine,
 		status = self.status,
 		error = self.error,
 		output = output,
@@ -239,8 +241,15 @@ function Interpreter:getDynamicState()
 end
 
 function Interpreter:getStaticState()
+	local bytecode = {}
+	if self.runtime then
+		local runtimeState = self.runtime:getState()
+		bytecode = runtimeState.bytecode or {}
+	end
+
 	return {
 		source = self.source,
+		bytecode = bytecode,
 		language = "Python",
 	}
 end

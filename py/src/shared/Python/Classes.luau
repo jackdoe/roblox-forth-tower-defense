@@ -26,6 +26,23 @@ local function prop(typ, getter)
 	return { kind = "prop", type = typ, get = getter }
 end
 
+local function queueTask(entity, taskType, args, blocking)
+	if not entity.taskQueue then
+		entity.taskQueue = {}
+	end
+	table.insert(entity.taskQueue, {
+		type = taskType,
+		args = args or {},
+		startTime = tick(),
+	})
+	if blocking then
+		entity.waitingForTask = true
+		local vm = entity.interpreter and entity.interpreter.runtime and entity.interpreter.runtime.vm
+		if vm and vm.block then vm:block() end
+	end
+	return true
+end
+
 Classes.Enemy = {
 	name = "Enemy",
 	members = {
@@ -105,9 +122,8 @@ Classes.Turret = {
 		end),
 
 		set_range = method({ T.NUMBER }, T.NIL, function(deps, turret, range)
-			local GolemRegistry = deps.GolemRegistry
-			if GolemRegistry and GolemRegistry.issueCommand then
-				GolemRegistry.issueCommand(turret.id, "SET_RANGE", { range = range })
+			if turret.interpreter then
+				turret.interpreter.dynamicRange = math.clamp(range or 40, 10, 60)
 			end
 		end),
 
@@ -134,11 +150,85 @@ Classes.Turret = {
 
 		fire = method({ T.AMMO_TYPE }, T.BOOL, function(deps, turret, ammoType)
 			ammoType = ammoType or 1
-			local GolemRegistry = deps.GolemRegistry
-			if GolemRegistry and GolemRegistry.fire then
-				return GolemRegistry.fire(turret.id, ammoType)
+			local interp = turret.interpreter
+			if not interp then return false end
+
+			local GolemStats = deps.GolemStats
+			local GolemModel = deps.GolemModel
+			if not GolemStats or not GolemModel then return false end
+
+			local AmmoStats = GolemStats.AmmoStats
+			local ammoStats = AmmoStats[ammoType] or AmmoStats[1]
+
+			if interp.ammo < ammoStats.ammoCost then return false end
+
+			local now = tick()
+			local fireRateMult = interp.fireRateMultiplier or 1
+			local adjustedFireRate = ammoStats.fireRate / fireRateMult
+			if now - interp.lastFireTime < adjustedFireRate then return false end
+
+			if not interp.target then return false end
+
+			local EnemyManager = deps.EnemyManager
+			if not EnemyManager then return false end
+
+			local enemy = EnemyManager.get(interp.target)
+			if not enemy or enemy.hp <= 0 then
+				interp.target = nil
+				return false
 			end
-			return false
+
+			local character = turret.character
+			local myHrp = character and (character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart)
+			local enemyHrp = enemy.character and enemy.character:FindFirstChild("HumanoidRootPart")
+			if not myHrp or not enemyHrp then return false end
+
+			local dist = (enemyHrp.Position - myHrp.Position).Magnitude
+			local currentRange = interp.dynamicRange or 40
+			if dist > currentRange then
+				interp.target = nil
+				return false
+			end
+
+			interp.ammo = interp.ammo - ammoStats.ammoCost
+			interp.lastFireTime = now
+
+			local baseRange = 40
+			local damageMult = baseRange / currentRange
+			local tierDamageMult = interp.tierDamageMultiplier or 1
+			local finalDamage = math.floor(ammoStats.damage * damageMult * tierDamageMult)
+
+			if ammoStats.splashRadius and ammoStats.splashRadius > 0 then
+				local enemies = EnemyManager.getAll and EnemyManager.getAll() or {}
+				for _, e in pairs(enemies) do
+					if e.hp > 0 and e.character then
+						local eHrp = e.character:FindFirstChild("HumanoidRootPart")
+						if eHrp then
+							local eDist = (eHrp.Position - enemyHrp.Position).Magnitude
+							if eDist <= ammoStats.splashRadius then
+								local falloff = 1 - (eDist / ammoStats.splashRadius) * 0.5
+								EnemyManager.damage(e.id, math.floor(finalDamage * falloff), turret.id)
+							end
+						end
+					end
+				end
+			else
+				if finalDamage > 0 then
+					EnemyManager.damage(interp.target, finalDamage, turret.id)
+				end
+			end
+
+			if ammoStats.slowAmount and ammoStats.slowDuration then
+				EnemyManager.applySlow(interp.target, ammoStats.slowAmount, ammoStats.slowDuration)
+			end
+
+			if ammoType == 3 and EnemyManager.applyBurning then
+				EnemyManager.applyBurning(interp.target, 3, 5)
+			end
+
+			GolemModel.createMuzzleFlash(turret, enemyHrp.Position, ammoStats)
+
+			return true
 		end),
 
 		scan = method({}, { T.LIST, T.ENEMY }, function(deps, turret)
@@ -193,18 +283,13 @@ Classes.Bot = {
 			local hrp = bot.character:FindFirstChild("HumanoidRootPart")
 			if not hrp then return false end
 
-			local facingAngle = bot.character:GetAttribute("FacingAngle") or 0
+			local facingAngle = bot.facingAngle or 0
 			local dirX = -math.sin(facingAngle)
 			local dirZ = -math.cos(facingAngle)
 			local targetX = hrp.Position.X + dirX * steps
 			local targetZ = hrp.Position.Z + dirZ * steps
 
-			local BotRegistry = deps.BotRegistry
-			if BotRegistry and BotRegistry.issueCommand then
-				BotRegistry.issueCommand(bot.id, "MOVE", { x = targetX, z = targetZ }, true)
-				return true
-			end
-			return false
+			return queueTask(bot, "MOVE", { x = targetX, z = targetZ }, true)
 		end),
 
 		backward = method({ T.NUMBER }, T.BOOL, function(deps, bot, steps)
@@ -213,9 +298,7 @@ Classes.Bot = {
 
 		left = method({ T.NUMBER }, T.BOOL, function(deps, bot, angle)
 			angle = angle or 90
-			if not bot.character then return false end
-			local currentAngle = bot.character:GetAttribute("FacingAngle") or 0
-			bot.character:SetAttribute("FacingAngle", currentAngle + math.rad(angle))
+			bot.facingAngle = (bot.facingAngle or 0) + math.rad(angle)
 			return true
 		end),
 
@@ -225,24 +308,14 @@ Classes.Bot = {
 
 		teleport = method({ T.VECTOR }, T.BOOL, function(deps, bot, pos)
 			if type(pos) ~= "table" or #pos ~= 2 then return false end
-			local BotRegistry = deps.BotRegistry
-			if not BotRegistry or not BotRegistry.issueCommand then return false end
-
 			local coreX, coreZ = deps.getCoreOffset()
-			return BotRegistry.issueCommand(bot.id, "TELEPORT", {
-				x = pos[1] + coreX,
-				z = pos[2] + coreZ
-			}, true)
+			return queueTask(bot, "TELEPORT", { x = pos[1] + coreX, z = pos[2] + coreZ }, true)
 		end),
 
 		shock = method({ T.ENEMY }, T.BOOL, function(deps, bot, target)
-			local BotRegistry = deps.BotRegistry
-			if not BotRegistry or not BotRegistry.issueCommand then return false end
-
 			local enemyId = type(target) == "table" and target.id or target
 			if not enemyId then return false end
-
-			return BotRegistry.issueCommand(bot.id, "SHOCK", { enemyId = enemyId }, true)
+			return queueTask(bot, "SHOCK", { enemyId = enemyId }, true)
 		end),
 
 		scan = method({}, { T.LIST, T.ENEMY }, function(deps, bot)
@@ -262,9 +335,6 @@ Classes.Bot = {
 		end),
 
 		collect = method({}, T.BOOL, function(deps, bot)
-			local BotRegistry = deps.BotRegistry
-			if not BotRegistry or not BotRegistry.issueCommand then return false end
-
 			local capacity = bot.maxCapacity or 3
 			if (bot.scrapInventory or 0) >= capacity then return true end
 
@@ -277,31 +347,56 @@ Classes.Bot = {
 			local x, z, count = ScrapManager.findBestCluster(hrp.Position.X, hrp.Position.Z, 200, 20)
 			if not x or count == 0 then return false end
 
-			BotRegistry.issueCommand(bot.id, "COLLECT", {}, true)
-			return true
+			return queueTask(bot, "COLLECT", {}, true)
 		end),
 
 		explode = method({}, T.BOOL, function(deps, bot)
-			local BotRegistry = deps.BotRegistry
-			if not BotRegistry or not BotRegistry.issueCommand then return false end
-
 			local cargo = bot.scrapInventory or 0
 			if cargo < 10 then return false end
-
-			BotRegistry.issueCommand(bot.id, "EXPLODE", {}, true)
-			return true
+			return queueTask(bot, "EXPLODE", {}, true)
 		end),
 
 		say = method({ T.STRING }, T.NIL, function(deps, bot, message)
-			local BotRegistry = deps.BotRegistry
-			if BotRegistry and BotRegistry.setChatBubble then
-				BotRegistry.setChatBubble(bot.id, tostring(message))
+			local character = bot.character
+			if not character then return end
+
+			local head = character:FindFirstChild("Head") or character.PrimaryPart
+			if not head then return end
+
+			local bb = head:FindFirstChild("BotChat")
+			if not bb then
+				bb = Instance.new("BillboardGui")
+				bb.Name = "BotChat"
+				bb.Size = UDim2.new(0, 150, 0, 50)
+				bb.StudsOffset = Vector3.new(0, 4, 0)
+				bb.AlwaysOnTop = true
+				bb.Parent = head
+
+				local txt = Instance.new("TextLabel")
+				txt.Name = "ChatText"
+				txt.Size = UDim2.new(1, 0, 1, 0)
+				txt.BackgroundTransparency = 1
+				txt.TextColor3 = Color3.new(1, 1, 1)
+				txt.TextStrokeTransparency = 0
+				txt.TextStrokeColor3 = Color3.new(0, 0, 0)
+				txt.Font = Enum.Font.Cartoon
+				txt.TextSize = 18
+				txt.TextScaled = false
+				txt.Parent = bb
+			end
+
+			local txt = bb:FindFirstChild("ChatText")
+			if txt then
+				txt.Text = tostring(message)
+				task.delay(3, function()
+					if txt and txt.Parent and txt.Text == tostring(message) then
+						txt.Text = ""
+					end
+				end)
 			end
 		end),
 
 		deposit = method({}, T.BOOL, function(deps, bot)
-			local BotRegistry = deps.BotRegistry
-			if not BotRegistry or not BotRegistry.depositToCore then return false end
 			if (bot.scrapInventory or 0) <= 0 then return false end
 			if not bot.character then return false end
 
@@ -312,8 +407,16 @@ Classes.Bot = {
 			local dist = math.sqrt((hrp.Position.X - coreX)^2 + (hrp.Position.Z - coreZ)^2)
 			if dist > 15 then return false end
 
-			local pieces = BotRegistry.depositToCore(bot.id)
-			return pieces > 0
+			local WaveManager = deps.WaveManager
+			if not WaveManager then return false end
+
+			local ReplicatedStorage = game:GetService("ReplicatedStorage")
+			local Config = require(ReplicatedStorage:WaitForChild("PythonTD").Config)
+			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
+
+			WaveManager.addScrap(bot.scrapInventory * pieceValue)
+			bot.scrapInventory = 0
+			return true
 		end),
 	},
 }
@@ -497,7 +600,7 @@ Classes.Player = {
 			return nil
 		end),
 
-		danger = Classes.Bot.members.scan and method({}, T.NUMBER, function(deps, player)
+		danger = method({}, T.NUMBER, function(deps, player)
 			if not player.character then return 9999 end
 			local x, z = deps.getCharacterPos(player.character)
 			local EnemyManager = deps.EnemyManager

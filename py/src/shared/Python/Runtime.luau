@@ -20,7 +20,6 @@ function Runtime.new()
 	self.error = nil
 	self.output = {}
 
-	-- Game environment (set by GolemRegistry/BotRegistry)
 	self.env = {}
 
 	-- For API compatibility with old Runtime

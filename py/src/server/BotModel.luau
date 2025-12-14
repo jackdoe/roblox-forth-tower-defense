@@ -151,13 +151,13 @@ function BotModel.createBillboard(bot)
 
 	local idLabel = Instance.new("TextLabel")
 	idLabel.Name = "IdLabel"
-	idLabel.Size = UDim2.new(0.4, 0, 0.5, 0)
+	idLabel.Size = UDim2.new(0.5, 0, 0.5, 0)
 	idLabel.Position = UDim2.new(0, 4, 0, 2)
 	idLabel.BackgroundTransparency = 1
-	idLabel.Text = "B" .. (bot.spotId or "?")
+	idLabel.Text = bot.name or "B_?.py"
 	idLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
 	idLabel.Font = Enum.Font.GothamBold
-	idLabel.TextSize = 14
+	idLabel.TextSize = 11
 	idLabel.TextXAlignment = Enum.TextXAlignment.Left
 	idLabel.Parent = bg
 
@@ -211,7 +211,7 @@ function BotModel.updateBillboard(bot)
 
 	local idLabel = bg:FindFirstChild("IdLabel")
 	if idLabel then
-		idLabel.Text = "B" .. (bot.spotId or "?")
+		idLabel.Text = bot.name or "B_?.py"
 	end
 
 	local cargoLabel = bg:FindFirstChild("CargoLabel")
