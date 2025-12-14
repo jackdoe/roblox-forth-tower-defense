@@ -206,9 +206,9 @@ function UITheme.formatStackValue(v)
 		return v and "True" or "False"
 	elseif type(v) == "table" then
 		if v._isFunction then
-			return "<fn>"
+			return "fn"
 		elseif v.items then
-			return "<iter>"
+			return "iter"
 		else
 			return "[" .. #v .. "]"
 		end
@@ -241,9 +241,9 @@ function UITheme.formatArg(arg)
 				return tostring(arg.value)
 			end
 		elseif arg.name then
-			return "<fn:" .. arg.name .. ">"
+			return "fn:" .. arg.name
 		else
-			return "<table>"
+			return "{...}"
 		end
 	elseif type(arg) == "string" then
 		return arg

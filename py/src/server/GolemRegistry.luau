@@ -292,6 +292,7 @@ function GolemRegistry.upgradeGolem(player, golemId)
 	local newTierData = UpgradeTiers[golem.tier]
 
 	local interp = golem.interpreter
+	interp.cpuHz = newTierData.cpuHz
 	interp.maxAmmo = math.floor(GolemStats.BASE.maxAmmo * newTierData.ammoMultiplier)
 	interp.ammo = math.min(interp.ammo, interp.maxAmmo)
 	interp.range = math.floor(GolemStats.BASE.range * newTierData.rangeMultiplier)
@@ -357,6 +358,8 @@ function GolemRegistry.upgradeRAM(player, golemId)
 	golem.ramTier = currentRAMTier + 1
 	local newRAMData = GolemStats.RAMTiers[golem.ramTier]
 
+	golem.interpreter.maxBytecode = newRAMData.maxBytecode
+
 	GolemModel.applyColorUpgrade(golem)
 	GolemRegistry.broadcastState()
 
@@ -419,6 +422,9 @@ function GolemRegistry.create(x, z)
 	local interp = Interpreter.new(nil, true, deps)
 	interp.character = character
 	interp.isGolem = true
+
+	interp.cpuHz = GolemStats.UpgradeTiers[1].cpuHz
+	interp.maxBytecode = GolemStats.RAMTiers[1].maxBytecode
 
 	interp.ammo = GolemStats.BASE.maxAmmo
 	interp.maxAmmo = GolemStats.BASE.maxAmmo
@@ -634,9 +640,8 @@ function GolemRegistry.update(dt)
 				end
 			end
 
-			local tickRate = GolemStats.getTickRate(golem.tier)
 			golem.tickAccum = (golem.tickAccum or 0) + dt
-			if golem.tickAccum >= tickRate then
+			if golem.tickAccum >= 1 / interp.cpuHz then
 				golem.tickAccum = 0
 				if interp.status == "READY" or interp.status == "RUNNING" then
 					local freeSteps = deps.Config.GOLEM_FREE_STEPS_PER_TICK or 8
@@ -970,9 +975,9 @@ function GolemRegistry.getStateForPlayer(player)
 				tier = tier,
 				tierName = tierData and tierData.name or "1 Hz",
 				upgradeCost = upgradeCost,
-				cpuHz = tierData and tierData.cpuHz or 1,
+				cpuHz = interp.cpuHz,
 				ramTier = ramTier,
-				maxBytecode = ramTierData and ramTierData.maxBytecode or 32,
+				maxBytecode = interp.maxBytecode,
 				ramUpgradeCost = ramUpgradeCost,
 				unlockedAmmo = GolemStats.getUnlockedAmmo(tier),
 				selectedAmmoType = golem.selectedAmmoType or 1,

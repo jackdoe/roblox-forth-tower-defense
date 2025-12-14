@@ -20,6 +20,7 @@ BotStats.BASE = {
 	pickupRange = 5,
 	transferRange = 8,
 	cost = 75,
+	cpuHz = 10,
 	maxBytecode = 32,
 }
 

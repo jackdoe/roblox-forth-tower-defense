@@ -101,6 +101,8 @@ local function onCharacterAdded(player, playerId, character)
 	interp.character = character
 	interp.playerId = playerId
 	interp.playerName = player.Name
+	interp.cpuHz = Config.PLAYER_CPU_HZ or 10
+	interp.maxBytecode = Config.PLAYER_MAX_BYTECODE or 128
 	interp.ammoInventory = Config.STARTING_AMMO or 100
 	interp.scrapInventory = 0
 	interp.maxCapacity = Config.PLAYER_CAPACITY or 5

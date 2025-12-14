@@ -166,16 +166,6 @@ editor = EditorPanel.create(screenGui, {
 	onLoad = function(source)
 		runProgramEvent:FireServer(source, ClientState.currentInterpreterTarget)
 	end,
-	onStep = function(source)
-		stepProgramEvent:FireServer(source, ClientState.currentInterpreterTarget)
-		showBytecodePanel()
-	end,
-	onPause = function()
-		pauseProgramEvent:FireServer(ClientState.currentInterpreterTarget)
-	end,
-	onReset = function()
-		resetProgramEvent:FireServer()
-	end,
 })
 
 program = ProgramPanel.create(screenGui)
@@ -183,6 +173,21 @@ bytecodePanel = BytecodePanel.create(screenGui)
 
 bytecodePanel:setVisible(false)
 program:setBytecodeVisible(false)
+
+program.onRun = function()
+	local source = editor:getText()
+	runProgramEvent:FireServer(source, ClientState.currentInterpreterTarget)
+end
+
+program.onPause = function()
+	pauseProgramEvent:FireServer(ClientState.currentInterpreterTarget)
+end
+
+program.onStep = function()
+	local source = editor:getText()
+	stepProgramEvent:FireServer(source, ClientState.currentInterpreterTarget)
+	showBytecodePanel()
+end
 
 program.onBytecodeToggle = function()
 	ClientState.bytecodeVisible = not ClientState.bytecodeVisible
@@ -264,11 +269,25 @@ editor.onExitGolem = function()
 	end
 end
 
-editor.onSellGolem = function()
+editor.onSell = function()
 	if ClientState.currentInterpreterTarget.type == "bot" and ClientState.currentInterpreterTarget.botId then
 		botSellEvent:FireServer(ClientState.currentInterpreterTarget.botId)
+		exitBotMind()
 	elseif ClientState.currentInterpreterTarget.type == "golem" and ClientState.currentInterpreterTarget.golemId then
 		golemSellEvent:FireServer(ClientState.currentInterpreterTarget.golemId)
+		exitGolemMind()
+	end
+end
+
+editor.onBuyCpu = function()
+	if ClientState.currentInterpreterTarget.type == "golem" and ClientState.currentInterpreterTarget.golemId then
+		golemUpgradeEvent:FireServer(ClientState.currentInterpreterTarget.golemId)
+	end
+end
+
+editor.onBuyRam = function()
+	if ClientState.currentInterpreterTarget.type == "golem" and ClientState.currentInterpreterTarget.golemId then
+		golemUpgradeRAMEvent:FireServer(ClientState.currentInterpreterTarget.golemId)
 	end
 end
 
@@ -285,7 +304,10 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 	if isForCurrentTarget then
 		program:update(state)
 		bytecodePanel:update(state)
-		editor:setPaused(state.paused)
+		program:setPaused(state.paused)
+		if state.cpuHz then
+			program:setCpuHz(state.cpuHz)
+		end
 	end
 
 	if state.isGolem and isTargetingGolem and state.golemId == target.golemId and not ClientState.golemProgramLoaded and state.source then
@@ -368,8 +390,7 @@ golemStateEvent.OnClientEvent:Connect(function(data)
 			})
 
 			if ClientState.currentInterpreterTarget.type == "golem" and ClientState.currentInterpreterTarget.golemId == golemData.id then
-				editor:setCpuHz(golemData.cpuHz or 1)
-				editor:setMaxBytecode(golemData.maxBytecode or 32)
+				program:setCpuHz(golemData.cpuHz or 1)
 			end
 		end
 	end

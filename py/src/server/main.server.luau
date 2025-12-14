@@ -224,6 +224,9 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, target)
 
 	if interp.paused and interp.source == source then
 		interp.paused = false
+		if interp.runtime then
+			interp.runtime:resume()
+		end
 	else
 		local loadSuccess, _, instructionCount = interp:load(source)
 		if loadSuccess then
@@ -259,6 +262,11 @@ RemoteEvents.pauseProgram.OnServerEvent:Connect(function(player, target)
 	if not interp then return end
 
 	interp.paused = not interp.paused
+
+	if not interp.paused and interp.runtime then
+		interp.runtime:resume()
+	end
+
 	sendInterpreterState(player, target)
 end)
 

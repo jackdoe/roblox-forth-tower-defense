@@ -1,16 +1,15 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 local DragModule = require(script.Parent.DragModule)
 local UITheme = require(script.Parent.UITheme)
 local Python = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("Python"))
+local Classes = Python.Classes
 
 local EditorPanel = {}
 local THEMES = UITheme.THEMES
 local COLORS = UITheme.COLORS
 
 local MAX_CHARS = 300
-local DEFAULT_RAM = 32
-local DEFAULT_CPU_HZ = 1
+local DEFAULT_MAX_BYTECODE = 128
 
 local function formatCode(source)
 	local lines = {}
@@ -29,8 +28,10 @@ function EditorPanel.create(parent, callbacks)
 	callbacks = callbacks or {}
 
 	local currentMode = "player"
-	local currentMaxRAM = DEFAULT_RAM
-	local currentCpuHz = DEFAULT_CPU_HZ
+	local currentMaxBytecode = DEFAULT_MAX_BYTECODE
+	local hasCompileError = true
+	local currentSelfType = nil
+	local currentEnvTypes = {}
 
 	local frame = Instance.new("Frame")
 	frame.Name = "EditorPanel"
@@ -86,90 +87,156 @@ function EditorPanel.create(parent, callbacks)
 	modeCorner.CornerRadius = UDim.new(0, 6)
 	modeCorner.Parent = modeIndicator
 
-	local cpuLabel = Instance.new("TextLabel")
-	cpuLabel.Name = "CPULabel"
-	cpuLabel.Size = UDim2.new(0, 50, 0, 22)
-	cpuLabel.Position = UDim2.new(1, -130, 0, 5)
-	cpuLabel.BackgroundColor3 = COLORS.bg
-	cpuLabel.BackgroundTransparency = 0.3
-	cpuLabel.Text = "1 Hz"
-	cpuLabel.TextColor3 = COLORS.success
-	cpuLabel.Font = Enum.Font.Code
-	cpuLabel.TextSize = 9
-	cpuLabel.Parent = topBar
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "Title"
+	titleLabel.Size = UDim2.new(0, 80, 1, 0)
+	titleLabel.Position = UDim2.new(0, 10, 0, 0)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = "EDITOR"
+	titleLabel.TextColor3 = COLORS.text
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.Font = Enum.Font.Code
+	titleLabel.TextSize = 12
+	titleLabel.Parent = topBar
 
-	local cpuCorner = Instance.new("UICorner")
-	cpuCorner.CornerRadius = UDim.new(0, 4)
-	cpuCorner.Parent = cpuLabel
+	local compileStatusBar = Instance.new("Frame")
+	compileStatusBar.Name = "CompileStatusBar"
+	compileStatusBar.Size = UDim2.new(1, -6, 0, 18)
+	compileStatusBar.Position = UDim2.new(0, 3, 1, -48)
+	compileStatusBar.BackgroundColor3 = COLORS.bg
+	compileStatusBar.BorderSizePixel = 0
+	compileStatusBar.Parent = frame
 
-	local ramLabel = Instance.new("TextLabel")
-	ramLabel.Name = "RAMLabel"
-	ramLabel.Size = UDim2.new(0, 70, 0, 22)
-	ramLabel.Position = UDim2.new(1, -75, 0, 5)
-	ramLabel.BackgroundColor3 = COLORS.bg
-	ramLabel.BackgroundTransparency = 0.3
-	ramLabel.Text = "RAM: 0/32"
-	ramLabel.TextColor3 = COLORS.accent
-	ramLabel.Font = Enum.Font.Code
-	ramLabel.TextSize = 9
-	ramLabel.Parent = topBar
+	local compileStatusCorner = Instance.new("UICorner")
+	compileStatusCorner.CornerRadius = UDim.new(0, 4)
+	compileStatusCorner.Parent = compileStatusBar
 
-	local ramCorner = Instance.new("UICorner")
-	ramCorner.CornerRadius = UDim.new(0, 4)
-	ramCorner.Parent = ramLabel
+	local bytecodeLabel = Instance.new("TextLabel")
+	bytecodeLabel.Name = "BytecodeLabel"
+	bytecodeLabel.Size = UDim2.new(0, 60, 1, 0)
+	bytecodeLabel.Position = UDim2.new(0, 4, 0, 0)
+	bytecodeLabel.BackgroundTransparency = 1
+	bytecodeLabel.Text = "0 bytes"
+	bytecodeLabel.TextColor3 = COLORS.success
+	bytecodeLabel.TextXAlignment = Enum.TextXAlignment.Left
+	bytecodeLabel.Font = Enum.Font.Code
+	bytecodeLabel.TextSize = 10
+	bytecodeLabel.Parent = compileStatusBar
 
-	-- SELL and MOVE buttons removed from IDE - now in HUD inspector panel
+	local compileErrorLabel = Instance.new("TextLabel")
+	compileErrorLabel.Name = "CompileError"
+	compileErrorLabel.Size = UDim2.new(1, -70, 1, 0)
+	compileErrorLabel.Position = UDim2.new(0, 65, 0, 0)
+	compileErrorLabel.BackgroundTransparency = 1
+	compileErrorLabel.Text = ""
+	compileErrorLabel.TextColor3 = COLORS.danger
+	compileErrorLabel.TextXAlignment = Enum.TextXAlignment.Left
+	compileErrorLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	compileErrorLabel.Font = Enum.Font.Code
+	compileErrorLabel.TextSize = 10
+	compileErrorLabel.Parent = compileStatusBar
 
-	local startBtn = Instance.new("TextButton")
-	startBtn.Name = "StartBtn"
-	startBtn.Size = UDim2.new(0, 50, 0, 22)
-	startBtn.Position = UDim2.new(0, 4, 0, 5)
-	startBtn.BackgroundColor3 = COLORS.success
-	startBtn.Text = "RUN ^1"
-	startBtn.TextColor3 = COLORS.text
-	startBtn.Font = Enum.Font.GothamBold
-	startBtn.TextSize = 9
-	startBtn.Parent = topBar
+	local actionBar = Instance.new("Frame")
+	actionBar.Name = "ActionBar"
+	actionBar.Size = UDim2.new(1, 0, 0, 30)
+	actionBar.Position = UDim2.new(0, 0, 1, -30)
+	actionBar.BackgroundColor3 = THEMES.player.headerBg
+	actionBar.BorderSizePixel = 0
+	actionBar.Parent = frame
 
-	local startBtnCorner = Instance.new("UICorner")
-	startBtnCorner.CornerRadius = UDim.new(0, 4)
-	startBtnCorner.Parent = startBtn
+	local actionBarCorner = Instance.new("UICorner")
+	actionBarCorner.CornerRadius = UDim.new(0, 8)
+	actionBarCorner.Parent = actionBar
 
-	local pauseBtn = Instance.new("TextButton")
-	pauseBtn.Name = "PauseBtn"
-	pauseBtn.Size = UDim2.new(0, 55, 0, 22)
-	pauseBtn.Position = UDim2.new(0, 58, 0, 5)
-	pauseBtn.BackgroundColor3 = COLORS.warning
-	pauseBtn.Text = "PAUSE ^2"
-	pauseBtn.TextColor3 = COLORS.text
-	pauseBtn.Font = Enum.Font.GothamBold
-	pauseBtn.TextSize = 9
-	pauseBtn.Parent = topBar
+	local compileBtn = Instance.new("TextButton")
+	compileBtn.Name = "CompileBtn"
+	compileBtn.Size = UDim2.new(0, 100, 0, 22)
+	compileBtn.Position = UDim2.new(0, 6, 0, 4)
+	compileBtn.BackgroundColor3 = COLORS.success
+	compileBtn.Text = "COMPILE & RUN"
+	compileBtn.TextColor3 = COLORS.text
+	compileBtn.Font = Enum.Font.GothamBold
+	compileBtn.TextSize = 9
+	compileBtn.Parent = actionBar
 
-	local pauseBtnCorner = Instance.new("UICorner")
-	pauseBtnCorner.CornerRadius = UDim.new(0, 4)
-	pauseBtnCorner.Parent = pauseBtn
+	local compileBtnCorner = Instance.new("UICorner")
+	compileBtnCorner.CornerRadius = UDim.new(0, 4)
+	compileBtnCorner.Parent = compileBtn
 
-	local stepBtn = Instance.new("TextButton")
-	stepBtn.Name = "StepBtn"
-	stepBtn.Size = UDim2.new(0, 50, 0, 22)
-	stepBtn.Position = UDim2.new(0, 117, 0, 5)
-	stepBtn.BackgroundColor3 = COLORS.panel
-	stepBtn.Text = "STEP ^3"
-	stepBtn.TextColor3 = COLORS.text
-	stepBtn.Font = Enum.Font.GothamBold
-	stepBtn.TextSize = 9
-	stepBtn.Parent = topBar
+	local buyCpuBtn = Instance.new("TextButton")
+	buyCpuBtn.Name = "BuyCpuBtn"
+	buyCpuBtn.Size = UDim2.new(0, 60, 0, 22)
+	buyCpuBtn.Position = UDim2.new(0, 112, 0, 4)
+	buyCpuBtn.BackgroundColor3 = COLORS.accent
+	buyCpuBtn.Text = "BUY CPU"
+	buyCpuBtn.TextColor3 = COLORS.text
+	buyCpuBtn.Font = Enum.Font.GothamBold
+	buyCpuBtn.TextSize = 9
+	buyCpuBtn.Visible = false
+	buyCpuBtn.Parent = actionBar
 
-	local stepBtnCorner = Instance.new("UICorner")
-	stepBtnCorner.CornerRadius = UDim.new(0, 4)
-	stepBtnCorner.Parent = stepBtn
+	local buyCpuBtnCorner = Instance.new("UICorner")
+	buyCpuBtnCorner.CornerRadius = UDim.new(0, 4)
+	buyCpuBtnCorner.Parent = buyCpuBtn
 
+	local buyRamBtn = Instance.new("TextButton")
+	buyRamBtn.Name = "BuyRamBtn"
+	buyRamBtn.Size = UDim2.new(0, 60, 0, 22)
+	buyRamBtn.Position = UDim2.new(0, 178, 0, 4)
+	buyRamBtn.BackgroundColor3 = COLORS.accent
+	buyRamBtn.Text = "BUY RAM"
+	buyRamBtn.TextColor3 = COLORS.text
+	buyRamBtn.Font = Enum.Font.GothamBold
+	buyRamBtn.TextSize = 9
+	buyRamBtn.Visible = false
+	buyRamBtn.Parent = actionBar
+
+	local buyRamBtnCorner = Instance.new("UICorner")
+	buyRamBtnCorner.CornerRadius = UDim.new(0, 4)
+	buyRamBtnCorner.Parent = buyRamBtn
+
+	local sellBtn = Instance.new("TextButton")
+	sellBtn.Name = "SellBtn"
+	sellBtn.Size = UDim2.new(0, 50, 0, 22)
+	sellBtn.Position = UDim2.new(1, -56, 0, 4)
+	sellBtn.BackgroundColor3 = COLORS.danger
+	sellBtn.Text = "SELL"
+	sellBtn.TextColor3 = COLORS.text
+	sellBtn.Font = Enum.Font.GothamBold
+	sellBtn.TextSize = 9
+	sellBtn.Visible = false
+	sellBtn.Parent = actionBar
+
+	local sellBtnCorner = Instance.new("UICorner")
+	sellBtnCorner.CornerRadius = UDim.new(0, 4)
+	sellBtnCorner.Parent = sellBtn
+
+	panel.onBuyCpu = nil
+	panel.onBuyRam = nil
+	panel.onSell = nil
+
+	buyCpuBtn.MouseButton1Click:Connect(function()
+		if panel.onBuyCpu then
+			panel.onBuyCpu()
+		end
+	end)
+
+	buyRamBtn.MouseButton1Click:Connect(function()
+		if panel.onBuyRam then
+			panel.onBuyRam()
+		end
+	end)
+
+	sellBtn.MouseButton1Click:Connect(function()
+		if panel.onSell then
+			panel.onSell()
+		end
+	end)
 
 	-- Line numbers (inside its own scrolling frame to sync with code)
 	local lineScroll = Instance.new("ScrollingFrame")
 	lineScroll.Name = "LineScroll"
-	lineScroll.Size = UDim2.new(0, 25, 1, -82)  -- Room for top bar + suggestion bar + hints (compact)
+	lineScroll.Size = UDim2.new(0, 25, 1, -130)  -- Room for top bar + suggestion bar + compile status + action bar
 	lineScroll.Position = UDim2.new(0, 2, 0, 33)
 	lineScroll.BackgroundTransparency = 1
 	lineScroll.BorderSizePixel = 0
@@ -194,7 +261,7 @@ function EditorPanel.create(parent, callbacks)
 
 	local codeScroll = Instance.new("ScrollingFrame")
 	codeScroll.Name = "CodeScroll"
-	codeScroll.Size = UDim2.new(1, -35, 1, -82)
+	codeScroll.Size = UDim2.new(1, -35, 1, -130)  -- Room for top bar + suggestion bar + compile status + action bar
 	codeScroll.Position = UDim2.new(0, 30, 0, 33)
 	codeScroll.BackgroundTransparency = 1
 	codeScroll.BorderSizePixel = 0
@@ -222,7 +289,14 @@ function EditorPanel.create(parent, callbacks)
 	textBox.TextWrapped = false
 	textBox.Parent = codeScroll
 
-	-- Sync line numbers scroll with code scroll
+	compileBtn.MouseButton1Click:Connect(function()
+		if hasCompileError then return end
+		if callbacks.onLoad then
+			textBox.Text = formatCode(textBox.Text)
+			callbacks.onLoad(textBox.Text)
+		end
+	end)
+
 	codeScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		lineScroll.CanvasPosition = Vector2.new(0, codeScroll.CanvasPosition.Y)
 	end)
@@ -230,7 +304,7 @@ function EditorPanel.create(parent, callbacks)
 	local suggestBar = Instance.new("ScrollingFrame")
 	suggestBar.Name = "SuggestBar"
 	suggestBar.Size = UDim2.new(1, -6, 0, 20)
-	suggestBar.Position = UDim2.new(0, 3, 1, -35)
+	suggestBar.Position = UDim2.new(0, 3, 1, -83)  -- Above compile status bar
 	suggestBar.BackgroundColor3 = COLORS.bg
 	suggestBar.BorderSizePixel = 0
 	suggestBar.ScrollBarThickness = 0
@@ -287,7 +361,7 @@ function EditorPanel.create(parent, callbacks)
 	local helpTooltip = Instance.new("TextLabel")
 	helpTooltip.Name = "HelpTooltip"
 	helpTooltip.Size = UDim2.new(1, -6, 0, 14)
-	helpTooltip.Position = UDim2.new(0, 3, 1, -50)
+	helpTooltip.Position = UDim2.new(0, 3, 1, -98)  -- Above suggestion bar
 	helpTooltip.BackgroundColor3 = COLORS.panel
 	helpTooltip.BackgroundTransparency = 0.1
 	helpTooltip.BorderSizePixel = 0
@@ -339,200 +413,151 @@ function EditorPanel.create(parent, callbacks)
 
 	textBox:GetPropertyChangedSignal("Text"):Connect(updateLineNumbers)
 
-	local lastInstructionCount = 0
-	local function updateInstructionCount()
+	local function updateCompileButton()
+		if hasCompileError then
+			compileBtn.BackgroundColor3 = COLORS.subtext
+			compileBtn.TextColor3 = COLORS.bg
+		else
+			compileBtn.BackgroundColor3 = COLORS.success
+			compileBtn.TextColor3 = COLORS.text
+		end
+	end
+
+	local function updateCompileStatus()
 		local source = textBox.Text
 		if source == "" then
-			lastInstructionCount = 0
-			panel:setMemoryUsage(0, currentMaxRAM)
+			bytecodeLabel.Text = "0/" .. currentMaxBytecode
+			bytecodeLabel.TextColor3 = COLORS.subtext
+			compileErrorLabel.Text = ""
+			hasCompileError = false
+			updateCompileButton()
 			return
 		end
 
 		local success, result = pcall(function()
-			return Python.compile(source)
+			return Python.compile(source, currentMaxBytecode, currentSelfType, currentEnvTypes)
 		end)
 
-		if success and result and result.instructionCount then
-			lastInstructionCount = result.instructionCount
-			panel:setMemoryUsage(result.instructionCount, currentMaxRAM)
+		if success and result then
+			if result.error then
+				bytecodeLabel.Text = "ERR"
+				bytecodeLabel.TextColor3 = COLORS.danger
+				compileErrorLabel.Text = result.error
+				hasCompileError = true
+			else
+				bytecodeLabel.Text = result.instructionCount .. "/" .. currentMaxBytecode
+				bytecodeLabel.TextColor3 = COLORS.success
+				compileErrorLabel.Text = ""
+				hasCompileError = false
+			end
+		else
+			bytecodeLabel.Text = "ERR"
+			bytecodeLabel.TextColor3 = COLORS.danger
+			compileErrorLabel.Text = tostring(result)
+			hasCompileError = true
 		end
+		updateCompileButton()
 	end
 
-	-- Debounce the instruction count update (don't compile on every keystroke)
-	local instructionUpdatePending = false
-	local function scheduleInstructionUpdate()
-		if instructionUpdatePending then return end
-		instructionUpdatePending = true
-		task.delay(0.5, function()
-			instructionUpdatePending = false
-			updateInstructionCount()
+	local compileUpdatePending = false
+	local function scheduleCompileUpdate()
+		if compileUpdatePending then return end
+		compileUpdatePending = true
+		task.delay(0.3, function()
+			compileUpdatePending = false
+			updateCompileStatus()
 		end)
 	end
 
-	textBox:GetPropertyChangedSignal("Text"):Connect(scheduleInstructionUpdate)
+	textBox:GetPropertyChangedSignal("Text"):Connect(scheduleCompileUpdate)
 
-	-- =====================================================
-	-- AUTOCOMPLETE SYSTEM WITH HELP
-	-- Generated from actual API methods, uses trie for prefix matching
-	-- Each entry has: word, snippet, help (signature + description)
-	-- =====================================================
+	local T = Classes.T
 
-	-- Keywords (no prefix needed)
+	local function formatType(typ)
+		if type(typ) == "string" then
+			return typ
+		elseif type(typ) == "table" then
+			if typ[1] == "optional" then return typ[2] .. "?" end
+			if typ[1] == T.LIST then return "List[" .. (typ[2] or "any") .. "]" end
+			return typ[1] or "any"
+		end
+		return "any"
+	end
+
+	local function formatArgs(args)
+		if not args or #args == 0 then return "()" end
+		local parts = {}
+		for _, arg in ipairs(args) do parts[#parts + 1] = formatType(arg) end
+		return "(" .. table.concat(parts, ", ") .. ")"
+	end
+
+	local function generateMethodsFromClass(className)
+		local classDef = Classes[className]
+		if not classDef or not classDef.members then return {} end
+		local items = {}
+		for name, member in pairs(classDef.members) do
+			if member.kind == "method" then
+				local sig = formatArgs(member.args) .. " -> " .. formatType(member.returns)
+				items[#items + 1] = {word = name, snippet = name .. "()", help = name .. sig}
+			elseif member.kind == "prop" then
+				items[#items + 1] = {word = name, snippet = name, help = name .. ": " .. formatType(member.type)}
+			end
+		end
+		table.sort(items, function(a, b) return a.word < b.word end)
+		return items
+	end
+
+	local BOT_METHODS = generateMethodsFromClass("Bot")
+	local TURRET_METHODS = generateMethodsFromClass("Turret")
+	local ENEMY_METHODS = generateMethodsFromClass("Enemy")
+
 	local KEYWORDS = {
-		{word = "while", snippet = "while True:\n    ", help = "while condition: | Loop while true"},
-		{word = "if", snippet = "if :\n    ", help = "if condition: | Conditional branch"},
-		{word = "elif", snippet = "elif :\n    ", help = "elif condition: | Else-if branch"},
-		{word = "else", snippet = "else:\n    ", help = "else: | Default branch"},
-		{word = "for", snippet = "for i in range():\n    ", help = "for var in list: | Loop over items"},
-		{word = "def", snippet = "def ():\n    ", help = "def name(args): | Define function"},
-		{word = "return", snippet = "return ", help = "return value | Exit function"},
-		{word = "True", snippet = "True", help = "True | Boolean true"},
-		{word = "False", snippet = "False", help = "False | Boolean false"},
-		{word = "None", snippet = "None", help = "None | No value"},
-		{word = "and", snippet = "and ", help = "a and b | Both must be true"},
-		{word = "or", snippet = "or ", help = "a or b | Either can be true"},
-		{word = "not", snippet = "not ", help = "not a | Invert boolean"},
-		{word = "in", snippet = "in ", help = "x in list | Check membership"},
+		{word = "while", snippet = "while True:\n    ", help = "while condition:"},
+		{word = "if", snippet = "if :\n    ", help = "if condition:"},
+		{word = "elif", snippet = "elif :\n    ", help = "elif condition:"},
+		{word = "else", snippet = "else:\n    ", help = "else:"},
+		{word = "for", snippet = "for i in range():\n    ", help = "for var in list:"},
+		{word = "def", snippet = "def ():\n    ", help = "def name(args):"},
+		{word = "return", snippet = "return ", help = "return value"},
+		{word = "True", snippet = "True", help = "bool"},
+		{word = "False", snippet = "False", help = "bool"},
+		{word = "None", snippet = "None", help = "nil"},
+		{word = "and", snippet = "and ", help = "a and b"},
+		{word = "or", snippet = "or ", help = "a or b"},
+		{word = "not", snippet = "not ", help = "not a"},
 	}
 
-	-- Global functions (no prefix needed)
 	local GLOBALS = {
-		{word = "print", snippet = "print()", help = "print(value, ...) | Output to console"},
-		{word = "len", snippet = "len()", help = "len(list) -> int | Get length"},
-		{word = "range", snippet = "range()", help = "range(n) or range(start,end) | Number sequence"},
-		{word = "abs", snippet = "abs()", help = "abs(x) -> num | Absolute value"},
-		{word = "min", snippet = "min()", help = "min(a, b, ...) -> num | Smallest value"},
-		{word = "max", snippet = "max()", help = "max(a, b, ...) -> num | Largest value"},
-		{word = "int", snippet = "int()", help = "int(x) -> int | Convert to integer"},
-		{word = "str", snippet = "str()", help = "str(x) -> str | Convert to string"},
-		{word = "wait", snippet = "wait(1)", help = "wait(seconds) | Pause execution"},
+		{word = "print", snippet = "print()", help = "print(any) -> nil"},
+		{word = "len", snippet = "len()", help = "len(List) -> number"},
+		{word = "range", snippet = "range()", help = "range(number) -> List[number]"},
+		{word = "abs", snippet = "abs()", help = "abs(number) -> number"},
+		{word = "min", snippet = "min()", help = "min(number, number) -> number"},
+		{word = "max", snippet = "max()", help = "max(number, number) -> number"},
+		{word = "nearest", snippet = "nearest()", help = "nearest(List[Enemy]) -> Enemy"},
+		{word = "furthest", snippet = "furthest()", help = "furthest(List[Enemy]) -> Enemy"},
+		{word = "weakest", snippet = "weakest()", help = "weakest(List[Enemy]) -> Enemy"},
+		{word = "strongest", snippet = "strongest()", help = "strongest(List[Enemy]) -> Enemy"},
 	}
 
-	-- Golem-specific globals (turret mode only)
-	local GOLEM_GLOBALS = {
-		{word = "nearest", snippet = "nearest()", help = "nearest() -> enemy | Closest enemy"},
-		{word = "weakest", snippet = "weakest()", help = "weakest() -> enemy | Lowest HP enemy"},
-		{word = "strongest", snippet = "strongest()", help = "strongest() -> enemy | Highest HP enemy"},
-	}
-
-	-- Methods available on self/B1-B4/T1-T4 proxies
-	-- These get suggested when user types "self.", "B1.", "T1.", etc.
-	local BOT_METHODS = {
-		-- Movement (turtle style)
-		{word = "forward", snippet = "forward(10)", help = "forward(dist) | Move forward"},
-		{word = "backward", snippet = "backward(10)", help = "backward(dist) | Move backward"},
-		{word = "left", snippet = "left(90)", help = "left(degrees) | Turn left"},
-		{word = "right", snippet = "right(90)", help = "right(degrees) | Turn right"},
-		{word = "goto", snippet = "goto(T1)", help = "goto(target) | Move to T1/B1/pos"},
-		{word = "move", snippet = "move(0, 0)", help = "move(x, z) | Move to coords"},
-		{word = "stop", snippet = "stop()", help = "stop() | Cancel movement"},
-		{word = "flee", snippet = "flee()", help = "flee() | Run to core"},
-		{word = "go_home", snippet = "go_home()", help = "go_home() | Return to core"},
-		-- State queries
-		{word = "position", snippet = "position()", help = "position() -> [x,z] | Get location"},
-		{word = "cargo", snippet = "cargo()", help = "cargo() -> int | Scrap carried"},
-		{word = "max_cargo", snippet = "max_cargo()", help = "max_cargo() -> int | Max capacity"},
-		{word = "is_full", snippet = "is_full()", help = "is_full() -> bool | Inventory full?"},
-		{word = "is_idle", snippet = "is_idle()", help = "is_idle() -> bool | Not busy?"},
-		{word = "is_moving", snippet = "is_moving()", help = "is_moving() -> bool | Walking?"},
-		{word = "alive", snippet = "alive()", help = "alive() -> bool | Bot exists?"},
-		{word = "exists", snippet = "exists()", help = "exists() -> bool | Unit exists?"},
-		{word = "status", snippet = "status()", help = "status() -> str | Current state"},
-		{word = "spot", snippet = "spot()", help = "spot() -> int | Spawn slot (1-4)"},
-		-- Collection & Supply
-		{word = "scraps", snippet = "scraps()", help = "scraps() -> list | All scrap, nearest first"},
-		{word = "collect", snippet = "collect(s[0])", help = "collect(scrap) | Pick up scrap"},
-		{word = "supply", snippet = "supply(T1)", help = "supply(turret) | Give ammo to turret"},
-		{word = "scan", snippet = "scan()", help = "scan() -> [x,z] | Find nearest scrap"},
-		-- Personality
-		{word = "say", snippet = "say('')", help = "say(msg) | Show chat bubble"},
-		{word = "color", snippet = "color('cyan')", help = "color(name) | red/blue/green/cyan/..."},
-		-- Combat
-		{word = "shield", snippet = "shield()", help = "shield(sec) | Activate shield"},
-		{word = "shielded", snippet = "shielded()", help = "shielded() -> bool | Shield active?"},
-		{word = "shield_ready", snippet = "shield_ready()", help = "shield_ready() -> bool | Can shield?"},
-		{word = "zap", snippet = "zap()", help = "zap() | Shock nearby enemy"},
-		{word = "attack", snippet = "attack()", help = "attack() | Attack nearest"},
-		{word = "explode", snippet = "explode()", help = "explode() | Kamikaze! Bot dies"},
-		{word = "danger", snippet = "danger()", help = "danger() -> int | Dist to enemy"},
-		{word = "distance", snippet = "distance(T1)", help = "distance(target) -> int | Dist to target"},
-		-- Sensors
-		{word = "enemies_nearby", snippet = "enemies_nearby()", help = "enemies_nearby(range) -> int | Count enemies"},
-		{word = "scrap_nearby", snippet = "scrap_nearby()", help = "scrap_nearby(range) -> bool | Scrap in range?"},
-		-- Utility
-		{word = "wait", snippet = "wait(1)", help = "wait(sec) | Pause bot"},
-		{word = "methods", snippet = "methods()", help = "methods() -> list | List all methods"},
-	}
-
-	local TURRET_METHODS = {
-		-- State
-		{word = "exists", snippet = "exists()", help = "exists() -> bool | Turret exists?"},
-		{word = "alive", snippet = "alive()", help = "alive() -> bool | Turret exists?"},
-		{word = "spot", snippet = "spot()", help = "spot() -> int | Slot number (1-4)"},
-		{word = "id", snippet = "id()", help = "id() -> str | Unique ID"},
-		{word = "position", snippet = "position()", help = "position() -> [x,z] | Location"},
-		{word = "ammo", snippet = "ammo()", help = "ammo() -> int | Current ammo"},
-		{word = "max_ammo", snippet = "max_ammo()", help = "max_ammo() -> int | Max ammo"},
-		{word = "range", snippet = "range()", help = "range() -> int | Attack range"},
-		{word = "is_empty", snippet = "is_empty()", help = "is_empty() -> bool | No ammo?"},
-		{word = "ammo_ratio", snippet = "ammo_ratio()", help = "ammo_ratio() -> float | 0.0-1.0"},
-		-- Commands
-		{word = "set_range", snippet = "set_range(30)", help = "set_range(10-60) | Low=damage, high=reach"},
-		{word = "scan", snippet = "scan()", help = "scan() -> list | Enemies in range"},
-		{word = "fire", snippet = "fire(BULLET)", help = "fire(type) | BULLET/ROCKET/LASER/ICE"},
-		{word = "danger", snippet = "danger()", help = "danger() -> int | Dist to enemy"},
-		{word = "methods", snippet = "methods()", help = "methods() -> list | List all methods"},
-	}
-
-	-- Player self methods (subset of bot methods)
-	local PLAYER_SELF_METHODS = {
-		{word = "forward", snippet = "forward(10)", help = "forward(dist) | Walk forward"},
-		{word = "backward", snippet = "backward(10)", help = "backward(dist) | Walk backward"},
-		{word = "left", snippet = "left(90)", help = "left(degrees) | Turn left"},
-		{word = "right", snippet = "right(90)", help = "right(degrees) | Turn right"},
-		{word = "goto", snippet = "goto(T1)", help = "goto(target) | Walk to T1/B1"},
-		{word = "position", snippet = "position()", help = "position() -> [x,z] | Your location"},
-		{word = "cargo", snippet = "cargo()", help = "cargo() -> int | Scrap carried"},
-		{word = "max_cargo", snippet = "max_cargo()", help = "max_cargo() -> int | Max capacity"},
-		{word = "is_full", snippet = "is_full()", help = "is_full() -> bool | Inventory full?"},
-		{word = "scraps", snippet = "scraps()", help = "scraps() -> list | All scrap"},
-		{word = "collect", snippet = "collect(s[0])", help = "collect(scrap) | Pick up scrap"},
-		{word = "supply", snippet = "supply(T1)", help = "supply(turret) | Give ammo"},
-	}
-
-	-- Golem self methods (when editing turret code)
-	local GOLEM_SELF_METHODS = {
-		{word = "scan", snippet = "scan()", help = "scan() -> list | Enemies in range"},
-		{word = "fire", snippet = "fire(BULLET)", help = "fire(type) | BULLET/ROCKET/LASER/ICE"},
-		{word = "ammo", snippet = "ammo()", help = "ammo() -> int | Current ammo"},
-		{word = "max_ammo", snippet = "max_ammo()", help = "max_ammo() -> int | Max ammo"},
-		{word = "range", snippet = "range()", help = "range() -> int | Attack range"},
-		{word = "set_range", snippet = "set_range(30)", help = "set_range(10-60) | Low=damage, high=reach"},
-		{word = "is_empty", snippet = "is_empty()", help = "is_empty() -> bool | No ammo?"},
-		{word = "position", snippet = "position()", help = "position() -> [x,z] | Location"},
-		{word = "danger", snippet = "danger()", help = "danger() -> int | Dist to enemy"},
-	}
-
-	-- Valid object prefixes (what can come before the dot)
-	local OBJECT_PREFIXES = {"self", "B1", "B2", "B3", "B4", "T1", "T2", "T3", "T4", "CORE"}
-
-	-- Constants
 	local CONSTANTS = {
-		{word = "BULLET", snippet = "BULLET", help = "BULLET = 1 | Fast, cheap ammo"},
-		{word = "ROCKET", snippet = "ROCKET", help = "ROCKET = 2 | Slow, splash damage"},
-		{word = "LASER", snippet = "LASER", help = "LASER = 3 | High damage, fast"},
-		{word = "ICE", snippet = "ICE", help = "ICE = 4 | Slows enemies 60%"},
-		{word = "FREEZE", snippet = "FREEZE", help = "FREEZE = 5 | No damage, slows"},
-		{word = "T1", snippet = "T1", help = "T1 | Turret slot 1"},
-		{word = "T2", snippet = "T2", help = "T2 | Turret slot 2"},
-		{word = "T3", snippet = "T3", help = "T3 | Turret slot 3"},
-		{word = "T4", snippet = "T4", help = "T4 | Turret slot 4"},
-		{word = "B1", snippet = "B1", help = "B1 | Bot slot 1"},
-		{word = "B2", snippet = "B2", help = "B2 | Bot slot 2"},
-		{word = "B3", snippet = "B3", help = "B3 | Bot slot 3"},
-		{word = "B4", snippet = "B4", help = "B4 | Bot slot 4"},
-		{word = "CORE", snippet = "CORE", help = "CORE | Base to defend"},
+		{word = "BULLET", snippet = "BULLET", help = "AmmoType = 1"},
+		{word = "ROCKET", snippet = "ROCKET", help = "AmmoType = 2"},
+		{word = "LASER", snippet = "LASER", help = "AmmoType = 3"},
+		{word = "ICE", snippet = "ICE", help = "AmmoType = 4"},
+		{word = "FREEZE", snippet = "FREEZE", help = "AmmoType = 5"},
+		{word = "CORE", snippet = "CORE", help = "Core"},
 	}
+
+	local function isValidObjectPrefix(obj)
+		if obj == "self" or obj == "CORE" then return true end
+		if obj:match("^B[1-4]$") then return true end
+		if obj:match("^T%d+$") then
+			local n = tonumber(obj:sub(2))
+			return n and n >= 1 and n <= 30
+		end
+		return false
+	end
 
 	-- Build a simple trie for prefix matching
 	local function buildTrie(items)
@@ -575,57 +600,40 @@ function EditorPanel.create(parent, callbacks)
 		return results
 	end
 
-	-- Build tries for each category
 	local keywordTrie = buildTrie(KEYWORDS)
 	local globalTrie = buildTrie(GLOBALS)
-	local golemGlobalTrie = buildTrie(GOLEM_GLOBALS)
 	local constantTrie = buildTrie(CONSTANTS)
 	local botMethodTrie = buildTrie(BOT_METHODS)
 	local turretMethodTrie = buildTrie(TURRET_METHODS)
-	local playerSelfTrie = buildTrie(PLAYER_SELF_METHODS)
-	local golemSelfTrie = buildTrie(GOLEM_SELF_METHODS)
+	local enemyMethodTrie = buildTrie(ENEMY_METHODS)
 
-	-- Parse the current context from text
 	local function getCurrentContext(text)
-		-- Check for object.method pattern: self.for, B1.sc, T2.fi, etc.
 		local obj, word = text:match("([%w_]+)%.([%w_]*)$")
-		if obj then
-			-- Check if it's a valid object prefix
-			for _, prefix in ipairs(OBJECT_PREFIXES) do
-				if obj == prefix then
-					return obj, word:lower(), #obj + 1 + #word
-				end
-			end
+		if obj and isValidObjectPrefix(obj) then
+			return obj, word:lower(), #obj + 1 + #word
 		end
-
-		-- Check for s[ pattern (list indexing)
 		local listVar, idx = text:match("([%w_]+)%[(%d*)$")
 		if listVar then
 			return "list[", idx, #listVar + 1 + #idx
 		end
-
-		-- No special prefix - just get last word
 		local lastWord = text:match("([%w_]+)$") or ""
 		return nil, lastWord:lower(), #lastWord
 	end
 
-	-- Get appropriate methods for an object
+	local coreTrie = buildTrie({
+		{word = "position", snippet = "position", help = "position: Vector"},
+		{word = "hp", snippet = "hp", help = "hp: number"},
+	})
+
 	local function getMethodsForObject(obj)
 		if obj == "self" then
-			if currentMode == "golem" then
-				return golemSelfTrie
-			elseif currentMode == "player" then
-				return playerSelfTrie
-			else -- bot
-				return botMethodTrie
-			end
+			return currentMode == "golem" and turretMethodTrie or botMethodTrie
 		elseif obj:match("^B%d$") then
 			return botMethodTrie
-		elseif obj:match("^T%d$") then
+		elseif obj:match("^T%d+$") then
 			return turretMethodTrie
 		elseif obj == "CORE" then
-			-- CORE only has position() and hp()
-			return buildTrie({{word = "position", snippet = "position()"}, {word = "hp", snippet = "hp()"}})
+			return coreTrie
 		end
 		return nil
 	end
@@ -667,33 +675,13 @@ function EditorPanel.create(parent, callbacks)
 				end
 			end
 		else
-			-- No object prefix - search keywords, globals, constants
 			if #currentWord >= 2 then
-				-- Keywords
-				for _, item in ipairs(searchTrie(keywordTrie, currentWord)) do
-					table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
+				for _, trie in ipairs({keywordTrie, globalTrie, constantTrie}) do
+					for _, item in ipairs(searchTrie(trie, currentWord)) do
+						matches[#matches + 1] = {word = item.word, snippet = item.snippet, help = item.help}
+						if #matches >= MAX_SUGGESTIONS then break end
+					end
 					if #matches >= MAX_SUGGESTIONS then break end
-				end
-				-- Globals
-				if #matches < MAX_SUGGESTIONS then
-					for _, item in ipairs(searchTrie(globalTrie, currentWord)) do
-						table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
-						if #matches >= MAX_SUGGESTIONS then break end
-					end
-				end
-				-- Golem-specific globals
-				if currentMode == "golem" and #matches < MAX_SUGGESTIONS then
-					for _, item in ipairs(searchTrie(golemGlobalTrie, currentWord)) do
-						table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
-						if #matches >= MAX_SUGGESTIONS then break end
-					end
-				end
-				-- Constants
-				if #matches < MAX_SUGGESTIONS then
-					for _, item in ipairs(searchTrie(constantTrie, currentWord)) do
-						table.insert(matches, {word = item.word, snippet = item.snippet, help = item.help})
-						if #matches >= MAX_SUGGESTIONS then break end
-					end
 				end
 			end
 		end
@@ -743,32 +731,6 @@ function EditorPanel.create(parent, callbacks)
 
 	textBox:GetPropertyChangedSignal("Text"):Connect(updateSuggestions)
 
-	-- Button handlers
-	startBtn.MouseButton1Click:Connect(function()
-		-- Check character limit
-		if #textBox.Text > MAX_CHARS then
-			return  -- Don't run if over limit
-		end
-		-- Auto-format before saving
-		textBox.Text = formatCode(textBox.Text)
-		updateLineNumbers()
-		if callbacks.onLoad then
-			callbacks.onLoad(textBox.Text)
-		end
-	end)
-
-	stepBtn.MouseButton1Click:Connect(function()
-		if callbacks.onStep then
-			callbacks.onStep(textBox.Text)
-		end
-	end)
-
-	pauseBtn.MouseButton1Click:Connect(function()
-		if callbacks.onPause then
-			callbacks.onPause()
-		end
-	end)
-
 	-- Public interface
 	panel.frame = frame
 	panel.textBox = textBox
@@ -790,16 +752,6 @@ function EditorPanel.create(parent, callbacks)
 	function panel:format()
 		textBox.Text = formatCode(textBox.Text)
 		updateLineNumbers()
-	end
-
-	function panel:setPaused(paused)
-		if paused then
-			pauseBtn.Text = "PLAY ^2"
-			pauseBtn.BackgroundColor3 = COLORS.success
-		else
-			pauseBtn.Text = "PAUSE ^2"
-			pauseBtn.BackgroundColor3 = COLORS.warning
-		end
 	end
 
 	function panel:toggle()
@@ -828,58 +780,54 @@ function EditorPanel.create(parent, callbacks)
 
 	local currentWeaponName = "BULLET"
 
-	function panel:setMode(mode, spotId, maxRAM, cpuHz)
+	function panel:setMode(mode, spotId, maxBytes, envTypes)
 		currentMode = mode or "player"
-		currentMaxRAM = maxRAM or DEFAULT_RAM
-		currentCpuHz = cpuHz or DEFAULT_CPU_HZ
+		currentMaxBytecode = maxBytes or DEFAULT_MAX_BYTECODE
+		currentEnvTypes = envTypes or {}
 		local theme = THEMES[currentMode] or THEMES.player
 
 		frame.BackgroundColor3 = theme.frameBg
 		topBar.BackgroundColor3 = theme.headerBg
-
-		panel:setMemoryUsage(0, currentMaxRAM)
-		panel:setCpuHz(currentCpuHz)
-		updateInstructionCount()
+		actionBar.BackgroundColor3 = theme.headerBg
 
 		if currentMode == "player" then
+			currentSelfType = "Bot"
 			modeIndicator.Text = currentWeaponName
 			modeIndicator.TextColor3 = theme.accent
 			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
-			startBtn.Visible = false
-			pauseBtn.Visible = true
-			stepBtn.Visible = true
-			cpuLabel.Visible = false
-			ramLabel.Visible = false
+			compileBtn.Visible = false
+			buyCpuBtn.Visible = false
+			buyRamBtn.Visible = false
+			sellBtn.Visible = false
 			textBox.TextEditable = false
 			textBox.Active = false
 		elseif currentMode == "golem" then
+			currentSelfType = "Turret"
 			modeIndicator.Text = "TURRET #" .. (spotId or "?")
 			modeIndicator.TextColor3 = theme.accent
 			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
-			startBtn.Visible = true
-			startBtn.BackgroundColor3 = COLORS.success
-			pauseBtn.Visible = true
-			stepBtn.Visible = true
-			cpuLabel.Visible = true
-			ramLabel.Visible = true
+			compileBtn.Visible = true
+			buyCpuBtn.Visible = true
+			buyRamBtn.Visible = true
+			sellBtn.Visible = true
 			textBox.TextEditable = true
 			textBox.Active = true
 		elseif currentMode == "bot" then
+			currentSelfType = "Bot"
 			modeIndicator.Text = "BOT #" .. (spotId or "?")
 			modeIndicator.TextColor3 = theme.accent
 			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
-			startBtn.Visible = true
-			startBtn.BackgroundColor3 = COLORS.success
-			pauseBtn.Visible = true
-			stepBtn.Visible = true
-			cpuLabel.Visible = false
-			ramLabel.Visible = true
+			compileBtn.Visible = true
+			buyCpuBtn.Visible = false
+			buyRamBtn.Visible = false
+			sellBtn.Visible = true
 			textBox.TextEditable = true
 			textBox.Active = true
 		end
+		updateCompileStatus()
 	end
 
 	function panel:isGolemMode()
@@ -900,39 +848,6 @@ function EditorPanel.create(parent, callbacks)
 		if currentMode == "player" then
 			modeIndicator.Text = "WEAPON: " .. currentWeaponName
 		end
-	end
-
-	function panel:setMemoryUsage(used, max)
-		max = max or 32
-		used = used or 0
-		ramLabel.Text = "RAM: " .. used .. "/" .. max
-
-		local ratio = used / max
-		if ratio > 1 then
-			ramLabel.TextColor3 = COLORS.danger
-		elseif ratio > 0.8 then
-			ramLabel.TextColor3 = COLORS.warning
-		else
-			ramLabel.TextColor3 = COLORS.accent
-		end
-	end
-
-	function panel:setCpuHz(hz)
-		currentCpuHz = hz or DEFAULT_CPU_HZ
-		cpuLabel.Text = currentCpuHz .. " Hz"
-
-		if currentCpuHz >= 20 then
-			cpuLabel.TextColor3 = COLORS.warning
-		elseif currentCpuHz >= 5 then
-			cpuLabel.TextColor3 = COLORS.accent
-		else
-			cpuLabel.TextColor3 = COLORS.success
-		end
-	end
-
-	function panel:setMaxBytecode(max)
-		currentMaxRAM = max or DEFAULT_RAM
-		panel:setMemoryUsage(lastInstructionCount, currentMaxRAM)
 	end
 
 	-- Callback for exiting golem/bot mode (set by main client)

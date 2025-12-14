@@ -43,49 +43,155 @@ function ProgramPanel.create(parent)
 	DragModule.makeDraggable(frame, header)
 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(0.5, 0, 1, 0)
+	title.Size = UDim2.new(0, 80, 1, 0)
 	title.Position = UDim2.new(0, 10, 0, 0)
 	title.BackgroundTransparency = 1
-	title.Text = "PYTHON DEBUGGER"
+	title.Text = "COMPUTER"
 	title.TextColor3 = COLORS.text
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Font = Enum.Font.Code
 	title.TextSize = 12
 	title.Parent = header
 
-	local bytecodeToggle = Instance.new("TextButton")
-	bytecodeToggle.Name = "BytecodeToggle"
-	bytecodeToggle.Size = UDim2.new(0, 24, 0, 18)
-	bytecodeToggle.Position = UDim2.new(1, -115, 0, 5)
-	bytecodeToggle.BackgroundColor3 = COLORS.panel
-	bytecodeToggle.Text = "{}"
-	bytecodeToggle.TextColor3 = COLORS.accent
-	bytecodeToggle.Font = Enum.Font.Code
-	bytecodeToggle.TextSize = 10
-	bytecodeToggle.Parent = header
+	local cpuLabel = Instance.new("TextLabel")
+	cpuLabel.Name = "CPULabel"
+	cpuLabel.Size = UDim2.new(0, 50, 0, 18)
+	cpuLabel.Position = UDim2.new(0, 85, 0, 5)
+	cpuLabel.BackgroundColor3 = COLORS.bg
+	cpuLabel.BackgroundTransparency = 0.3
+	cpuLabel.Text = "10 Hz"
+	cpuLabel.TextColor3 = COLORS.success
+	cpuLabel.Font = Enum.Font.Code
+	cpuLabel.TextSize = 9
+	cpuLabel.Parent = header
 
-	local bytecodeToggleCorner = Instance.new("UICorner")
-	bytecodeToggleCorner.CornerRadius = UDim.new(0, 4)
-	bytecodeToggleCorner.Parent = bytecodeToggle
+	local cpuCorner = Instance.new("UICorner")
+	cpuCorner.CornerRadius = UDim.new(0, 4)
+	cpuCorner.Parent = cpuLabel
+
+	local ramLabel = Instance.new("TextLabel")
+	ramLabel.Name = "RAMLabel"
+	ramLabel.Size = UDim2.new(0, 70, 0, 18)
+	ramLabel.Position = UDim2.new(0, 140, 0, 5)
+	ramLabel.BackgroundColor3 = COLORS.bg
+	ramLabel.BackgroundTransparency = 0.3
+	ramLabel.Text = "RAM: 0/32"
+	ramLabel.TextColor3 = COLORS.accent
+	ramLabel.Font = Enum.Font.Code
+	ramLabel.TextSize = 9
+	ramLabel.Parent = header
+
+	local ramCorner = Instance.new("UICorner")
+	ramCorner.CornerRadius = UDim.new(0, 4)
+	ramCorner.Parent = ramLabel
 
 	local statusLabel = Instance.new("TextLabel")
 	statusLabel.Name = "Status"
-	statusLabel.Size = UDim2.new(0, 80, 1, 0)
-	statusLabel.Position = UDim2.new(1, -85, 0, 0)
+	statusLabel.Size = UDim2.new(0, 60, 1, 0)
+	statusLabel.Position = UDim2.new(1, -65, 0, 0)
 	statusLabel.BackgroundTransparency = 1
 	statusLabel.Text = "IDLE"
 	statusLabel.TextColor3 = COLORS.success
 	statusLabel.TextXAlignment = Enum.TextXAlignment.Right
 	statusLabel.Font = Enum.Font.Code
-	statusLabel.TextSize = 12
+	statusLabel.TextSize = 10
 	statusLabel.Parent = header
 
-	-- Toggle callback (set by caller)
+	local controlBar = Instance.new("Frame")
+	controlBar.Name = "ControlBar"
+	controlBar.Size = UDim2.new(1, 0, 0, 26)
+	controlBar.Position = UDim2.new(0, 0, 0, 28)
+	controlBar.BackgroundColor3 = THEMES.player.headerBg
+	controlBar.BackgroundTransparency = 0.5
+	controlBar.BorderSizePixel = 0
+	controlBar.Parent = frame
+
+	local runBtn = Instance.new("TextButton")
+	runBtn.Name = "RunBtn"
+	runBtn.Size = UDim2.new(0, 50, 0, 20)
+	runBtn.Position = UDim2.new(0, 10, 0, 3)
+	runBtn.BackgroundColor3 = COLORS.success
+	runBtn.Text = "RUN"
+	runBtn.TextColor3 = COLORS.text
+	runBtn.Font = Enum.Font.GothamBold
+	runBtn.TextSize = 10
+	runBtn.Parent = controlBar
+
+	local runBtnCorner = Instance.new("UICorner")
+	runBtnCorner.CornerRadius = UDim.new(0, 4)
+	runBtnCorner.Parent = runBtn
+
+	local pauseBtn = Instance.new("TextButton")
+	pauseBtn.Name = "PauseBtn"
+	pauseBtn.Size = UDim2.new(0, 55, 0, 20)
+	pauseBtn.Position = UDim2.new(0, 65, 0, 3)
+	pauseBtn.BackgroundColor3 = COLORS.warning
+	pauseBtn.Text = "PAUSE"
+	pauseBtn.TextColor3 = COLORS.text
+	pauseBtn.Font = Enum.Font.GothamBold
+	pauseBtn.TextSize = 10
+	pauseBtn.Parent = controlBar
+
+	local pauseBtnCorner = Instance.new("UICorner")
+	pauseBtnCorner.CornerRadius = UDim.new(0, 4)
+	pauseBtnCorner.Parent = pauseBtn
+
+	local stepBtn = Instance.new("TextButton")
+	stepBtn.Name = "StepBtn"
+	stepBtn.Size = UDim2.new(0, 50, 0, 20)
+	stepBtn.Position = UDim2.new(0, 125, 0, 3)
+	stepBtn.BackgroundColor3 = COLORS.accent
+	stepBtn.Text = "STEP"
+	stepBtn.TextColor3 = COLORS.text
+	stepBtn.Font = Enum.Font.GothamBold
+	stepBtn.TextSize = 10
+	stepBtn.Parent = controlBar
+
+	local stepBtnCorner = Instance.new("UICorner")
+	stepBtnCorner.CornerRadius = UDim.new(0, 4)
+	stepBtnCorner.Parent = stepBtn
+
+	local bytecodeToggle = Instance.new("TextButton")
+	bytecodeToggle.Name = "BytecodeToggle"
+	bytecodeToggle.Size = UDim2.new(0, 24, 0, 20)
+	bytecodeToggle.Position = UDim2.new(1, -40, 0, 3)
+	bytecodeToggle.BackgroundColor3 = COLORS.panel
+	bytecodeToggle.Text = "{}"
+	bytecodeToggle.TextColor3 = COLORS.accent
+	bytecodeToggle.Font = Enum.Font.Code
+	bytecodeToggle.TextSize = 10
+	bytecodeToggle.Parent = controlBar
+
+	local bytecodeToggleCorner = Instance.new("UICorner")
+	bytecodeToggleCorner.CornerRadius = UDim.new(0, 4)
+	bytecodeToggleCorner.Parent = bytecodeToggle
+
 	panel.onBytecodeToggle = nil
+	panel.onRun = nil
+	panel.onPause = nil
+	panel.onStep = nil
 
 	bytecodeToggle.MouseButton1Click:Connect(function()
 		if panel.onBytecodeToggle then
 			panel.onBytecodeToggle()
+		end
+	end)
+
+	runBtn.MouseButton1Click:Connect(function()
+		if panel.onRun then
+			panel.onRun()
+		end
+	end)
+
+	pauseBtn.MouseButton1Click:Connect(function()
+		if panel.onPause then
+			panel.onPause()
+		end
+	end)
+
+	stepBtn.MouseButton1Click:Connect(function()
+		if panel.onStep then
+			panel.onStep()
 		end
 	end)
 
@@ -99,8 +205,42 @@ function ProgramPanel.create(parent)
 		end
 	end
 
-	-- ===== CODE DISPLAY SECTION =====
-	local codeY = 34
+	function panel:setCpuHz(hz)
+		cpuLabel.Text = (hz or 10) .. " Hz"
+		if hz >= 20 then
+			cpuLabel.TextColor3 = COLORS.warning
+		elseif hz >= 5 then
+			cpuLabel.TextColor3 = COLORS.accent
+		else
+			cpuLabel.TextColor3 = COLORS.success
+		end
+	end
+
+	function panel:setMemoryUsage(used, max)
+		max = max or 32
+		used = used or 0
+		ramLabel.Text = "RAM: " .. used .. "/" .. max
+		local ratio = used / max
+		if ratio > 1 then
+			ramLabel.TextColor3 = COLORS.danger
+		elseif ratio > 0.8 then
+			ramLabel.TextColor3 = COLORS.warning
+		else
+			ramLabel.TextColor3 = COLORS.accent
+		end
+	end
+
+	function panel:setPaused(paused)
+		if paused then
+			pauseBtn.Text = "PLAY"
+			pauseBtn.BackgroundColor3 = COLORS.success
+		else
+			pauseBtn.Text = "PAUSE"
+			pauseBtn.BackgroundColor3 = COLORS.warning
+		end
+	end
+
+	local codeY = 60
 
 	local codeHeader = Instance.new("TextLabel")
 	codeHeader.Size = UDim2.new(1, -20, 0, 16)
@@ -423,7 +563,7 @@ function ProgramPanel.create(parent)
 	errorHeaderEl.Size = UDim2.new(1, -40, 0, 14)
 	errorHeaderEl.Position = UDim2.new(0, 10, 0, errorY)
 	errorHeaderEl.BackgroundTransparency = 1
-	errorHeaderEl.Text = "ERROR:"
+	errorHeaderEl.Text = "RUNTIME:"
 	errorHeaderEl.TextColor3 = COLORS.subtext
 	errorHeaderEl.TextXAlignment = Enum.TextXAlignment.Left
 	errorHeaderEl.Font = Enum.Font.Code
@@ -530,6 +670,8 @@ function ProgramPanel.create(parent)
 		local ip = state.vm and state.vm.ip or 1
 		local currentLine = bytecode[ip] and bytecode[ip].line or 0
 
+		panel:setMemoryUsage(#bytecode, state.maxBytecode or 32)
+
 		if #tokens > 0 then
 			local lines = {}
 			for i, line in ipairs(tokens) do
@@ -627,7 +769,6 @@ function ProgramPanel.create(parent)
 			outputLabelEl.Text = lastLine
 		end
 
-		-- Error
 		local currentError = state.error or ""
 		if currentError ~= lastError then
 			lastError = currentError

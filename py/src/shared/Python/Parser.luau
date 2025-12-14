@@ -464,11 +464,18 @@ parseStatement = function(p)
 	-- Expression statement or assignment
 	local expr = parseExpression(p)
 
-	-- Check for tuple unpacking: a, b = expr
+	local function requireEndOfStatement(p, line)
+		if not check(p, TT.NEWLINE) and not check(p, TT.EOF) and not check(p, TT.DEDENT) then
+			local tok = current(p)
+			error("Unexpected token '" .. tostring(tok.value or tok.type) .. "' at line " .. line)
+		end
+		match(p, TT.NEWLINE)
+	end
+
 	if check(p, TT.COMMA) then
 		local targets = { expr }
 		while check(p, TT.COMMA) do
-			advance(p)  -- consume comma
+			advance(p)
 			local nextExpr = parseExpression(p)
 			table.insert(targets, nextExpr)
 		end
@@ -476,34 +483,30 @@ parseStatement = function(p)
 		if check(p, TT.ASSIGN) then
 			advance(p)
 			local value = parseExpression(p)
-			match(p, TT.NEWLINE)
+			requireEndOfStatement(p, expr.line)
 			return { type = NT.TUPLE_UNPACK_STMT, targets = targets, value = value, line = expr.line }
 		else
-			-- It's a tuple expression (not assignment)
-			match(p, TT.NEWLINE)
+			requireEndOfStatement(p, expr.line)
 			return { type = NT.EXPR_STMT, expression = { type = NT.TUPLE, elements = targets, line = expr.line }, line = expr.line }
 		end
 	end
 
-	-- Check for simple assignment
 	if check(p, TT.ASSIGN) then
 		advance(p)
 		local value = parseExpression(p)
-		match(p, TT.NEWLINE)
+		requireEndOfStatement(p, expr.line)
 		return { type = NT.ASSIGN_STMT, target = expr, value = value, line = expr.line }
 	end
 
-	-- Check for augmented assignment
 	if check(p, TT.PLUS_ASSIGN) or check(p, TT.MINUS_ASSIGN) or
 	   check(p, TT.STAR_ASSIGN) or check(p, TT.SLASH_ASSIGN) then
 		local op = advance(p)
 		local value = parseExpression(p)
-		match(p, TT.NEWLINE)
+		requireEndOfStatement(p, expr.line)
 		return { type = NT.AUG_ASSIGN_STMT, target = expr, operator = op.type, value = value, line = expr.line }
 	end
 
-	-- Just an expression statement
-	match(p, TT.NEWLINE)
+	requireEndOfStatement(p, expr.line)
 	return { type = NT.EXPR_STMT, expression = expr, line = expr.line }
 end
 

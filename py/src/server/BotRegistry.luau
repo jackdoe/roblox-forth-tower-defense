@@ -175,6 +175,8 @@ function BotRegistry.create(x, z)
 	if InterpreterModule then
 		bot.interpreter = InterpreterModule.new(nil, true, deps)
 		bot.interpreter.character = character
+		bot.interpreter.cpuHz = BotStats.BASE.cpuHz
+		bot.interpreter.maxBytecode = BotStats.BASE.maxBytecode
 
 		if GameAPI and GameAPI.createBotEnvironment then
 			local botEnv = GameAPI.createBotEnvironment(bot, {

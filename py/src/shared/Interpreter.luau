@@ -1,7 +1,3 @@
--- Interpreter.luau
--- Python interpreter wrapper for tower defense game
--- Bridges Python/Runtime to the game infrastructure
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Python = require(script.Parent.Python)
@@ -18,23 +14,22 @@ function Interpreter.new(player, isMonster, deps)
 	self.player = not isMonster and player or nil
 	self.character = nil
 
-	-- Python runtime
 	self.runtime = Python.createRuntime()
 	self.source = ""
 	self.lastProgram = ""
 
-	-- State
 	self.status = "IDLE"
 	self.error = nil
 	self.output = ""
 	self.paused = false
 	self.blocked = false
 
-	-- Game environment (will be set by GolemRegistry/BotRegistry)
+	self.cpuHz = 10
+	self.maxBytecode = 128
+
 	self.gameEnv = {}
 	self.deps = deps
 
-	-- For golem-specific state
 	self.ammo = 0
 	self.maxAmmo = 0
 	self.range = 40
@@ -45,20 +40,17 @@ function Interpreter.new(player, isMonster, deps)
 	return self
 end
 
--- Set game environment for Python code
 function Interpreter:setGameEnvironment(env)
 	self.gameEnv = env
 	self.runtime:setEnvironment(env)
 end
 
--- Load Python source code
 function Interpreter:load(source)
 	self.source = source
 	self.lastProgram = source
 	self.error = nil
 	self.output = ""
 
-	-- Parse Python source to AST
 	local success, err = self.runtime:compile(source)
 
 	if not success then
@@ -67,10 +59,8 @@ function Interpreter:load(source)
 		return false
 	end
 
-	-- Update runtime environment with current game state
 	self.runtime:setEnvironment(self.gameEnv)
 
-	-- Start execution
 	local startSuccess, startErr = self.runtime:start()
 	if not startSuccess then
 		self.error = startErr or "Failed to start"
@@ -83,7 +73,6 @@ function Interpreter:load(source)
 	return true
 end
 
--- Step execution (called each tick)
 function Interpreter:step()
 	if self.status == "ERROR" or self.status == "DONE" then
 		return false, 0
@@ -93,10 +82,8 @@ function Interpreter:step()
 		return true, 1
 	end
 
-	-- Run one step of Python execution
 	local running = self.runtime:step()
 
-	-- Check for errors
 	local state = self.runtime:getState()
 	if state.error then
 		self.error = state.error
@@ -104,7 +91,6 @@ function Interpreter:step()
 		return false, 0
 	end
 
-	-- Update output
 	if #state.output > 0 then
 		self.output = table.concat(state.output, "\n")
 	end
@@ -118,7 +104,6 @@ function Interpreter:step()
 	end
 end
 
--- Run for multiple ticks (API compatible)
 function Interpreter:run(maxTicks, maxFreeSteps)
 	maxTicks = maxTicks or 1
 
@@ -133,21 +118,16 @@ function Interpreter:run(maxTicks, maxFreeSteps)
 	return self.status
 end
 
--- Step once (execute single bytecode instruction - for debugger)
--- This steps through ONE instruction at a time, making the debugger
--- show exactly which bytecode is executing. More educational!
 function Interpreter:stepOnce()
 	if self.status == "ERROR" or self.status == "DONE" then
 		return false
 	end
 
-	-- Run one bytecode instruction
 	local running = false
 	if self.runtime then
 		running = self.runtime:stepOnce()
 	end
 
-	-- Check for errors
 	if self.runtime then
 		local state = self.runtime:getState()
 		if state.error then
@@ -156,14 +136,13 @@ function Interpreter:stepOnce()
 			return false
 		end
 
-		-- Update output
 		if #state.output > 0 then
 			self.output = table.concat(state.output, "\n")
 		end
 	end
 
 	if running then
-		self.status = "RUNNING"  -- Still running
+		self.status = "RUNNING"
 		return true
 	else
 		self.status = "DONE"
@@ -171,7 +150,6 @@ function Interpreter:stepOnce()
 	end
 end
 
--- Reset interpreter
 function Interpreter:reset()
 	self.runtime:stop()
 	self.status = "READY"
@@ -179,14 +157,11 @@ function Interpreter:reset()
 	self.output = ""
 	self.paused = false
 
-	-- Reload the program if we have one
 	if self.lastProgram and #self.lastProgram > 0 then
 		self:load(self.lastProgram)
 	end
 end
 
--- Get current token index (for UI highlighting)
--- Derives from bytecode[ip].line - single source of truth
 function Interpreter:getCurrentTokenIndex()
 	if self.runtime then
 		local state = self.runtime:getState()
@@ -197,7 +172,6 @@ function Interpreter:getCurrentTokenIndex()
 	return 0
 end
 
--- Get state for client (API compatible)
 function Interpreter:getState()
 	local state = self:getDynamicState()
 	local static = self:getStaticState()
@@ -209,24 +183,18 @@ function Interpreter:getState()
 	return state
 end
 
--- Dynamic state (changes frequently)
 function Interpreter:getDynamicState()
-	-- Trim output if too long
 	local output = self.output
 	if #output > 80 then
 		output = "..." .. output:sub(-77)
 	end
 
-	-- Get Python variables from runtime (including nil values)
-	-- Use special marker "__NIL__" for nil since Lua tables can't store nil
 	local NIL_MARKER = "__NIL__"
 	local variables = {}
 	if self.runtime then
-		-- First get all tracked variable names (includes nil values)
 		if self.runtime.globalNames then
 			for name in pairs(self.runtime.globalNames) do
 				local value = self.runtime.globals[name]
-				-- Skip internal function definitions
 				if value == nil then
 					variables[name] = NIL_MARKER
 				elseif type(value) ~= "table" or not value._isFunction then
@@ -234,10 +202,9 @@ function Interpreter:getDynamicState()
 				end
 			end
 		end
-		-- Also include any untracked non-nil values
 		if self.runtime.globals then
 			for name, value in pairs(self.runtime.globals) do
-				if variables[name] == nil then  -- Not already added
+				if variables[name] == nil then
 					if type(value) ~= "table" or not value._isFunction then
 						variables[name] = value
 					end
@@ -246,7 +213,6 @@ function Interpreter:getDynamicState()
 		end
 	end
 
-	-- Get VM state - client derives currentLine from bytecode[ip].line
 	local vmState = nil
 	local bytecode = {}
 	if self.runtime then
@@ -266,10 +232,11 @@ function Interpreter:getDynamicState()
 		maxAmmo = self.maxAmmo,
 		dynamicRange = self.dynamicRange,
 		variables = variables,
+		cpuHz = self.cpuHz,
+		maxBytecode = self.maxBytecode,
 	}
 end
 
--- Static state (changes rarely)
 function Interpreter:getStaticState()
 	return {
 		source = self.source,

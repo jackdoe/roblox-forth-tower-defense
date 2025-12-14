@@ -1,11 +1,9 @@
--- Compiler.luau
--- Compiles Python AST to bytecode for the VM
--- Produces a flat array of instructions with source line mappings
-
 local Parser = require(script.Parent.Parser)
 local Lexer = require(script.Parent.Lexer)
+local Classes = require(script.Parent.Classes)
 local NT = Parser.NodeType
 local TT = Lexer.TokenType
+local T = Classes.T
 
 local Compiler = {}
 
@@ -94,14 +92,80 @@ local BINARY_OP_MAP = {
 	[TT.OR] = Op.BINARY_OR,
 }
 
--- Create compiler state
-local function createCompiler()
+local function createCompiler(selfType, envTypes)
+	local varTypes = {}
+	for name, typ in pairs(Classes.Builtins) do
+		varTypes[name] = typ
+	end
+	varTypes["self"] = selfType or T.ANY
+	if envTypes then
+		for name, typ in pairs(envTypes) do
+			varTypes[name] = typ
+		end
+	end
 	return {
-		code = {},           -- Bytecode instructions
-		loopStack = {},      -- For break/continue
-		errors = {},         -- Compilation errors
+		code = {},
+		loopStack = {},
+		errors = {},
 		currentLine = 1,
+		varTypes = varTypes,
+		scopeStack = {},
+		selfType = selfType,
 	}
+end
+
+local function pushScope(c)
+	table.insert(c.scopeStack, {})
+end
+
+local function popScope(c)
+	local scope = table.remove(c.scopeStack)
+	if scope then
+		for name in pairs(scope) do
+			c.varTypes[name] = nil
+		end
+	end
+end
+
+local function defineVar(c, name, typ)
+	c.varTypes[name] = typ or T.ANY
+	if #c.scopeStack > 0 then
+		c.scopeStack[#c.scopeStack][name] = true
+	end
+end
+
+local function getVarType(c, name)
+	if c.varTypes[name] then
+		return c.varTypes[name]
+	end
+	local patternType = Classes.getBuiltinType(name)
+	if patternType then
+		return patternType
+	end
+	return nil
+end
+
+local function resolveType(typ)
+	if type(typ) == "string" then
+		return typ
+	elseif type(typ) == "table" then
+		if typ.type == T.FUNCTION or typ.type == "Function" then
+			return T.FUNCTION
+		elseif typ[1] == "optional" then
+			return typ[2] or T.ANY
+		elseif typ[1] == T.LIST then
+			return T.LIST
+		end
+		return typ[1] or T.ANY
+	end
+	return T.ANY
+end
+
+local function getReturnType(typ)
+	if type(typ) == "table" and typ.returns then
+		return typ.returns
+	end
+	return T.ANY
 end
 
 -- Emit an instruction
@@ -124,105 +188,168 @@ local function patchJump(c, instrIndex, target)
 	c.code[instrIndex].arg = target
 end
 
--- Forward declarations
 local compileExpr
 local compileStmt
 
--- Compile an expression (leaves result on stack)
+local function getSuggestion(typeName, badName)
+	local members = Classes.getAllMembers(typeName)
+	for _, m in ipairs(members) do
+		if m.name:lower() == badName:lower() then
+			return m.name
+		end
+		if m.name:sub(1, #badName):lower() == badName:lower() then
+			return m.name
+		end
+	end
+	return nil
+end
+
 compileExpr = function(c, node)
-	if not node then return end
+	if not node then return T.ANY end
 
 	c.currentLine = node.line or c.currentLine
 
 	if node.type == NT.NUMBER then
 		emit(c, Op.LOAD_CONST, {type = "number", value = node.value}, node.line)
+		return T.NUMBER
 
 	elseif node.type == NT.STRING then
 		emit(c, Op.LOAD_CONST, {type = "string", value = node.value}, node.line)
+		return T.STRING
 
 	elseif node.type == NT.BOOLEAN then
 		emit(c, Op.LOAD_CONST, {type = "boolean", value = node.value}, node.line)
+		return T.BOOL
 
 	elseif node.type == NT.NONE then
 		emit(c, Op.LOAD_CONST, {type = "nil", value = nil}, node.line)
+		return T.NIL
 
 	elseif node.type == NT.IDENTIFIER then
+		local varType = getVarType(c, node.name)
+		if not varType then
+			table.insert(c.errors, "NameError: '" .. node.name .. "' is not defined at line " .. node.line)
+			emit(c, Op.LOAD_VAR, node.name, node.line)
+			return T.ANY
+		end
 		emit(c, Op.LOAD_VAR, node.name, node.line)
+		return resolveType(varType)
 
 	elseif node.type == NT.BINARY_OP then
-		-- Short-circuit evaluation for and/or
 		if node.operator == TT.AND then
 			compileExpr(c, node.left)
 			emit(c, Op.DUP, nil, node.line)
 			local jumpIfFalse = emit(c, Op.POP_JUMP_IF_FALSE, 0, node.line)
 			emit(c, Op.POP, nil, node.line)
-			compileExpr(c, node.right)
+			local rightType = compileExpr(c, node.right)
 			patchJump(c, jumpIfFalse, currentPos(c) + 1)
+			return rightType
 
 		elseif node.operator == TT.OR then
 			compileExpr(c, node.left)
 			emit(c, Op.DUP, nil, node.line)
 			local jumpIfTrue = emit(c, Op.POP_JUMP_IF_TRUE, 0, node.line)
 			emit(c, Op.POP, nil, node.line)
-			compileExpr(c, node.right)
+			local rightType = compileExpr(c, node.right)
 			patchJump(c, jumpIfTrue, currentPos(c) + 1)
+			return rightType
 
 		else
-			-- Normal binary operation
 			compileExpr(c, node.left)
 			compileExpr(c, node.right)
 			local op = BINARY_OP_MAP[node.operator]
 			if not op then
 				table.insert(c.errors, "Unknown binary operator at line " .. node.line)
-				return
+				return T.ANY
 			end
 			emit(c, op, nil, node.line)
+			if op == Op.COMPARE_EQ or op == Op.COMPARE_NE or op == Op.COMPARE_LT or
+			   op == Op.COMPARE_GT or op == Op.COMPARE_LE or op == Op.COMPARE_GE then
+				return T.BOOL
+			end
+			return T.NUMBER
 		end
 
 	elseif node.type == NT.UNARY_OP then
 		compileExpr(c, node.operand)
 		if node.operator == TT.NOT then
 			emit(c, Op.UNARY_NOT, nil, node.line)
+			return T.BOOL
 		elseif node.operator == TT.MINUS then
 			emit(c, Op.UNARY_NEG, nil, node.line)
+			return T.NUMBER
 		else
 			table.insert(c.errors, "Unknown unary operator at line " .. node.line)
+			return T.ANY
 		end
 
 	elseif node.type == NT.CALL then
-		-- Compile callee
-		compileExpr(c, node.callee)
+		local calleeType = compileExpr(c, node.callee)
 
-		-- Compile arguments
 		for _, arg in ipairs(node.args) do
 			compileExpr(c, arg)
 		end
 
 		emit(c, Op.CALL, #node.args, node.line)
 
+		if type(calleeType) == "table" and calleeType.returns then
+			return resolveType(calleeType.returns)
+		end
+		return T.ANY
+
 	elseif node.type == NT.INDEX then
-		compileExpr(c, node.object)
+		local objType = compileExpr(c, node.object)
 		compileExpr(c, node.index)
 		emit(c, Op.GET_INDEX, nil, node.line)
+		if type(objType) == "table" and objType[1] == T.LIST then
+			return objType[2] or T.ANY
+		end
+		return T.ANY
 
 	elseif node.type == NT.ATTRIBUTE then
-		compileExpr(c, node.object)
-		emit(c, Op.LOAD_ATTR, node.attribute, node.line)
+		local objType = compileExpr(c, node.object)
+		local attrName = node.attribute
+		local baseType = resolveType(objType)
+
+		local methodInfo = Classes.getMethodInfo(baseType, attrName)
+		local propType = Classes.getPropertyType(baseType, attrName)
+
+		if not methodInfo and not propType and baseType and baseType ~= T.ANY then
+			local suggestion = getSuggestion(baseType, attrName)
+			local errMsg = "AttributeError: '" .. tostring(baseType) .. "' has no attribute '" .. tostring(attrName) .. "' at line " .. node.line
+			if suggestion then
+				errMsg = errMsg .. " (did you mean '" .. suggestion .. "'?)"
+			end
+			table.insert(c.errors, errMsg)
+		end
+
+		emit(c, Op.LOAD_ATTR, attrName, node.line)
+
+		if methodInfo then
+			return methodInfo
+		elseif propType then
+			return propType
+		end
+		return T.ANY
 
 	elseif node.type == NT.LIST then
+		local elemType = T.ANY
 		for _, elem in ipairs(node.elements) do
-			compileExpr(c, elem)
+			elemType = compileExpr(c, elem)
 		end
 		emit(c, Op.BUILD_LIST, #node.elements, node.line)
+		return { T.LIST, elemType }
 
 	elseif node.type == NT.TUPLE then
 		for _, elem in ipairs(node.elements) do
 			compileExpr(c, elem)
 		end
 		emit(c, Op.BUILD_LIST, #node.elements, node.line)
+		return { T.LIST, T.ANY }
 
 	else
 		table.insert(c.errors, "Unknown expression type: " .. tostring(node.type) .. " at line " .. (node.line or "?"))
+		return T.ANY
 	end
 end
 
@@ -234,22 +361,18 @@ compileStmt = function(c, node)
 
 	if node.type == NT.EXPR_STMT then
 		compileExpr(c, node.expression)
-		emit(c, Op.POP, nil, node.line)  -- Discard expression result
+		emit(c, Op.POP, nil, node.line)
 
 	elseif node.type == NT.ASSIGN_STMT then
-		compileExpr(c, node.value)
+		local valueType = compileExpr(c, node.value)
 
 		if node.target.type == NT.IDENTIFIER then
+			defineVar(c, node.target.name, valueType)
 			emit(c, Op.STORE_VAR, node.target.name, node.line)
 
 		elseif node.target.type == NT.INDEX then
-			-- Stack: value
-			-- Need: list, index, value
-			compileExpr(c, node.target.object)  -- Stack: value, list
-			compileExpr(c, node.target.index)   -- Stack: value, list, index
-
-			-- Rearrange stack for SET_INDEX (expects: list, index, value)
-			-- We'll handle this in the VM by having SET_INDEX expect the right order
+			compileExpr(c, node.target.object)
+			compileExpr(c, node.target.index)
 			emit(c, Op.SET_INDEX, nil, node.line)
 
 		elseif node.target.type == NT.ATTRIBUTE then
@@ -258,27 +381,25 @@ compileStmt = function(c, node)
 		end
 
 	elseif node.type == NT.TUPLE_UNPACK_STMT then
-		-- Compile the value (should be a sequence)
 		compileExpr(c, node.value)
-
-		-- Unpack into variables (reverse order for stack)
 		emit(c, Op.UNPACK_SEQUENCE, #node.targets, node.line)
 
-		-- Store each target (they're on stack in reverse order)
 		for i = #node.targets, 1, -1 do
 			local target = node.targets[i]
 			if target.type == NT.IDENTIFIER then
+				defineVar(c, target.name, T.ANY)
 				emit(c, Op.STORE_VAR, target.name, node.line)
 			end
 		end
 
 	elseif node.type == NT.AUG_ASSIGN_STMT then
-		-- x += y becomes x = x + y
 		if node.target.type == NT.IDENTIFIER then
+			if not getVarType(c, node.target.name) then
+				table.insert(c.errors, "NameError: '" .. node.target.name .. "' is not defined at line " .. node.line)
+			end
 			emit(c, Op.LOAD_VAR, node.target.name, node.line)
 			compileExpr(c, node.value)
 
-			-- Determine operation
 			local op
 			if node.operator == TT.PLUS_ASSIGN then op = Op.BINARY_ADD
 			elseif node.operator == TT.MINUS_ASSIGN then op = Op.BINARY_SUB
@@ -375,65 +496,61 @@ compileStmt = function(c, node)
 		end
 
 	elseif node.type == NT.FOR_STMT then
-		-- Compile iterable
-		compileExpr(c, node.iterable)
-
-		-- Convert to iterator (sets up iteration state)
+		local iterType = compileExpr(c, node.iterable)
 		emit(c, Op.GET_ITER, nil, node.line)
 
-		-- Loop start
 		local loopStart = currentPos(c) + 1
 
-		-- Push loop context
 		table.insert(c.loopStack, {
 			startPos = loopStart,
 			breakJumps = {},
 		})
 
-		-- Get next item or jump to end
 		local forIterJump = emit(c, Op.FOR_ITER, 0, node.line)
 
-		-- Store in loop variable
+		local elemType = T.ANY
+		if type(iterType) == "table" and iterType[1] == T.LIST then
+			elemType = iterType[2] or T.ANY
+		end
+		defineVar(c, node.variable, elemType)
 		emit(c, Op.STORE_VAR, node.variable, node.line)
 
-		-- Compile body
 		for _, stmt in ipairs(node.body) do
 			compileStmt(c, stmt)
 		end
 
-		-- Yield for time-slicing
 		emit(c, Op.YIELD, nil, node.line)
-
-		-- Jump back to FOR_ITER
 		emit(c, Op.JUMP, loopStart, node.line)
 
-		-- Patch FOR_ITER to jump here when exhausted
 		patchJump(c, forIterJump, currentPos(c) + 1)
-
-		-- Pop iterator from stack
 		emit(c, Op.POP, nil, node.line)
 
-		-- Patch all break jumps
 		local loopCtx = table.remove(c.loopStack)
 		for _, jumpIdx in ipairs(loopCtx.breakJumps) do
 			patchJump(c, jumpIdx, currentPos(c) + 1)
 		end
 
 	elseif node.type == NT.FUNCTION_DEF then
-		-- Compile function body into separate code object
-		local funcCompiler = createCompiler()
+		defineVar(c, node.name, T.FUNCTION)
+
+		local funcCompiler = createCompiler(c.selfType)
 		funcCompiler.currentLine = node.line
 
-		-- Compile function body
+		for _, param in ipairs(node.params) do
+			defineVar(funcCompiler, param, T.ANY)
+		end
+
 		for _, stmt in ipairs(node.body) do
 			compileStmt(funcCompiler, stmt)
 		end
 
-		-- Ensure function returns
 		emit(funcCompiler, Op.LOAD_CONST, {type = "nil", value = nil}, node.line)
 		emit(funcCompiler, Op.RETURN, nil, node.line)
 
-		-- Create function object
+		for _, err in ipairs(funcCompiler.errors) do
+			table.insert(c.errors, err)
+		end
+
 		local funcObj = {
 			name = node.name,
 			params = node.params,
@@ -441,7 +558,6 @@ compileStmt = function(c, node)
 			line = node.line,
 		}
 
-		-- Emit instruction to create function and store it
 		emit(c, Op.MAKE_FUNCTION, funcObj, node.line)
 		emit(c, Op.STORE_VAR, node.name, node.line)
 
@@ -477,50 +593,67 @@ compileStmt = function(c, node)
 	end
 end
 
--- Main compile function
-function Compiler.compile(source)
-	-- Parse source
+local function cleanError(err)
+	if type(err) ~= "string" then return tostring(err) end
+	return err:gsub("ReplicatedStorage%.PythonTD%.[^:]+:", ""):gsub("^%s+", "")
+end
+
+function Compiler.compile(source, maxBytecode, selfType, envTypes)
 	local success, ast = pcall(function()
 		return Parser.parse(source)
 	end)
 
 	if not success then
-		return nil, {ast}  -- ast is the error message
+		local err = cleanError(ast)
+		print("[Compile Error] " .. err)
+		return { error = err }
 	end
 
-	-- Create compiler
-	local c = createCompiler()
+	local ok, c = pcall(function()
+		return createCompiler(selfType, envTypes)
+	end)
 
-	-- WORKAROUND: Emit NOP as first instruction
-	-- This fixes a Roblox-specific issue where programs starting with certain
-	-- instructions (like LOAD_CONST for "while True:") fail to execute properly.
-	-- The issue does not reproduce in standard Lua 5.4 unit tests, suggesting
-	-- it's related to Roblox's Luau runtime or the Interpreter/Runtime wrapper.
-	-- The NOP provides a safe "landing" instruction that always executes correctly.
-	emit(c, Op.NOP, nil, 1)
+	if not ok then
+		local err = cleanError(c)
+		print("[Compiler Init Error] " .. err)
+		return { error = err }
+	end
 
-	-- Compile program
-	if ast.type == NT.PROGRAM then
-		for _, stmt in ipairs(ast.statements) do
-			compileStmt(c, stmt)
+	local compileOk, compileErr = pcall(function()
+		emit(c, Op.NOP, nil, 1)
+
+		if ast.type == NT.PROGRAM then
+			for _, stmt in ipairs(ast.statements) do
+				compileStmt(c, stmt)
+			end
+		else
+			table.insert(c.errors, "Expected PROGRAM node")
 		end
-	else
-		table.insert(c.errors, "Expected PROGRAM node")
+
+		emit(c, Op.HALT, nil, c.currentLine)
+	end)
+
+	if not compileOk then
+		local err = cleanError(compileErr)
+		print("[Compile Error] " .. err)
+		return { error = err }
 	end
 
-	-- Add HALT at end
-	emit(c, Op.HALT, nil, c.currentLine)
-
-	-- Check for errors
 	if #c.errors > 0 then
-		return nil, c.errors
+		local err = table.concat(c.errors, "\n")
+		print("[Compile Error] " .. err)
+		return { error = err }
 	end
 
-	-- Return compiled code with instruction count
+	local instructionCount = #c.code
+	if maxBytecode and instructionCount > maxBytecode then
+		return { error = "Program too large: " .. instructionCount .. "/" .. maxBytecode .. " bytes" }
+	end
+
 	return {
 		code = c.code,
 		source = source,
-		instructionCount = #c.code,  -- For program size limits
+		instructionCount = instructionCount,
 	}
 end
 

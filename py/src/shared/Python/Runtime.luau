@@ -36,29 +36,23 @@ function Runtime:setEnvironment(env)
 	self.vm:setEnvironment(self.env)
 end
 
--- Compile Python source code to bytecode
-function Runtime:compile(source)
+function Runtime:compile(source, maxBytecode, selfType, envTypes)
 	self.source = source
 	self.error = nil
 	self.output = {}
 	self.globals = {}
 	self.globalNames = {}
 
-	-- Compile source to bytecode
-	local compiled, errors = Compiler.compile(source)
+	local result = Compiler.compile(source, maxBytecode, selfType, envTypes)
 
-	if not compiled then
-		local errMsg = "Compile error"
-		if errors and #errors > 0 then
-			errMsg = table.concat(errors, "\n")
-		end
-		self.error = errMsg
+	if result.error then
+		self.error = result.error
 		return false, self.error
 	end
 
-	self.compiled = compiled
-	self.instructionCount = compiled.instructionCount or #(compiled.code or {})
-	return true, nil, self.instructionCount
+	self.compiled = result
+	self.instructionCount = result.instructionCount
+	return true
 end
 
 -- Start execution

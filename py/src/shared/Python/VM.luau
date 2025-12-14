@@ -1,12 +1,13 @@
--- VM.luau
--- Stack-based virtual machine for executing Python bytecode
--- Designed for educational visualization and debugging
-
 local Compiler = require(script.Parent.Compiler)
 local Op = Compiler.Op
 
 local VM = {}
 VM.__index = VM
+
+local function cleanError(err)
+	if type(err) ~= "string" then return tostring(err) end
+	return err:gsub("ReplicatedStorage%.PythonTD%.[^:]+:%d+:%s*", ""):gsub("^%s+", "")
+end
 
 -- Create a new VM instance
 function VM.new()
@@ -127,48 +128,42 @@ function VM:peek()
 	return self.stack[#self.stack]
 end
 
--- Get a variable value (checks locals, globals, then environment)
+local NOT_FOUND = {}
+
 function VM:getVar(name)
-	-- Check call stack locals first
 	if #self.callStack > 0 then
 		local frame = self.callStack[#self.callStack]
-		if frame.locals[name] ~= nil then
+		if frame.localNames and frame.localNames[name] then
 			return frame.locals[name]
 		end
 	end
 
-	-- Then global vars
-	if self.vars[name] ~= nil then
+	if self.varNames[name] then
 		return self.vars[name]
 	end
 
-	-- Then environment
 	if self.env[name] ~= nil then
 		return self.env[name]
 	end
 
-	-- Built-in constants
 	if name == "True" then return true end
 	if name == "False" then return false end
 	if name == "None" then return nil end
 
-	return nil
+	return NOT_FOUND
 end
 
--- Set a variable
 function VM:setVar(name, value)
-	-- If in function, check if it's a local
 	if #self.callStack > 0 then
 		local frame = self.callStack[#self.callStack]
-		-- For now, all assignments in functions go to locals
-		-- (Python would need 'global' keyword for global assignment)
-		if frame.locals[name] ~= nil or not self.vars[name] then
+		if (frame.localNames and frame.localNames[name]) or not self.varNames[name] then
 			frame.locals[name] = value
+			frame.localNames = frame.localNames or {}
+			frame.localNames[name] = true
 			return
 		end
 	end
 
-	-- Global assignment
 	self.vars[name] = value
 	self.varNames[name] = true
 end
@@ -215,7 +210,8 @@ function VM:step()
 	end)
 
 	if not success then
-		self.error = "Line " .. instrLine .. ": " .. tostring(err)
+		self.error = "Line " .. instrLine .. ": " .. cleanError(err)
+		print("RUNTIME:", self.error)
 		self.running = false
 		return false
 	end
@@ -242,13 +238,10 @@ function VM:executeInstruction(op, arg)
 
 	elseif op == Op.LOAD_VAR then
 		local value = self:getVar(arg)
-		-- Track the variable name for better error messages
-		if value == nil then
-			-- Push a special marker so we can give better error on CALL
-			self:push({ _undefined = true, _name = arg })
-		else
-			self:push(value)
+		if value == NOT_FOUND then
+			error("NameError: '" .. arg .. "' is not defined")
 		end
+		self:push(value)
 		self.ip = self.ip + 1
 
 	elseif op == Op.STORE_VAR then
@@ -258,20 +251,10 @@ function VM:executeInstruction(op, arg)
 
 	elseif op == Op.LOAD_ATTR then
 		local obj = self:pop()
-		-- Check for undefined object
-		if type(obj) == "table" and obj._undefined then
-			error("NameError: '" .. obj._name .. "' is not defined")
-		end
-		if type(obj) == "table" then
-			local value = obj[arg]
-			if value == nil then
-				-- Track the attribute access for better error
-				self:push({ _undefined = true, _name = arg, _onObject = true })
-			else
-				self:push(value)
-			end
-		elseif obj == nil then
+		if obj == nil then
 			error("AttributeError: cannot access '." .. arg .. "' on None")
+		elseif type(obj) == "table" then
+			self:push(obj[arg])
 		else
 			error("AttributeError: '" .. type(obj) .. "' has no attribute '" .. arg .. "'")
 		end
@@ -438,45 +421,26 @@ function VM:executeInstruction(op, arg)
 			self.ip = self.ip + 1
 		end
 
-	-- Function calls
 	elseif op == Op.CALL then
 		local nargs = arg
 		local args = {}
 
-		-- Pop arguments (in reverse order)
 		for i = nargs, 1, -1 do
-			local argVal = self:pop()
-			-- Check for undefined argument
-			if type(argVal) == "table" and argVal._undefined then
-				error("NameError: '" .. argVal._name .. "' is not defined")
-			end
-			args[i] = argVal
+			args[i] = self:pop()
 		end
 
-		-- Pop callable
 		local callee = self:pop()
-
-		-- Check for undefined function call
-		if type(callee) == "table" and callee._undefined then
-			if callee._onObject then
-				error("AttributeError: method '" .. callee._name .. "' is not defined")
-			else
-				error("NameError: '" .. callee._name .. "' is not defined")
-			end
-		end
 
 		if callee == nil then
 			error("TypeError: cannot call None")
 		end
 
-		-- Handle built-in functions with error protection
 		local success, result = pcall(function()
 			return self:callFunction(callee, args)
 		end)
 
 		if not success then
-			-- result is the error message
-			error("RuntimeError: " .. tostring(result))
+			error("RuntimeError: " .. cleanError(result))
 		end
 
 		self:push(result)
@@ -601,21 +565,19 @@ function VM:executeInstruction(op, arg)
 	end
 end
 
--- Call a user-defined Python function
 function VM:callUserFunction(callee, args)
-	-- Save current state
 	local frame = {
 		returnAddr = self.ip + 1,
 		savedStack = self.stack,
 		locals = {},
+		localNames = {},
 	}
 
-	-- Bind parameters
 	for i, param in ipairs(callee.params) do
 		frame.locals[param] = args[i]
+		frame.localNames[param] = true
 	end
 
-	-- Push frame
 	table.insert(self.callStack, frame)
 
 	-- Set up new execution context
