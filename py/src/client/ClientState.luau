@@ -22,7 +22,8 @@ ClientState.currentInterpreterTarget = {
 	spotId = nil,
 }
 
-ClientState.savedPlayerProgram = nil
+ClientState.drafts = {}
+
 ClientState.golemProgramLoaded = false
 ClientState.playerProgramLoaded = false
 
@@ -37,5 +38,35 @@ ClientState.isBotPlacementValid = false
 
 ClientState.bytecodeVisible = false
 ClientState.bytecodeUserOverride = false
+
+function ClientState.getDraftKey(entityType, entityId)
+	if entityType == "player" then
+		return "player_" .. (entityId or 0)
+	elseif entityType == "bot" then
+		return "bot_" .. entityId
+	elseif entityType == "golem" then
+		return "golem_" .. entityId
+	end
+	return nil
+end
+
+function ClientState.saveDraft(entityType, entityId, source)
+	local key = ClientState.getDraftKey(entityType, entityId)
+	if key then
+		ClientState.drafts[key] = source
+	end
+end
+
+function ClientState.getDraft(entityType, entityId)
+	local key = ClientState.getDraftKey(entityType, entityId)
+	return key and ClientState.drafts[key]
+end
+
+function ClientState.clearDraft(entityType, entityId)
+	local key = ClientState.getDraftKey(entityType, entityId)
+	if key then
+		ClientState.drafts[key] = nil
+	end
+end
 
 return ClientState

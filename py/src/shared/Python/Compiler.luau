@@ -536,6 +536,8 @@ compileStmt = function(c, node)
 		local funcCompiler = createCompiler(c.selfType)
 		funcCompiler.currentLine = node.line
 
+		defineVar(funcCompiler, node.name, T.FUNCTION)
+
 		for _, param in ipairs(node.params) do
 			defineVar(funcCompiler, param, T.ANY)
 		end

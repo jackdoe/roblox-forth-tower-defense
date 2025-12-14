@@ -7,10 +7,10 @@ local BotStats = {}
 BotStats.GROUND_Y = Config.PLATFORM_Y
 
 BotStats.DEFAULT_PROGRAM = [[
-# Scrap collector bot
 while True:
-    self.collect_nearest()
-    self.supply(CORE)
+    if self.collect():
+        self.teleport([0, 0])
+        self.deposit()
 ]]
 
 BotStats.BASE = {

@@ -387,14 +387,12 @@ function GolemRegistry.changeAmmoType(player, golemId, ammoType)
 	local ammoName = GolemStats.AMMO_NAMES[ammoType] or "BULLET"
 
 	local newProgram = string.format([[
-# Turret - %s mode
 while True:
-    if self.ammo() < 50:
-        self.reload(100)
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), %s)
-]], ammoName, ammoName)
+        self.set_target(nearest(enemies))
+        self.fire(%s)
+]], ammoName)
 
 	local interp = golem.interpreter
 	if interp then
@@ -422,6 +420,7 @@ function GolemRegistry.create(x, z)
 	local interp = Interpreter.new(nil, true, deps)
 	interp.character = character
 	interp.isGolem = true
+	interp.selfType = "Turret"
 
 	interp.cpuHz = GolemStats.UpgradeTiers[1].cpuHz
 	interp.maxBytecode = GolemStats.RAMTiers[1].maxBytecode

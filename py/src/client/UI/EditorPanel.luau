@@ -195,6 +195,22 @@ function EditorPanel.create(parent, callbacks)
 	buyRamBtnCorner.CornerRadius = UDim.new(0, 4)
 	buyRamBtnCorner.Parent = buyRamBtn
 
+	local resetBtn = Instance.new("TextButton")
+	resetBtn.Name = "ResetBtn"
+	resetBtn.Size = UDim2.new(0, 50, 0, 22)
+	resetBtn.Position = UDim2.new(0, 112, 0, 4)
+	resetBtn.BackgroundColor3 = COLORS.warning or Color3.fromRGB(200, 150, 50)
+	resetBtn.Text = "RESET"
+	resetBtn.TextColor3 = COLORS.text
+	resetBtn.Font = Enum.Font.GothamBold
+	resetBtn.TextSize = 9
+	resetBtn.Visible = true
+	resetBtn.Parent = actionBar
+
+	local resetBtnCorner = Instance.new("UICorner")
+	resetBtnCorner.CornerRadius = UDim.new(0, 4)
+	resetBtnCorner.Parent = resetBtn
+
 	local sellBtn = Instance.new("TextButton")
 	sellBtn.Name = "SellBtn"
 	sellBtn.Size = UDim2.new(0, 50, 0, 22)
@@ -214,6 +230,7 @@ function EditorPanel.create(parent, callbacks)
 	panel.onBuyCpu = nil
 	panel.onBuyRam = nil
 	panel.onSell = nil
+	panel.onReset = nil
 
 	buyCpuBtn.MouseButton1Click:Connect(function()
 		if panel.onBuyCpu then
@@ -230,6 +247,12 @@ function EditorPanel.create(parent, callbacks)
 	sellBtn.MouseButton1Click:Connect(function()
 		if panel.onSell then
 			panel.onSell()
+		end
+	end)
+
+	resetBtn.MouseButton1Click:Connect(function()
+		if panel.onReset then
+			panel.onReset()
 		end
 	end)
 
@@ -509,6 +532,7 @@ function EditorPanel.create(parent, callbacks)
 
 	local BOT_METHODS = generateMethodsFromClass("Bot")
 	local TURRET_METHODS = generateMethodsFromClass("Turret")
+	local PLAYER_METHODS = generateMethodsFromClass("Player")
 	local ENEMY_METHODS = generateMethodsFromClass("Enemy")
 
 	local KEYWORDS = {
@@ -546,6 +570,7 @@ function EditorPanel.create(parent, callbacks)
 		{word = "LASER", snippet = "LASER", help = "AmmoType = 3"},
 		{word = "ICE", snippet = "ICE", help = "AmmoType = 4"},
 		{word = "FREEZE", snippet = "FREEZE", help = "AmmoType = 5"},
+		{word = "GRENADE", snippet = "GRENADE", help = "AmmoType = 5"},
 		{word = "CORE", snippet = "CORE", help = "Core"},
 	}
 
@@ -605,6 +630,7 @@ function EditorPanel.create(parent, callbacks)
 	local constantTrie = buildTrie(CONSTANTS)
 	local botMethodTrie = buildTrie(BOT_METHODS)
 	local turretMethodTrie = buildTrie(TURRET_METHODS)
+	local playerMethodTrie = buildTrie(PLAYER_METHODS)
 	local enemyMethodTrie = buildTrie(ENEMY_METHODS)
 
 	local function getCurrentContext(text)
@@ -627,7 +653,9 @@ function EditorPanel.create(parent, callbacks)
 
 	local function getMethodsForObject(obj)
 		if obj == "self" then
-			return currentMode == "golem" and turretMethodTrie or botMethodTrie
+			if currentMode == "golem" then return turretMethodTrie end
+			if currentMode == "player" then return playerMethodTrie end
+			return botMethodTrie
 		elseif obj:match("^B%d$") then
 			return botMethodTrie
 		elseif obj:match("^T%d+$") then
@@ -791,17 +819,19 @@ function EditorPanel.create(parent, callbacks)
 		actionBar.BackgroundColor3 = theme.headerBg
 
 		if currentMode == "player" then
-			currentSelfType = "Bot"
-			modeIndicator.Text = currentWeaponName
+			currentSelfType = "Player"
+			modeIndicator.Text = "PLAYER"
 			modeIndicator.TextColor3 = theme.accent
 			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
-			compileBtn.Visible = false
+			compileBtn.Visible = true
+			resetBtn.Visible = true
+			resetBtn.Position = UDim2.new(0, 112, 0, 4)
 			buyCpuBtn.Visible = false
 			buyRamBtn.Visible = false
 			sellBtn.Visible = false
-			textBox.TextEditable = false
-			textBox.Active = false
+			textBox.TextEditable = true
+			textBox.Active = true
 		elseif currentMode == "golem" then
 			currentSelfType = "Turret"
 			modeIndicator.Text = "TURRET #" .. (spotId or "?")
@@ -809,6 +839,8 @@ function EditorPanel.create(parent, callbacks)
 			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
 			compileBtn.Visible = true
+			resetBtn.Visible = true
+			resetBtn.Position = UDim2.new(0, 244, 0, 4)
 			buyCpuBtn.Visible = true
 			buyRamBtn.Visible = true
 			sellBtn.Visible = true
@@ -821,6 +853,8 @@ function EditorPanel.create(parent, callbacks)
 			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
 			compileBtn.Visible = true
+			resetBtn.Visible = true
+			resetBtn.Position = UDim2.new(0, 112, 0, 4)
 			buyCpuBtn.Visible = false
 			buyRamBtn.Visible = false
 			sellBtn.Visible = true

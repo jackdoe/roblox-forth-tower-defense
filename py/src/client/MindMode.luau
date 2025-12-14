@@ -27,9 +27,22 @@ local function destroyRangeRing()
 	end
 end
 
+local function saveCurrentDraft(editor)
+	local target = ClientState.currentInterpreterTarget
+	if target.type == "player" then
+		ClientState.saveDraft("player", ClientState.currentWeapon, editor:getText())
+	elseif target.type == "bot" then
+		ClientState.saveDraft("bot", target.botId, editor:getText())
+	elseif target.type == "golem" then
+		ClientState.saveDraft("golem", target.golemId, editor:getText())
+	end
+end
+
 function MindMode.enterGolem(golemId, golemStates, editor, program, bytecodePanel, golemRegisterViewerEvent, golemUnregisterViewerEvent, botUnregisterViewerEvent)
 	local golemData = golemStates[golemId]
 	if not golemData then return false end
+
+	saveCurrentDraft(editor)
 
 	if ClientState.currentInterpreterTarget.type == "bot" then
 		botUnregisterViewerEvent:FireServer(ClientState.currentInterpreterTarget.botId)
@@ -37,9 +50,6 @@ function MindMode.enterGolem(golemId, golemStates, editor, program, bytecodePane
 		golemUnregisterViewerEvent:FireServer(ClientState.currentInterpreterTarget.golemId)
 	end
 
-	if ClientState.currentInterpreterTarget.type == "player" then
-		ClientState.savedPlayerProgram = editor:getText()
-	end
 	ClientState.golemProgramLoaded = false
 
 	ClientState.currentInterpreterTarget = {
@@ -71,6 +81,8 @@ end
 function MindMode.exitGolem(editor, program, bytecodePanel, golemUnregisterViewerEvent)
 	if ClientState.currentInterpreterTarget.type ~= "golem" then return end
 
+	saveCurrentDraft(editor)
+
 	local golemId = ClientState.currentInterpreterTarget.golemId
 
 	ClientState.currentInterpreterTarget = {
@@ -95,15 +107,14 @@ function MindMode.enterBot(botId, botStates, editor, program, bytecodePanel, bot
 	local botData = botStates[botId]
 	if not botData then return false end
 
+	saveCurrentDraft(editor)
+
 	if ClientState.currentInterpreterTarget.type == "golem" then
 		MindMode.exitGolem(editor, program, bytecodePanel, golemUnregisterViewerEvent)
 	elseif ClientState.currentInterpreterTarget.type == "bot" and ClientState.currentInterpreterTarget.botId ~= botId then
 		botUnregisterViewerEvent:FireServer(ClientState.currentInterpreterTarget.botId)
 	end
 
-	if ClientState.currentInterpreterTarget.type == "player" then
-		ClientState.savedPlayerProgram = editor:getText()
-	end
 	ClientState.golemProgramLoaded = false
 
 	ClientState.currentInterpreterTarget = {
@@ -125,6 +136,8 @@ end
 function MindMode.exitBot(editor, program, bytecodePanel, botUnregisterViewerEvent)
 	if ClientState.currentInterpreterTarget.type ~= "bot" then return end
 
+	saveCurrentDraft(editor)
+
 	local botId = ClientState.currentInterpreterTarget.botId
 
 	ClientState.currentInterpreterTarget = {
@@ -142,6 +155,20 @@ function MindMode.exitBot(editor, program, bytecodePanel, botUnregisterViewerEve
 
 	WeaponSystem.restoreCurrent(editor)
 	ClientState.golemProgramLoaded = false
+end
+
+function MindMode.getDraftOrSource(entityType, entityId, serverSource)
+	local draft = ClientState.getDraft(entityType, entityId)
+	return draft or serverSource or ""
+end
+
+function MindMode.clearCurrentDraft()
+	local target = ClientState.currentInterpreterTarget
+	if target.type == "bot" then
+		ClientState.clearDraft("bot", target.botId)
+	elseif target.type == "golem" then
+		ClientState.clearDraft("golem", target.golemId)
+	end
 end
 
 function MindMode.updateRangeRing(golemStates)

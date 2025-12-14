@@ -175,6 +175,7 @@ function BotRegistry.create(x, z)
 	if InterpreterModule then
 		bot.interpreter = InterpreterModule.new(nil, true, deps)
 		bot.interpreter.character = character
+		bot.interpreter.selfType = "Bot"
 		bot.interpreter.cpuHz = BotStats.BASE.cpuHz
 		bot.interpreter.maxBytecode = BotStats.BASE.maxBytecode
 
@@ -260,26 +261,7 @@ local function executeTask(bot, dt)
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return "FAILED" end
 
-	if task.type == "COLLECT" then
-		local scrapId = task.args.target
-		local ScrapManager = deps.ScrapManager
-		if not ScrapManager then return "FAILED" end
-
-		local scrap = ScrapManager.get(scrapId)
-		if not scrap or not scrap.part or not scrap.part.Parent then
-			bot.status = "IDLE"
-			return "FAILED"
-		end
-
-		local sPos = scrap.part.Position
-		if moveTowards(bot, hrp, sPos.X, sPos.Z, bot.pickupRange or 8, "COLLECTING") then
-			BotRegistry.collectScrap(bot.id)
-			bot.status = "IDLE"
-			return "DONE"
-		end
-		return "RUNNING"
-
-	elseif task.type == "COLLECT_AT" or task.type == "COLLECT_AREA" then
+	if task.type == "COLLECT_AT" or task.type == "COLLECT_AREA" then
 		local targetX = task.args.x
 		local targetZ = task.args.z
 		if not targetX or not targetZ then return "FAILED" end
@@ -287,6 +269,55 @@ local function executeTask(bot, dt)
 		if moveTowards(bot, hrp, targetX, targetZ, bot.pickupRange or 20, "COLLECTING") then
 			BotRegistry.collectScrap(bot.id)
 			bot.status = "IDLE"
+			return "DONE"
+		end
+		return "RUNNING"
+
+	elseif task.type == "COLLECT" then
+		local ScrapManager = deps.ScrapManager
+		if not ScrapManager then
+			task.result = false
+			return "FAILED"
+		end
+
+		local capacity = bot.maxCapacity or 3
+		if (bot.scrapInventory or 0) >= capacity then
+			bot.status = "IDLE"
+			task.result = true
+			return "DONE"
+		end
+
+		if not task.targetX then
+			local x, z, count = ScrapManager.findBestCluster(hrp.Position.X, hrp.Position.Z, 200, 20)
+			if not x or count == 0 then
+				bot.status = "IDLE"
+				task.result = false
+				return "DONE"
+			end
+			task.targetX = x
+			task.targetZ = z
+			task.collected = 0
+		end
+
+		if moveTowards(bot, hrp, task.targetX, task.targetZ, bot.pickupRange or 8, "COLLECTING") then
+			local collected = BotRegistry.collectScrap(bot.id)
+			task.collected = (task.collected or 0) + collected
+
+			if (bot.scrapInventory or 0) >= capacity then
+				bot.status = "IDLE"
+				task.result = task.collected > 0
+				return "DONE"
+			end
+
+			local nearest = ScrapManager.findNearest(hrp.Position.X, hrp.Position.Z, 50)
+			if nearest and nearest.part then
+				task.targetX = nearest.part.Position.X
+				task.targetZ = nearest.part.Position.Z
+				return "RUNNING"
+			end
+
+			bot.status = "IDLE"
+			task.result = task.collected > 0
 			return "DONE"
 		end
 		return "RUNNING"
@@ -314,6 +345,7 @@ local function executeTask(bot, dt)
 
 		if moveTowards(bot, hrp, targetX, targetZ, 2, "MOVING") then
 			bot.status = "IDLE"
+			task.result = true
 			return "DONE"
 		end
 		return "RUNNING"
@@ -411,6 +443,7 @@ local function executeTask(bot, dt)
 		local cargo = bot.scrapInventory or 0
 		if cargo < 10 then
 			bot.status = "IDLE"
+			task.result = false
 			return "FAILED"
 		end
 
@@ -432,6 +465,7 @@ local function executeTask(bot, dt)
 		bot.status = "STUNNED"
 		task.stunEndTime = tick() + 1.5
 		task.exploded = true
+		task.result = true
 		return "RUNNING"
 	end
 
@@ -444,6 +478,7 @@ local function executeTask(bot, dt)
 	end
 
 	bot.status = "IDLE"
+	task.result = false
 	return "FAILED"
 end
 
@@ -508,14 +543,12 @@ function BotRegistry.update(dt)
 		if bot.currentTask then
 			local taskStatus = executeTask(bot, dt)
 			if taskStatus == "DONE" or taskStatus == "FAILED" then
+				local taskResult = bot.currentTask.result
 				bot.currentTask = nil
 				if #bot.taskQueue == 0 then
 					bot.waitingForTask = false
-					if bot.interpreter and bot.interpreter.runtime then
-						local vm = bot.interpreter.runtime.vm
-						if vm and vm.unblock then
-							vm:unblock()
-						end
+					if bot.interpreter and bot.interpreter.runtime and bot.interpreter.runtime.vm then
+						bot.interpreter.runtime.vm:unblock(taskResult)
 					end
 				end
 			end

@@ -85,7 +85,6 @@ function VM:load(compiled)
 	return true
 end
 
--- Special marker for None/nil on the stack (Lua can't store nil in tables)
 local NIL_MARKER = { _isNil = true }
 
 -- Push value onto stack
@@ -709,9 +708,13 @@ function VM:block()
 	self.blocked = true
 end
 
--- Unblock execution (called by game when async op completes)
-function VM:unblock()
+function VM:unblock(result)
 	self.blocked = false
+	if result == nil then
+		self.asyncResult = NIL_MARKER
+	else
+		self.asyncResult = result
+	end
 end
 
 -- Step one instruction (for debugger)

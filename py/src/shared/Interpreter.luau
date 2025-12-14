@@ -26,6 +26,7 @@ function Interpreter.new(player, isMonster, deps)
 
 	self.cpuHz = 10
 	self.maxBytecode = 128
+	self.selfType = nil
 
 	self.gameEnv = {}
 	self.deps = deps
@@ -51,7 +52,7 @@ function Interpreter:load(source)
 	self.error = nil
 	self.output = ""
 
-	local success, err = self.runtime:compile(source)
+	local success, err = self.runtime:compile(source, self.maxBytecode, self.selfType)
 
 	if not success then
 		self.error = err

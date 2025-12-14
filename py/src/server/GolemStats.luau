@@ -138,36 +138,30 @@ GolemStats.TIER_AMMO_UNLOCKS = {
 }
 
 GolemStats.DEFAULT_PROGRAM = [[
-# Shoot nearest, reload when low
 while True:
-    if self.ammo() < 50:
-        self.reload(100)
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), BULLET)
+        self.set_target(nearest(enemies))
+        self.fire(BULLET)
 ]]
 
 GolemStats.TIER_PROGRAMS = {
 	[1] = GolemStats.DEFAULT_PROGRAM,
 
 	[2] = [[
-# ARACHNID - Rockets unlocked!
 while True:
-    if self.ammo() < 80:
-        self.reload(150)
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), BULLET)
+        self.set_target(nearest(enemies))
+        self.fire(BULLET)
 ]],
 
 	[3] = [[
-# DREADNOUGHT - Full arsenal!
 while True:
-    if self.ammo() < 100:
-        self.reload(200)
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), BULLET)
+        self.set_target(nearest(enemies))
+        self.fire(BULLET)
 ]],
 }
 

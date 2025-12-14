@@ -10,6 +10,7 @@ local T = {
 	ENEMY = "Enemy",
 	TURRET = "Turret",
 	BOT = "Bot",
+	PLAYER = "Player",
 	AMMO_TYPE = "AmmoType",
 	VECTOR = "Vector",
 	FUNCTION = "Function",
@@ -200,12 +201,8 @@ Classes.Bot = {
 
 			local BotRegistry = deps.BotRegistry
 			if BotRegistry and BotRegistry.issueCommand then
-				local success = BotRegistry.issueCommand(bot.id, "MOVE", { x = targetX, z = targetZ }, true)
-				if success and bot.interpreter then
-					local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
-					if vm and vm.block then vm:block() end
-				end
-				return success
+				BotRegistry.issueCommand(bot.id, "MOVE", { x = targetX, z = targetZ }, true)
+				return true
 			end
 			return false
 		end),
@@ -268,12 +265,20 @@ Classes.Bot = {
 			local BotRegistry = deps.BotRegistry
 			if not BotRegistry or not BotRegistry.issueCommand then return false end
 
-			local success = BotRegistry.issueCommand(bot.id, "COLLECT_NEAREST", {}, true)
-			if success and bot.interpreter then
-				local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
-				if vm and vm.block then vm:block() end
-			end
-			return success
+			local capacity = bot.maxCapacity or 3
+			if (bot.scrapInventory or 0) >= capacity then return true end
+
+			local ScrapManager = deps.ScrapManager
+			if not ScrapManager then return false end
+
+			local hrp = bot.character and bot.character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return false end
+
+			local x, z, count = ScrapManager.findBestCluster(hrp.Position.X, hrp.Position.Z, 200, 20)
+			if not x or count == 0 then return false end
+
+			BotRegistry.issueCommand(bot.id, "COLLECT", {}, true)
+			return true
 		end),
 
 		explode = method({}, T.BOOL, function(deps, bot)
@@ -283,12 +288,8 @@ Classes.Bot = {
 			local cargo = bot.scrapInventory or 0
 			if cargo < 10 then return false end
 
-			local success = BotRegistry.issueCommand(bot.id, "EXPLODE", {}, true)
-			if success and bot.interpreter then
-				local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
-				if vm and vm.block then vm:block() end
-			end
-			return success
+			BotRegistry.issueCommand(bot.id, "EXPLODE", {}, true)
+			return true
 		end),
 
 		say = method({ T.STRING }, T.NIL, function(deps, bot, message)
@@ -296,6 +297,215 @@ Classes.Bot = {
 			if BotRegistry and BotRegistry.setChatBubble then
 				BotRegistry.setChatBubble(bot.id, tostring(message))
 			end
+		end),
+
+		deposit = method({}, T.BOOL, function(deps, bot)
+			local BotRegistry = deps.BotRegistry
+			if not BotRegistry or not BotRegistry.depositToCore then return false end
+			if (bot.scrapInventory or 0) <= 0 then return false end
+			if not bot.character then return false end
+
+			local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return false end
+
+			local coreX, coreZ = deps.getCoreOffset()
+			local dist = math.sqrt((hrp.Position.X - coreX)^2 + (hrp.Position.Z - coreZ)^2)
+			if dist > 15 then return false end
+
+			local pieces = BotRegistry.depositToCore(bot.id)
+			return pieces > 0
+		end),
+	},
+}
+
+Classes.Player = {
+	name = "Player",
+	members = {
+		pos = prop(T.VECTOR, function(deps, player)
+			if player.character then
+				local x, z = deps.getCharacterPos(player.character)
+				local coreX, coreZ = deps.getCoreOffset()
+				return { math.floor(x - coreX), math.floor(z - coreZ) }
+			end
+			return { 0, 0 }
+		end),
+
+		cargo = prop(T.NUMBER, function(deps, player)
+			return player.interpreter and player.interpreter.scrapInventory or 0
+		end),
+
+		forward = method({ T.NUMBER }, T.BOOL, function(deps, player, steps)
+			steps = steps or 10
+			if not player.character then return false end
+			local hrp = player.character:FindFirstChild("HumanoidRootPart")
+			local humanoid = player.character:FindFirstChild("Humanoid")
+			if not hrp or not humanoid then return false end
+
+			local lookVector = hrp.CFrame.LookVector
+			local targetPos = hrp.Position + lookVector * steps
+			humanoid:MoveTo(targetPos)
+			return true
+		end),
+
+		backward = method({ T.NUMBER }, T.BOOL, function(deps, player, steps)
+			steps = steps or 10
+			if not player.character then return false end
+			local hrp = player.character:FindFirstChild("HumanoidRootPart")
+			local humanoid = player.character:FindFirstChild("Humanoid")
+			if not hrp or not humanoid then return false end
+
+			local lookVector = hrp.CFrame.LookVector
+			local targetPos = hrp.Position - lookVector * steps
+			humanoid:MoveTo(targetPos)
+			return true
+		end),
+
+		left = method({ T.NUMBER }, T.BOOL, function(deps, player, angle)
+			return true
+		end),
+
+		right = method({ T.NUMBER }, T.BOOL, function(deps, player, angle)
+			return true
+		end),
+
+		teleport = method({ T.VECTOR }, T.BOOL, function(deps, player, pos)
+			if type(pos) ~= "table" or #pos ~= 2 then return false end
+			if not player.character then return false end
+			local hrp = player.character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return false end
+
+			local coreX, coreZ = deps.getCoreOffset()
+			local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("PythonTD").Config)
+			hrp.CFrame = CFrame.new(pos[1] + coreX, Config.PLATFORM_Y + 3, pos[2] + coreZ)
+			return true
+		end),
+
+		scan = method({}, { T.LIST, T.ENEMY }, function(deps, player)
+			if not player.character then return {} end
+			local x, z = deps.getCharacterPos(player.character)
+
+			local EnemyManager = deps.EnemyManager
+			if EnemyManager and EnemyManager.findInRange then
+				local enemies = EnemyManager.findInRange(x, z, 50)
+				local results = {}
+				for _, e in ipairs(enemies) do
+					table.insert(results, deps.createEnemyProxy(e))
+				end
+				return results
+			end
+			return {}
+		end),
+
+		say = method({ T.STRING }, T.NIL, function(deps, player, message)
+		end),
+
+		deposit = method({}, T.BOOL, function(deps, player)
+			local interp = player.interpreter
+			if not interp then return false end
+			if (interp.scrapInventory or 0) <= 0 then return false end
+			if not player.character then return false end
+
+			local hrp = player.character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return false end
+
+			local coreX, coreZ = deps.getCoreOffset()
+			local dist = math.sqrt((hrp.Position.X - coreX)^2 + (hrp.Position.Z - coreZ)^2)
+			if dist > 15 then return false end
+
+			local WaveManager = deps.WaveManager
+			if not WaveManager then return false end
+
+			local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("PythonTD").Config)
+			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
+			WaveManager.addScrap(interp.scrapInventory * pieceValue)
+			interp.scrapInventory = 0
+			return true
+		end),
+
+		collect = method({}, T.BOOL, function(deps, player)
+			if not player.character then return false end
+			local hrp = player.character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return false end
+
+			local interp = player.interpreter
+			if not interp then return false end
+
+			local capacity = interp.maxCapacity or 5
+			if (interp.scrapInventory or 0) >= capacity then return true end
+
+			local ScrapManager = deps.ScrapManager
+			if not ScrapManager then return false end
+
+			local pickupRange = 8
+			local collected = 0
+
+			while (interp.scrapInventory or 0) < capacity do
+				local nearest = ScrapManager.findNearest(hrp.Position.X, hrp.Position.Z, pickupRange)
+				if not nearest then break end
+				if ScrapManager.collect(nearest.id) then
+					interp.scrapInventory = (interp.scrapInventory or 0) + 1
+					collected = collected + 1
+				else
+					break
+				end
+			end
+
+			return collected > 0
+		end),
+
+		explode = method({}, T.BOOL, function(deps, player)
+			if not player.character then return false end
+			local PlayerCombat = deps.PlayerCombat
+			if PlayerCombat and PlayerCombat.explode then
+				return PlayerCombat.explode(player.playerId)
+			end
+			return false
+		end),
+
+		fire = method({ T.AMMO_TYPE }, T.BOOL, function(deps, player, ammoType)
+			local PlayerCombat = deps.PlayerCombat
+			if not PlayerCombat or not PlayerCombat.fire then return false end
+			if not player.interpreter then return false end
+
+			local targetId = player.interpreter.target
+			if not targetId then return false end
+
+			local EnemyManager = deps.EnemyManager
+			local enemy = EnemyManager and EnemyManager.get and EnemyManager.get(targetId)
+			if not enemy then return false end
+
+			return PlayerCombat.fire(player.interpreter, enemy, ammoType or 1)
+		end),
+
+		set_target = method({ T.ENEMY }, T.NIL, function(deps, player, enemy)
+			if player.interpreter and enemy and enemy.id then
+				player.interpreter.target = enemy.id
+			end
+		end),
+
+		target = method({}, { "optional", T.ENEMY }, function(deps, player)
+			if not player.interpreter then return nil end
+			local targetId = player.interpreter.target
+			if not targetId then return nil end
+			local EnemyManager = deps.EnemyManager
+			if EnemyManager and EnemyManager.get then
+				local enemy = EnemyManager.get(targetId)
+				if enemy and enemy.hp and enemy.hp > 0 then
+					return deps.createEnemyProxy(enemy)
+				end
+			end
+			return nil
+		end),
+
+		danger = Classes.Bot.members.scan and method({}, T.NUMBER, function(deps, player)
+			if not player.character then return 9999 end
+			local x, z = deps.getCharacterPos(player.character)
+			local EnemyManager = deps.EnemyManager
+			if EnemyManager and EnemyManager.findNearest then
+				local enemy, dist = EnemyManager.findNearest(x, z, 100)
+				if enemy then return math.floor(dist) end
+			end
+			return 9999
 		end),
 	},
 }
@@ -322,6 +532,9 @@ Classes.Builtins = {
 	["LASER"] = T.AMMO_TYPE,
 	["ICE"] = T.AMMO_TYPE,
 	["FREEZE"] = T.AMMO_TYPE,
+	["GRENADE"] = T.AMMO_TYPE,
+
+	["CORE"] = T.ANY,
 }
 
 Classes.EnvPatterns = {

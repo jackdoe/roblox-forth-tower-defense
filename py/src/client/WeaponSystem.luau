@@ -4,84 +4,105 @@ local WeaponSystem = {}
 
 WeaponSystem.RELOAD_DURATION = 2.0
 
-WeaponSystem.PROGRAMS = {
+WeaponSystem.DEFAULTS = {
 	[0] = {
 		name = "PASSIVE",
 		color = Color3.fromRGB(120, 120, 140),
 		fireRate = 0,
-		source = [[# PASSIVE - Save scrap
-c = 0
+		source = [[
 while True:
-    c += 1
+    self.collect()
 ]]
 	},
 	[1] = {
 		name = "BULLET",
 		color = Color3.fromRGB(255, 255, 150),
 		fireRate = 0.3,
-		source = [[# BULLET - Fast single target
+		source = [[
 while True:
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), BULLET)
+        self.set_target(nearest(enemies))
+        self.fire(BULLET)
 ]]
 	},
 	[2] = {
 		name = "ROCKET",
 		color = Color3.fromRGB(255, 100, 50),
 		fireRate = 1.0,
-		source = [[# ROCKET - Explosive splash damage
+		source = [[
 while True:
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), ROCKET)
+        self.set_target(nearest(enemies))
+        self.fire(ROCKET)
 ]]
 	},
 	[3] = {
 		name = "LASER",
 		color = Color3.fromRGB(255, 50, 50),
 		fireRate = 0.5,
-		source = [[# LASER - Burning damage over time
+		source = [[
 while True:
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), LASER)
+        self.set_target(nearest(enemies))
+        self.fire(LASER)
 ]]
 	},
 	[4] = {
 		name = "GRENADE",
 		color = Color3.fromRGB(100, 255, 100),
 		fireRate = 1.5,
-		source = [[# GRENADE - Thrown AOE explosive
+		source = [[
 while True:
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), GRENADE)
+        self.set_target(nearest(enemies))
+        self.fire(GRENADE)
 ]]
 	},
 }
+
+function WeaponSystem.getProgram(weaponIndex)
+	local draft = ClientState.getDraft("player", weaponIndex)
+	if draft then return draft end
+	local default = WeaponSystem.DEFAULTS[weaponIndex]
+	return default and default.source or ""
+end
+
+function WeaponSystem.getDefault(weaponIndex)
+	local default = WeaponSystem.DEFAULTS[weaponIndex]
+	return default and default.source or ""
+end
 
 function WeaponSystem.load(weaponIndex, editor, hud, runProgramEvent)
 	if weaponIndex < 0 or weaponIndex > 4 then return end
 	if ClientState.isReloading then return end
 	if ClientState.currentWeapon == weaponIndex then return end
 
+	if editor and editor:getMode() == "player" then
+		ClientState.saveDraft("player", ClientState.currentWeapon, editor:getText())
+	end
+
 	ClientState.isReloading = true
 	ClientState.reloadEndTime = tick() + WeaponSystem.RELOAD_DURATION
 
-	local weaponData = WeaponSystem.PROGRAMS[weaponIndex]
+	local weaponData = WeaponSystem.DEFAULTS[weaponIndex]
 	if not weaponData then return end
 
 	hud.setCurrentWeapon(weaponIndex)
 	hud.highlightWeapon(weaponIndex)
 	hud.triggerReloadCooldown(WeaponSystem.RELOAD_DURATION, weaponIndex)
 
+	local programSource = WeaponSystem.getProgram(weaponIndex)
+
 	if editor and editor:getMode() == "player" then
-		editor:setTextFormatted(weaponData.source)
+		editor:setTextFormatted(programSource)
 		editor:setWeaponName(weaponData.name)
 	end
 
-	runProgramEvent:FireServer(weaponData.source, { type = "player" })
+	runProgramEvent:FireServer(programSource, { type = "player" })
 
 	task.delay(WeaponSystem.RELOAD_DURATION, function()
 		if hud.getCurrentWeapon() == weaponIndex then
@@ -92,10 +113,24 @@ function WeaponSystem.load(weaponIndex, editor, hud, runProgramEvent)
 end
 
 function WeaponSystem.restoreCurrent(editor)
-	local weaponData = WeaponSystem.PROGRAMS[ClientState.currentWeapon]
+	local weaponIndex = ClientState.currentWeapon
+	local weaponData = WeaponSystem.DEFAULTS[weaponIndex]
 	if weaponData and editor then
-		editor:setTextFormatted(weaponData.source)
+		local programSource = WeaponSystem.getProgram(weaponIndex)
+		editor:setTextFormatted(programSource)
 		editor:setWeaponName(weaponData.name)
+	end
+end
+
+function WeaponSystem.resetCurrent(editor, runProgramEvent)
+	local weaponIndex = ClientState.currentWeapon
+	ClientState.clearDraft("player", weaponIndex)
+	local defaultSource = WeaponSystem.getDefault(weaponIndex)
+	if editor then
+		editor:setTextFormatted(defaultSource)
+	end
+	if runProgramEvent then
+		runProgramEvent:FireServer(defaultSource, { type = "player" })
 	end
 end
 

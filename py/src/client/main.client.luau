@@ -291,6 +291,17 @@ editor.onBuyRam = function()
 	end
 end
 
+editor.onReset = function()
+	local target = ClientState.currentInterpreterTarget
+	if target.type == "player" then
+		MindMode.clearCurrentDraft()
+		WeaponSystem.resetCurrent(editor, runProgramEvent)
+	elseif target.type == "bot" or target.type == "golem" then
+		MindMode.clearCurrentDraft()
+		resetProgramEvent:FireServer(target)
+	end
+end
+
 stateUpdateEvent.OnClientEvent:Connect(function(state)
 	local target = ClientState.currentInterpreterTarget
 	local isTargetingGolem = (target.type == "golem")
@@ -311,12 +322,14 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 	end
 
 	if state.isGolem and isTargetingGolem and state.golemId == target.golemId and not ClientState.golemProgramLoaded and state.source then
-		editor:setTextFormatted(state.source)
+		local programSource = MindMode.getDraftOrSource("golem", target.golemId, state.source)
+		editor:setTextFormatted(programSource)
 		ClientState.golemProgramLoaded = true
 	end
 
 	if state.isBot and isTargetingBot and state.botId == target.botId and not ClientState.golemProgramLoaded and state.source then
-		editor:setTextFormatted(state.source)
+		local programSource = MindMode.getDraftOrSource("bot", target.botId, state.source)
+		editor:setTextFormatted(programSource)
 		ClientState.golemProgramLoaded = true
 	end
 

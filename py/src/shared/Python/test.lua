@@ -131,8 +131,15 @@ local function assertTableEquals(expected, actual, msg)
 end
 
 -- Helper to compile and run a program
-local function compileAndRun(source, env, maxSteps)
-    local compiled, errors = Compiler.compile(source)
+local function compileAndRun(source, env, maxSteps, envTypes)
+    -- Build envTypes from env keys if not provided
+    if not envTypes and env then
+        envTypes = {}
+        for k, _ in pairs(env) do
+            envTypes[k] = "any"
+        end
+    end
+    local compiled, errors = Compiler.compile(source, nil, nil, envTypes)
     if not compiled then
         error("Compile error: " .. table.concat(errors or {"unknown"}, ", "))
     end
@@ -153,8 +160,8 @@ local function compileAndRun(source, env, maxSteps)
 end
 
 -- Helper to just compile (for bytecode inspection)
-local function compile(source)
-    local compiled, errors = Compiler.compile(source)
+local function compile(source, envTypes)
+    local compiled, errors = Compiler.compile(source, nil, nil, envTypes)
     if not compiled then
         error("Compile error: " .. table.concat(errors or {"unknown"}, ", "))
     end
@@ -420,7 +427,7 @@ test("Compile if statement generates conditional jump", function()
 end)
 
 test("Compile function call generates CALL opcode", function()
-    local compiled = compile("print(hello)")
+    local compiled = compile("print(hello)", {hello = "any"})
 
     local hasCall = false
     for _, instr in ipairs(compiled.code) do
@@ -469,7 +476,7 @@ test("Compile comparison operations", function()
 end)
 
 test("Compile attribute access generates LOAD_ATTR", function()
-    local compiled = compile("x = obj.value")
+    local compiled = compile("x = obj.value", {obj = "any"})
 
     local hasLoadAttr = false
     for _, instr in ipairs(compiled.code) do
@@ -489,7 +496,7 @@ test("Compile list literal generates BUILD_LIST", function()
 end)
 
 test("Compile index access generates GET_INDEX", function()
-    local compiled = compile("x = items[0]")
+    local compiled = compile("x = items[0]", {items = "List"})
 
     local hasGetIndex = false
     for _, instr in ipairs(compiled.code) do
@@ -499,7 +506,7 @@ test("Compile index access generates GET_INDEX", function()
 end)
 
 test("Compile for loop generates iterator opcodes", function()
-    local compiled = compile("for i in items:\n    x = i")
+    local compiled = compile("for i in items:\n    x = i", {items = "List"})
 
     local hasGetIter = false
     local hasForIter = false
@@ -1071,6 +1078,175 @@ test("Attribute access on nil", function()
 end)
 
 --============================================================================
+-- COMPILE-TIME TYPE CHECKING TESTS
+--============================================================================
+
+section("Compile-Time Type Checking")
+
+-- Helper to check compile errors
+local function expectCompileError(source, pattern, selfType, envTypes)
+    local compiled = Compiler.compile(source, nil, selfType, envTypes)
+    if compiled and compiled.code then
+        error("Expected compile error but compilation succeeded")
+    end
+    if pattern and compiled and compiled.error then
+        if not string.find(compiled.error, pattern) then
+            error("Expected error pattern '" .. pattern .. "' but got: " .. compiled.error)
+        end
+    end
+    return compiled
+end
+
+local function expectCompileSuccess(source, selfType, envTypes)
+    local compiled = Compiler.compile(source, nil, selfType, envTypes)
+    if not compiled or not compiled.code then
+        error("Expected compile success but got error: " .. tostring(compiled and compiled.error))
+    end
+    return compiled
+end
+
+test("NameError for undefined variable", function()
+    expectCompileError("x = undefined_var", "NameError.*undefined_var.*not defined")
+end)
+
+test("NameError for undefined function", function()
+    expectCompileError("x = unknown_func()", "NameError.*unknown_func.*not defined")
+end)
+
+test("No error for defined variable", function()
+    expectCompileSuccess("x = 5\ny = x + 1")
+end)
+
+test("No error for builtin True/False/None", function()
+    expectCompileSuccess("x = True\ny = False\nz = None")
+end)
+
+test("No error for builtin functions", function()
+    expectCompileSuccess("x = len([1,2,3])\ny = range(10)\nz = abs(-5)")
+end)
+
+test("No error for env-provided variables", function()
+    expectCompileSuccess("x = myVar + 1", nil, {myVar = "number"})
+end)
+
+test("AttributeError for invalid Bot attribute", function()
+    expectCompileError("x = self.invalid_attr", "AttributeError.*Bot.*invalid_attr", "Bot")
+end)
+
+test("AttributeError for invalid Turret attribute", function()
+    expectCompileError("x = self.invalid_method()", "AttributeError.*Turret.*invalid_method", "Turret")
+end)
+
+test("No error for valid Bot attributes", function()
+    expectCompileSuccess("x = self.pos\ny = self.cargo", "Bot")
+end)
+
+test("No error for valid Bot methods", function()
+    expectCompileSuccess("self.forward(10)\nself.collect()\nself.deposit()", "Bot")
+end)
+
+test("No error for valid Turret methods", function()
+    expectCompileSuccess("self.fire(BULLET)\nself.scan()\nself.set_range(50)", "Turret")
+end)
+
+test("Attribute suggestion for typos (prefix match)", function()
+    local compiled = Compiler.compile("self.forw()", nil, "Bot")
+    assertTrue(compiled.error ~= nil, "Should have error")
+    assertTrue(string.find(compiled.error, "did you mean") ~= nil, "Should suggest correction")
+    assertTrue(string.find(compiled.error, "forward") ~= nil, "Should suggest 'forward'")
+end)
+
+test("Pattern B1-B4 recognized as Bot type", function()
+    expectCompileSuccess("x = B1.pos\ny = B2.cargo\nz = B3.collect()", nil, {})
+end)
+
+test("Pattern T1-T30 recognized as Turret type", function()
+    expectCompileSuccess("x = T1.pos\nT5.fire(BULLET)\nT10.scan()", nil, {})
+end)
+
+test("Invalid attribute on pattern-matched Bot", function()
+    expectCompileError("x = B1.nonexistent", "AttributeError.*Bot.*nonexistent")
+end)
+
+test("Invalid attribute on pattern-matched Turret", function()
+    expectCompileError("T1.nonexistent_method()", "AttributeError.*Turret.*nonexistent_method")
+end)
+
+test("Enemy type from scan result", function()
+    expectCompileSuccess([[
+enemies = self.scan()
+for e in enemies:
+    x = e.hp
+    y = e.pos
+    z = e.is_boss
+]], "Turret")
+end)
+
+test("Augmented assignment requires defined variable", function()
+    expectCompileError("x += 1", "NameError.*x.*not defined")
+end)
+
+test("Augmented assignment works with defined variable", function()
+    expectCompileSuccess("x = 0\nx += 1\nx -= 2")
+end)
+
+test("Function parameters are defined in function scope", function()
+    expectCompileSuccess([[
+def foo(a, b, c):
+    return a + b + c
+]])
+end)
+
+test("Recursive function can reference itself", function()
+    expectCompileSuccess([[
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+]])
+end)
+
+test("For loop variable is defined in loop body", function()
+    expectCompileSuccess([[
+for i in [1, 2, 3]:
+    x = i * 2
+]])
+end)
+
+test("Break outside loop detected", function()
+    expectCompileError("break", "'break' outside loop")
+end)
+
+test("Continue outside loop detected", function()
+    expectCompileError("continue", "'continue' outside loop")
+end)
+
+test("Break inside loop is valid", function()
+    expectCompileSuccess("while True:\n    break")
+end)
+
+test("Continue inside loop is valid", function()
+    expectCompileSuccess("while True:\n    continue")
+end)
+
+test("Nested function scopes work correctly", function()
+    expectCompileSuccess([[
+def outer(x):
+    def inner(y):
+        return y * 2
+    return inner(x) + 1
+]])
+end)
+
+test("CORE is a recognized builtin", function()
+    expectCompileSuccess("x = CORE.hp\ny = CORE.position", nil, {})
+end)
+
+test("Ammo type constants are defined", function()
+    expectCompileSuccess("a = BULLET\nb = ROCKET\nc = LASER\nd = ICE\ne = GRENADE")
+end)
+
+--============================================================================
 -- EDGE CASES
 --============================================================================
 
@@ -1344,15 +1520,20 @@ local function createRuntime()
         self.running = false
         self.paused = false
         self.env = {}
+        self.envTypes = {}
         return self
     end
 
     function Runtime:setEnvironment(env)
         self.env = env or {}
+        self.envTypes = {}
+        for k, _ in pairs(self.env) do
+            self.envTypes[k] = "any"
+        end
     end
 
     function Runtime:compile(source)
-        local compiled, errors = Compiler.compile(source)
+        local compiled, errors = Compiler.compile(source, nil, nil, self.envTypes)
         if not compiled then
             self.error = errors and table.concat(errors, "\n") or "Compile error"
             return false

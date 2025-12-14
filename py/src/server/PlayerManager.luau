@@ -27,7 +27,8 @@ local DEFAULT_PROGRAM = [[
 while True:
     enemies = self.scan()
     if len(enemies) > 0:
-        self.fire(nearest(enemies), BULLET)
+        self.set_target(nearest(enemies))
+        self.fire(BULLET)
 ]]
 
 function PlayerManager.init(dependencies, map, spawning)
@@ -101,6 +102,7 @@ local function onCharacterAdded(player, playerId, character)
 	interp.character = character
 	interp.playerId = playerId
 	interp.playerName = player.Name
+	interp.selfType = "Player"
 	interp.cpuHz = Config.PLAYER_CPU_HZ or 10
 	interp.maxBytecode = Config.PLAYER_MAX_BYTECODE or 128
 	interp.ammoInventory = Config.STARTING_AMMO or 100

@@ -34,6 +34,7 @@ local function makeDeps(registries)
 		EnemyManager = registries.EnemyManager,
 		ScrapManager = registries.ScrapManager,
 		WaveManager = registries.WaveManager,
+		PlayerCombat = registries.PlayerCombat,
 	}
 
 	function deps.getCoreOffset()
@@ -97,7 +98,7 @@ local function addUtilities(env, interp)
 	env.int = function(x) return math.floor(tonumber(x) or 0) end
 	env.str = tostring
 	env.True, env.False = true, false
-	env.BULLET, env.ROCKET, env.LASER, env.ICE, env.FREEZE = 1, 2, 3, 4, 5
+	env.BULLET, env.ROCKET, env.LASER, env.ICE, env.FREEZE, env.GRENADE = 1, 2, 3, 4, 5, 5
 end
 
 local function addEnemySelectors(env, getPos, deps)
@@ -201,11 +202,11 @@ function GameAPI.createBotEnvironment(bot, registries)
 end
 
 function GameAPI.createPlayerEnvironment(player, interp, registries)
-	return createEnv("Bot", {
+	return createEnv("Player", {
 		id = "player",
+		playerId = player.UserId,
 		character = interp.character,
 		interpreter = interp,
-		scrapInventory = interp.scrapInventory or 0,
 	}, registries)
 end
 

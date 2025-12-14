@@ -18,9 +18,19 @@ local PathMap = require(script.Parent.PathMap)
 local RemoteEvents = require(script.Parent.RemoteEvents)
 local PlayerManager = require(script.Parent.PlayerManager)
 local UnitSpawning = require(script.Parent.UnitSpawning)
+local GolemStats = require(script.Parent.GolemStats)
+local BotStats = require(script.Parent.BotStats)
 
 local MAX_PROGRAM_LENGTH = 5000
 local MAX_BOT_INSTRUCTIONS = 30
+
+local DEFAULT_PROGRAM = [[
+while True:
+    enemies = self.scan()
+    if len(enemies) > 0:
+        self.set_target(nearest(enemies))
+        self.fire(BULLET)
+]]
 
 local deps = {
 	Config = Config,
@@ -287,12 +297,25 @@ RemoteEvents.stepProgram.OnServerEvent:Connect(function(player, source, target)
 	sendInterpreterState(player, target)
 end)
 
-RemoteEvents.resetProgram.OnServerEvent:Connect(function(player)
-	local interp = PlayerManager.get(player.UserId)
+RemoteEvents.resetProgram.OnServerEvent:Connect(function(player, target)
+	target = target or { type = "player" }
+
+	local interp, golem, bot = getTargetInterpreter(player, target)
 	if not interp then return end
 
-	interp:reset()
-	RemoteEvents.stateUpdate:FireClient(player, interp:getState())
+	local defaultProgram
+	if target.type == "golem" then
+		defaultProgram = GolemStats.DEFAULT_PROGRAM
+	elseif target.type == "bot" then
+		defaultProgram = BotStats.DEFAULT_PROGRAM
+	else
+		defaultProgram = DEFAULT_PROGRAM
+	end
+
+	interp:load(defaultProgram)
+	interp.lastProgram = defaultProgram
+
+	sendInterpreterState(player, target)
 end)
 
 RemoteEvents.playerMoveComplete.OnServerEvent:Connect(function(player)
