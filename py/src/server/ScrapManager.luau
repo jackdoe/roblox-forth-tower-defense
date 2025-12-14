@@ -1,8 +1,3 @@
--- ScrapManager.luau
--- Manages physical scrap drops in the world
--- Scrap drops when enemies die and must be collected by Supply Bots!
-
-local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -11,32 +6,18 @@ local Config = require(PythonTD.Config)
 
 local ScrapManager = {}
 
--- Ground level Y coordinate
 local GROUND_Y = Config.PLATFORM_Y
-
-local scrapPiles = {} -- id -> ScrapData
-local deps = nil
-
--- Spatial partitioning for efficient lookups
 local GRID_CELL_SIZE = 20
-local scrapGrid = {} -- "gx_gz" -> { scrapData, ... }
+local SCRAP_LIFETIME = 60
+local PIECE_VALUE = Config.SCRAP_PIECE_VALUE
 
--- Scrap visual settings
-local SCRAP_LIFETIME = 60 -- Seconds before auto-despawn
-local SCRAP_COLLECT_RANGE = 8 -- Studs
-
---============================================================================
--- INITIALIZATION
---============================================================================
+local scrapPiles = {}
+local scrapGrid = {}
+local deps = nil
 
 function ScrapManager.init(dependencies)
 	deps = dependencies
-	print("ScrapManager: Initialized")
 end
-
---============================================================================
--- HELPERS
---============================================================================
 
 local function getGridKey(x, z)
 	local gx = math.floor(x / GRID_CELL_SIZE)
@@ -48,6 +29,7 @@ local function addToGrid(scrap)
 	if not scrap.part or not scrap.part.Parent then return end
 	local pos = scrap.part.Position
 	local key = getGridKey(pos.X, pos.Z)
+	scrap.gridKey = key
 	if not scrapGrid[key] then
 		scrapGrid[key] = {}
 	end
@@ -61,57 +43,39 @@ local function removeFromGrid(scrap)
 		for i, s in ipairs(cell) do
 			if s.id == scrap.id then
 				table.remove(cell, i)
+				if #cell == 0 then
+					scrapGrid[scrap.gridKey] = nil
+				end
 				break
 			end
 		end
 	end
+	scrap.gridKey = nil
 end
 
-local function rebuildGrid()
-	table.clear(scrapGrid)
-	for id, scrap in pairs(scrapPiles) do
-		if scrap.part and scrap.part.Parent then
-			local pos = scrap.part.Position
-			local key = getGridKey(pos.X, pos.Z)
-			scrap.gridKey = key
-			if not scrapGrid[key] then
-				scrapGrid[key] = {}
-			end
-			table.insert(scrapGrid[key], scrap)
-		end
-	end
-end
-
---============================================================================
--- SPAWNING
---============================================================================
-
-function ScrapManager.spawn(position, amount)
+local function spawnSinglePiece(position, offset)
 	local id = game:GetService("HttpService"):GenerateGUID()
 
-	-- Create visual scrap pile
 	local part = Instance.new("Part")
 	part.Name = "Scrap_" .. id
 	part.Size = Vector3.new(1.5, 1.5, 1.5)
-	part.Position = position + Vector3.new(0, 2, 0) -- Spawn slightly above ground
-	part.Color = Color3.fromRGB(255, 200, 50) -- Gold/Scrap color
+	part.Position = position + Vector3.new(offset.x, 2, offset.z)
+	part.Color = Color3.fromRGB(255, 200, 50)
 	part.Material = Enum.Material.Metal
 	part.Anchored = false
 	part.CanCollide = true
 	part.Shape = Enum.PartType.Block
 
-	-- Add a slight glow
 	local light = Instance.new("PointLight")
 	light.Color = Color3.fromRGB(255, 200, 50)
 	light.Brightness = 0.5
 	light.Range = 6
 	light.Parent = part
 
-	-- Scatter physics - make it bounce and roll
 	part.Velocity = Vector3.new(
-		(math.random() - 0.5) * 20,
+		offset.x * 10 + (math.random() - 0.5) * 10,
 		15 + math.random() * 10,
-		(math.random() - 0.5) * 20
+		offset.z * 10 + (math.random() - 0.5) * 10
 	)
 	part.RotVelocity = Vector3.new(
 		math.random() * 5,
@@ -121,43 +85,25 @@ function ScrapManager.spawn(position, amount)
 
 	part.Parent = workspace
 
-	-- Make it settle and become anchored after physics settles
-	task.delay(2, function()
-		if part and part.Parent then
-			part.Anchored = true
-			part.CanCollide = false -- Bots walk through it
-		end
-	end)
-
-	-- Billboard showing amount
-	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.new(0, 50, 0, 20)
-	billboard.StudsOffset = Vector3.new(0, 1.5, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = part
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = tostring(amount)
-	label.TextColor3 = Color3.fromRGB(255, 255, 200)
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 14
-	label.TextStrokeTransparency = 0.5
-	label.Parent = billboard
-
-	-- Create scrap data
 	local scrapData = {
 		id = id,
 		part = part,
-		amount = amount,
 		created = tick(),
 		gridKey = nil,
+		settled = false,
 	}
 
 	scrapPiles[id] = scrapData
 
-	-- Auto-cleanup after lifetime
+	task.delay(2, function()
+		if part and part.Parent then
+			part.Anchored = true
+			part.CanCollide = false
+			scrapData.settled = true
+			addToGrid(scrapData)
+		end
+	end)
+
 	task.delay(SCRAP_LIFETIME, function()
 		if scrapPiles[id] then
 			ScrapManager.remove(id)
@@ -167,9 +113,23 @@ function ScrapManager.spawn(position, amount)
 	return id
 end
 
---============================================================================
--- REMOVAL
---============================================================================
+function ScrapManager.spawn(position, totalValue)
+	local pieceCount = math.max(1, math.floor(totalValue / PIECE_VALUE))
+	local ids = {}
+
+	for i = 1, pieceCount do
+		local angle = (i / pieceCount) * math.pi * 2
+		local radius = math.min(pieceCount * 0.5, 3)
+		local offset = {
+			x = math.cos(angle) * radius,
+			z = math.sin(angle) * radius,
+		}
+		local id = spawnSinglePiece(position, offset)
+		table.insert(ids, id)
+	end
+
+	return ids
+end
 
 function ScrapManager.remove(id)
 	local scrap = scrapPiles[id]
@@ -178,7 +138,6 @@ function ScrapManager.remove(id)
 	removeFromGrid(scrap)
 
 	if scrap.part then
-		-- Fade out effect
 		task.spawn(function()
 			local part = scrap.part
 			if part and part.Parent then
@@ -196,47 +155,13 @@ function ScrapManager.remove(id)
 	scrapPiles[id] = nil
 end
 
---============================================================================
--- COLLECTION (called by bots)
---============================================================================
-
-function ScrapManager.collect(id, collectorInterp)
+function ScrapManager.collect(id)
 	local scrap = scrapPiles[id]
-	if not scrap then return 0 end
+	if not scrap then return false end
 
-	-- Calculate how much can be collected
-	local available = scrap.amount
-	local capacity = (collectorInterp.maxCapacity or 50) - (collectorInterp.scrapInventory or 0)
-	local toCollect = math.min(available, capacity)
-
-	if toCollect <= 0 then
-		return 0 -- Bot is full
-	end
-
-	-- Transfer scrap
-	scrap.amount = scrap.amount - toCollect
-	collectorInterp.scrapInventory = (collectorInterp.scrapInventory or 0) + toCollect
-
-	-- Update billboard or remove if empty
-	if scrap.amount <= 0 then
-		ScrapManager.remove(id)
-	else
-		-- Update label
-		local billboard = scrap.part and scrap.part:FindFirstChild("BillboardGui")
-		if billboard then
-			local label = billboard:FindFirstChild("TextLabel")
-			if label then
-				label.Text = tostring(scrap.amount)
-			end
-		end
-	end
-
-	return toCollect
+	ScrapManager.remove(id)
+	return true
 end
-
---============================================================================
--- QUERIES
---============================================================================
 
 function ScrapManager.get(id)
 	return scrapPiles[id]
@@ -252,13 +177,43 @@ function ScrapManager.count()
 	return n
 end
 
-function ScrapManager.findNearest(x, z, maxRange)
-	local nearest = nil
-	local nearestDistSq = maxRange and (maxRange * maxRange) or math.huge
+function ScrapManager.getPieceValue()
+	return PIECE_VALUE
+end
 
-	-- Simple linear search through all scrap (grid may be stale for new scrap)
-	for id, scrap in pairs(scrapPiles) do
-		if scrap.part and scrap.part.Parent and scrap.amount > 0 then
+local function getScrapNearPoint(x, z, range)
+	local cellsToCheck = math.ceil(range / GRID_CELL_SIZE)
+	local gx = math.floor(x / GRID_CELL_SIZE)
+	local gz = math.floor(z / GRID_CELL_SIZE)
+
+	local results = {}
+
+	for i = -cellsToCheck, cellsToCheck do
+		for j = -cellsToCheck, cellsToCheck do
+			local key = (gx + i) .. "_" .. (gz + j)
+			local cell = scrapGrid[key]
+			if cell then
+				for _, scrap in ipairs(cell) do
+					if scrap.settled then
+						table.insert(results, scrap)
+					end
+				end
+			end
+		end
+	end
+
+	return results
+end
+
+function ScrapManager.findNearest(x, z, maxRange)
+	maxRange = maxRange or 100
+	local nearest = nil
+	local nearestDistSq = maxRange * maxRange
+
+	local candidates = getScrapNearPoint(x, z, maxRange)
+
+	for _, scrap in ipairs(candidates) do
+		if scrap.part and scrap.part.Parent then
 			local pos = scrap.part.Position
 			local dx = pos.X - x
 			local dz = pos.Z - z
@@ -270,16 +225,17 @@ function ScrapManager.findNearest(x, z, maxRange)
 		end
 	end
 
-	return nearest, nearest and math.sqrt(nearestDistSq) or (maxRange or math.huge)
+	return nearest, nearest and math.sqrt(nearestDistSq) or maxRange
 end
 
 function ScrapManager.findInRange(x, z, range)
 	local results = {}
 	local rangeSq = range * range
 
-	-- Simple linear search through all scrap
-	for id, scrap in pairs(scrapPiles) do
-		if scrap.part and scrap.part.Parent and scrap.amount > 0 then
+	local candidates = getScrapNearPoint(x, z, range)
+
+	for _, scrap in ipairs(candidates) do
+		if scrap.part and scrap.part.Parent then
 			local pos = scrap.part.Position
 			local dx = pos.X - x
 			local dz = pos.Z - z
@@ -294,35 +250,57 @@ function ScrapManager.findInRange(x, z, range)
 end
 
 function ScrapManager.getTotalScrapOnGround()
-	local total = 0
-	for _, scrap in pairs(scrapPiles) do
-		total = total + scrap.amount
+	local count = 0
+	for _ in pairs(scrapPiles) do
+		count = count + 1
 	end
-	return total
+	return count * PIECE_VALUE
 end
 
---============================================================================
--- UPDATE LOOP
---============================================================================
+function ScrapManager.findBestCluster(x, z, searchRange, pickupRange)
+	searchRange = searchRange or 200
+	pickupRange = pickupRange or 20
 
-function ScrapManager.update(dt)
-	-- Rebuild spatial grid periodically (scrap doesn't move after settling)
-	rebuildGrid()
-end
+	local candidates = getScrapNearPoint(x, z, searchRange)
+	if #candidates == 0 then return nil, 0, 0 end
 
-function ScrapManager.startUpdateLoop()
-	-- Update grid every second (scrap is mostly static)
-	task.spawn(function()
-		while true do
-			rebuildGrid()
-			task.wait(1)
+	local bestX, bestZ = 0, 0
+	local bestCount = 0
+
+	for _, scrap in ipairs(candidates) do
+		if scrap.part and scrap.part.Parent then
+			local cx = scrap.part.Position.X
+			local cz = scrap.part.Position.Z
+
+			local count = 0
+			local sumX, sumZ = 0, 0
+
+			for _, other in ipairs(candidates) do
+				if other.part and other.part.Parent then
+					local ox = other.part.Position.X
+					local oz = other.part.Position.Z
+					local dx = ox - cx
+					local dz = oz - cz
+					local distSq = dx * dx + dz * dz
+					if distSq <= pickupRange * pickupRange then
+						count = count + 1
+						sumX = sumX + ox
+						sumZ = sumZ + oz
+					end
+				end
+			end
+
+			if count > bestCount then
+				bestCount = count
+				bestX = sumX / count
+				bestZ = sumZ / count
+			end
 		end
-	end)
-end
+	end
 
---============================================================================
--- CLEAR
---============================================================================
+	if bestCount == 0 then return nil, 0, 0 end
+	return bestX, bestZ, bestCount
+end
 
 function ScrapManager.clear()
 	for id, scrap in pairs(scrapPiles) do

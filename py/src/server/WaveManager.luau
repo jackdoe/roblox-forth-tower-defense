@@ -1,159 +1,79 @@
--- WaveManager.luau
--- Core game loop for Tower Defense mode
--- Manages waves, Core HP, game phases, and scrap economy
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
-local Pathfinding = require(script.Parent.Pathfinding)
 
 local WaveManager = {}
 
--- Ground level Y coordinate
 local GROUND_Y = Config.PLATFORM_Y
 
--- Dependencies (set via init)
 local deps = nil
 local EnemyManager = nil
 local GolemRegistry = nil
 
--- Callbacks (set by main.server)
 local onWaveStartCallback = nil
 local onRestartCallback = nil
 
--- Game state
 local state = {
-	phase = "LOBBY", -- LOBBY, BUILD, COMBAT, UPGRADE, GAMEOVER, VICTORY
+	phase = "LOBBY",
 	waveNumber = 0,
-	totalWaves = 0, -- Infinite waves now (NG+ after wave 8)
-
-	-- Core (the thing we're defending)
 	coreHp = 1000,
 	coreMaxHp = 1000,
-	corePosition = nil, -- Set from map
+	corePosition = nil,
 	coreModel = nil,
-
-	-- Economy (shared core scrap)
-	scrap = 0, -- Single shared scrap value for the core
-
-	-- Timing
-	buildTime = 30,     -- Seconds for build phase
-	buildTimeRemaining = 0,
-	waveSpawnInterval = 2, -- Seconds between enemy spawns in wave
-
-	-- Wave tracking
+	scrap = 0,
 	enemiesRemaining = 0,
 	enemiesSpawned = 0,
-	enemiesToSpawn = 0,
-	spawnQueue = {}, -- { {type, gate, delay}, ... }
-
-	-- Ready system (for lobby)
+	enemiesTotal = 0,
+	spawnQueue = {},
 	readyPlayers = {},
-
-	-- Restart countdown
 	restartTimeRemaining = 0,
-
-	-- Current wave composition (for preview)
-	currentWaveComposition = {},
+	waveStartTime = 0,
 }
 
--- Remote events
 local coreHitEvent = nil
 local playerReadyEvent = nil
-local skipBuildEvent = nil
 local waveStateEvent = nil
+local lastBroadcast = 0
 
--- Enemy types for procedural generation
-local ENEMY_TYPES = {"Zombie", "Runner", "Tank"}
-
-
---============================================================================
--- PROCEDURAL WAVE GENERATION
---============================================================================
-
--- Generate a random wave composition based on wave number
--- Higher waves = more enemies, more bosses (up to 5), faster spawns
 function WaveManager.generateWave(waveNum)
 	local composition = {}
-
-	-- Base enemy count scales with wave - TESTING: much higher counts
-	-- Wave 1: 30, Wave 5: 70, Wave 10: 120
 	local baseCount = 30 + waveNum * 8
-	-- Add some randomness (+/- 20%)
 	local enemyCount = math.floor(baseCount * (0.8 + math.random() * 0.4))
-
-	-- Spawn interval gets faster with waves (starts 1s, min 0.3s)
 	local interval = math.max(0.3, 1 - waveNum * 0.05)
 
-	-- Generate random enemies (Zombie, Runner, Tank)
-	-- Higher waves unlock more enemy types
 	local availableTypes = {"Zombie"}
 	if waveNum >= 2 then table.insert(availableTypes, "Runner") end
 	if waveNum >= 3 then table.insert(availableTypes, "Tank") end
 
 	for i = 1, enemyCount do
-		local enemyType = availableTypes[math.random(#availableTypes)]
 		table.insert(composition, {
-			type = enemyType,
+			type = availableTypes[math.random(#availableTypes)],
 			delay = (i - 1) * interval + math.random() * 0.2,
 		})
 	end
 
-	-- Boss count: higher waves = more bosses
-	-- Wave 1: 1, Wave 3: 2, Wave 5: 3, etc.
 	local bossCount = math.min(8, math.floor(waveNum / 2) + 1)
-
-	-- Add bosses at the end (last boss is always last enemy)
 	local lastDelay = #composition > 0 and composition[#composition].delay or 0
 	for i = 1, bossCount do
 		table.insert(composition, {
 			type = "Boss",
-			delay = lastDelay + 2 + (i - 1) * 2, -- Bosses spawn after regular enemies, 2s apart
+			delay = lastDelay + 2 + (i - 1) * 2,
 		})
 	end
-
-	-- Store for preview
-	state.currentWaveComposition = composition
 
 	return composition
 end
 
--- Get preview list for HUD (returns array of enemy type strings in spawn order)
-function WaveManager.getWavePreview()
-	-- Generate next wave if not cached
-	local nextWave = state.waveNumber + 1
-	if #state.currentWaveComposition == 0 then
-		WaveManager.generateWave(nextWave)
-	end
-
-	-- Return first 20 enemies as type names
-	local previewList = {}
-	for i = 1, math.min(#state.currentWaveComposition, 20) do
-		table.insert(previewList, state.currentWaveComposition[i].type)
-	end
-
-	return previewList
-end
-
---============================================================================
--- INITIALIZATION
---============================================================================
-
 function WaveManager.init(dependencies)
 	deps = dependencies
 
-	-- Find existing remote events (created by main.server.luau)
 	local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
-
-	-- These events are already created by main.server.luau, just find them
 	playerReadyEvent = PythonTD:WaitForChild("PlayerReady")
-	skipBuildEvent = PythonTD:WaitForChild("SkipBuild")
 	waveStateEvent = PythonTD:WaitForChild("WaveState")
 
-	-- CoreHit might not exist yet, create if needed
 	coreHitEvent = PythonTD:FindFirstChild("CoreHit")
 	if not coreHitEvent then
 		coreHitEvent = Instance.new("RemoteEvent")
@@ -161,28 +81,15 @@ function WaveManager.init(dependencies)
 		coreHitEvent.Parent = PythonTD
 	end
 
-	-- Handle player ready
 	playerReadyEvent.OnServerEvent:Connect(function(player)
 		WaveManager.playerReady(player.UserId)
 	end)
 
-	-- Handle skip build phase
-	skipBuildEvent.OnServerEvent:Connect(function(player)
-		WaveManager.skipBuildPhase()
-	end)
-
-	-- Initialize core scrap
 	state.scrap = deps.Config.STARTING_SCRAP or 200
 
-	-- Handle player ready state cleanup
 	Players.PlayerRemoving:Connect(function(player)
 		state.readyPlayers[player.UserId] = nil
 	end)
-
-	-- Pre-generate first wave preview for lobby
-	WaveManager.generateWave(1)
-
-	print("WaveManager: Initialized")
 end
 
 function WaveManager.setEnemyManager(enemyMgr)
@@ -193,11 +100,6 @@ function WaveManager.setGolemRegistry(golemReg)
 	GolemRegistry = golemReg
 end
 
---============================================================================
--- CORE MANAGEMENT
---============================================================================
-
--- NEW: Helper to create fancy visual gates
 function WaveManager.createGateVisuals(gates)
 	local corePos = state.corePosition
 	if not corePos then return end
@@ -206,20 +108,16 @@ function WaveManager.createGateVisuals(gates)
 		local model = Instance.new("Model")
 		model.Name = "Gate_" .. i
 
-		-- Calculate angle to face the core
 		local dx = corePos.x - gate.x
 		local dz = corePos.z - gate.z
 		local angleToCore = math.atan2(dx, dz)
 
-		-- Gate position and rotation base
 		local gatePos = Vector3.new(gate.x, GROUND_Y, gate.z)
 		local gateCFrame = CFrame.new(gatePos) * CFrame.Angles(0, angleToCore, 0)
 
-		-- 1. The Frame (Archway)
 		local frameColor = Color3.fromRGB(80, 80, 80)
-		local neonColor = Color3.fromRGB(255, 50, 50) -- Enemy Red
+		local neonColor = Color3.fromRGB(255, 50, 50)
 
-		-- Left Pillar
 		local leftPillar = Instance.new("Part")
 		leftPillar.Size = Vector3.new(2, 12, 2)
 		leftPillar.CFrame = gateCFrame * CFrame.new(-4, 6, 0)
@@ -237,7 +135,6 @@ function WaveManager.createGateVisuals(gates)
 		leftStripe.Color = neonColor
 		leftStripe.Parent = model
 
-		-- Right Pillar
 		local rightPillar = Instance.new("Part")
 		rightPillar.Size = Vector3.new(2, 12, 2)
 		rightPillar.CFrame = gateCFrame * CFrame.new(4, 6, 0)
@@ -255,7 +152,6 @@ function WaveManager.createGateVisuals(gates)
 		rightStripe.Color = neonColor
 		rightStripe.Parent = model
 
-		-- Top Bar
 		local top = Instance.new("Part")
 		top.Size = Vector3.new(12, 2, 3)
 		top.CFrame = gateCFrame * CFrame.new(0, 13, 0)
@@ -264,7 +160,6 @@ function WaveManager.createGateVisuals(gates)
 		top.Color = frameColor
 		top.Parent = model
 
-		-- 2. The Portal Field (Swirling Void)
 		local field = Instance.new("Part")
 		field.Name = "Field"
 		field.Size = Vector3.new(6, 10, 0.2)
@@ -276,12 +171,12 @@ function WaveManager.createGateVisuals(gates)
 		field.Transparency = 0.5
 		field.Parent = model
 
-		-- Gate Text
 		local bb = Instance.new("BillboardGui")
 		bb.Size = UDim2.new(0, 100, 0, 50)
 		bb.StudsOffset = Vector3.new(0, 8, 0)
 		bb.AlwaysOnTop = true
 		bb.Parent = top
+
 		local txt = Instance.new("TextLabel")
 		txt.Size = UDim2.fromScale(1, 1)
 		txt.BackgroundTransparency = 1
@@ -295,7 +190,6 @@ function WaveManager.createGateVisuals(gates)
 	end
 end
 
--- UPDATED: createCore with animation and particles
 function WaveManager.createCore(position)
 	state.corePosition = position
 	state.coreHp = state.coreMaxHp
@@ -303,11 +197,10 @@ function WaveManager.createCore(position)
 	local model = Instance.new("Model")
 	model.Name = "CoreModel"
 
-	-- 1. Base Pedestal
 	local base = Instance.new("Part")
 	base.Name = "Base"
 	base.Shape = Enum.PartType.Cylinder
-	base.Size = Vector3.new(1, 12, 12) -- Cylinders are rotated, size is (height, dia, dia)
+	base.Size = Vector3.new(1, 12, 12)
 	base.Position = Vector3.new(position.x, GROUND_Y + 0.5, position.z)
 	base.Orientation = Vector3.new(0, 0, 90)
 	base.Anchored = true
@@ -315,7 +208,6 @@ function WaveManager.createCore(position)
 	base.Color = Color3.fromRGB(50, 50, 60)
 	base.Parent = model
 
-	-- 2. The Crystal (The actual Core Hitbox)
 	local core = Instance.new("Part")
 	core.Name = "Core"
 	core.Size = Vector3.new(4, 4, 4)
@@ -323,23 +215,20 @@ function WaveManager.createCore(position)
 	core.Anchored = true
 	core.CanCollide = true
 	core.Material = Enum.Material.Neon
-	core.Color = Color3.fromRGB(0, 255, 255) -- Cyan
+	core.Color = Color3.fromRGB(0, 255, 255)
 	core.Shape = Enum.PartType.Ball
 	core.Transparency = 0.2
 	core.Parent = model
 
-	-- Make it look like a Diamond
 	local mesh = Instance.new("SpecialMesh")
 	mesh.MeshType = Enum.MeshType.FileMesh
-	mesh.MeshId = "rbxassetid://9756362" -- Standard Diamond Mesh
+	mesh.MeshId = "rbxassetid://9756362"
 	mesh.Scale = Vector3.new(4, 8, 4)
 	mesh.Parent = core
 
-
-	-- 4. Particles
 	local attachment = Instance.new("Attachment", core)
 	local particles = Instance.new("ParticleEmitter")
-	particles.Texture = "rbxassetid://243098098" -- Generic sparkle
+	particles.Texture = "rbxassetid://243098098"
 	particles.Color = ColorSequence.new(Color3.fromRGB(0, 255, 255))
 	particles.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) })
 	particles.Lifetime = NumberRange.new(1, 2)
@@ -348,16 +237,13 @@ function WaveManager.createCore(position)
 	particles.SpreadAngle = Vector2.new(360, 360)
 	particles.Parent = attachment
 
-	-- 5. Floating Animation for Crystal
 	local floatInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 	local floatGoal = { Position = core.Position + Vector3.new(0, 1.5, 0) }
 	TweenService:Create(core, floatInfo, floatGoal):Play()
 
-	-- 6. Spin the crystal
 	task.spawn(function()
 		while core and core.Parent do
 			core.CFrame = core.CFrame * CFrame.Angles(0, math.rad(1), 0)
-			-- Color shifts based on HP
 			local hpRatio = state.coreHp / state.coreMaxHp
 			if hpRatio > 0.5 then
 				core.Color = Color3.fromRGB(0, 255, 255)
@@ -370,19 +256,15 @@ function WaveManager.createCore(position)
 		end
 	end)
 
-	Pathfinding.createPathBlocker(model, Vector3.new(position.x, GROUND_Y + 4, position.z), Vector3.new(14, 8, 14), "Core")
-
 	model.Parent = workspace
 	state.coreModel = model
-	print("WaveManager: Fancy Core created at", position.x, position.z)
 end
 
-function WaveManager.damageCore(amount, enemyId)
+function WaveManager.damageCore(amount)
 	if state.phase == "GAMEOVER" then return end
 
 	state.coreHp = math.max(0, state.coreHp - amount)
 
-	-- Notify clients of hit
 	for _, player in ipairs(Players:GetPlayers()) do
 		coreHitEvent:FireClient(player, {
 			damage = amount,
@@ -391,7 +273,6 @@ function WaveManager.damageCore(amount, enemyId)
 		})
 	end
 
-	-- Check for game over
 	if state.coreHp <= 0 then
 		WaveManager.gameOver()
 	end
@@ -409,25 +290,15 @@ function WaveManager.resetCoreVisual()
 	if state.coreModel then
 		local core = state.coreModel:FindFirstChild("Core")
 		if core then
-			core.Color = Color3.fromRGB(0, 255, 255) -- Cyan
+			core.Color = Color3.fromRGB(0, 255, 255)
 			core.Transparency = 0.2
 		end
 	end
 end
 
---============================================================================
--- PHASE MANAGEMENT
---============================================================================
-
 function WaveManager.setPhase(newPhase)
-	local oldPhase = state.phase
 	state.phase = newPhase
-
-	print("WaveManager: Phase changed from", oldPhase, "to", newPhase)
-
-	if newPhase == "BUILD" then
-		state.buildTimeRemaining = state.buildTime
-	elseif newPhase == "COMBAT" then
+	if newPhase == "COMBAT" then
 		WaveManager.startWave()
 	end
 end
@@ -438,25 +309,11 @@ end
 
 function WaveManager.playerReady(userId)
 	state.readyPlayers[userId] = true
-
-	-- CHANGED: If ANY player presses ready, start the game.
-	-- No waiting for everyone.
-	WaveManager.setPhase("BUILD")
-end
-
-function WaveManager.skipBuildPhase()
-	-- CHANGED: If ANY player presses skip, start combat immediately.
-	if state.phase == "BUILD" then
-		state.buildTimeRemaining = 0
+	if state.phase == "LOBBY" then
 		WaveManager.setPhase("COMBAT")
 	end
 end
 
---============================================================================
--- WAVE MANAGEMENT
---============================================================================
-
--- Set callback for wave start (for progressive unit spawning)
 function WaveManager.setOnWaveStart(callback)
 	onWaveStartCallback = callback
 end
@@ -468,176 +325,118 @@ end
 function WaveManager.startWave()
 	state.waveNumber = state.waveNumber + 1
 
-	-- Trigger callback for progressive spawning
 	if onWaveStartCallback then
 		onWaveStartCallback(state.waveNumber)
 	end
 
-	-- Scale enemies based on player count (more players = more enemies)
 	local playerCount = #Players:GetPlayers()
-	local playerMultiplier = 1 + (playerCount - 1) * 0.5 -- +50% enemies per extra player
-
-	-- Simple linear scaling for enemy stats (+10% per wave)
+	local playerMultiplier = 1 + (playerCount - 1) * 0.5
 	local waveMultiplier = 1 + (state.waveNumber - 1) * 0.1
+
 	if EnemyManager then
 		EnemyManager.setNewGamePlusMultiplier(waveMultiplier)
 		EnemyManager.setWave(state.waveNumber)
 	end
 
-	print("WaveManager: Starting wave", state.waveNumber, "with", playerCount, "players, multiplier:", string.format("%.1fx", waveMultiplier))
+	local waveComposition = WaveManager.generateWave(state.waveNumber)
 
-	-- Use pre-generated wave composition (or generate if not cached)
-	local waveComposition = state.currentWaveComposition
-	if #waveComposition == 0 then
-		waveComposition = WaveManager.generateWave(state.waveNumber)
-	end
-
-	-- Build spawn queue from composition (all enemies spawn from gate 1)
 	state.spawnQueue = {}
-	state.enemiesToSpawn = 0
 	state.enemiesSpawned = 0
 	state.enemiesRemaining = 0
 
 	for _, enemy in ipairs(waveComposition) do
-		-- Scale count for multiplayer (but bosses always spawn as-is)
-		local count = 1
-		if enemy.type ~= "Boss" then
-			count = math.ceil(playerMultiplier)
-		end
+		local count = enemy.type ~= "Boss" and math.ceil(playerMultiplier) or 1
 		for i = 1, count do
 			table.insert(state.spawnQueue, {
 				type = enemy.type,
-				gate = 1, -- Single gate only
-				delay = enemy.delay + (i - 1) * 0.3, -- Slight offset for extra spawns
+				gate = 1,
+				delay = enemy.delay + (i - 1) * 0.3,
 			})
-			state.enemiesToSpawn = state.enemiesToSpawn + 1
 		end
 	end
 
-	-- Sort by delay
 	table.sort(state.spawnQueue, function(a, b) return a.delay < b.delay end)
 
 	state.waveStartTime = tick()
-	state.enemiesRemaining = state.enemiesToSpawn
-
-	-- Clear composition for next wave generation
-	state.currentWaveComposition = {}
+	state.enemiesTotal = #state.spawnQueue
+	state.enemiesRemaining = state.enemiesTotal
 end
 
-function WaveManager.onEnemyKilled(enemyId, killerGolemId)
+function WaveManager.onEnemyKilled()
 	state.enemiesRemaining = state.enemiesRemaining - 1
+	WaveManager.addScrap(deps.Config.SCRAP_ASSIST_BONUS or 2)
 
-	-- NOTE: Direct scrap awards removed!
-	-- Scrap now drops physically on the ground when enemies die.
-	-- Supply Bots collect it and deliver to core.
-	-- Small "assist" bonus for the kill goes to core.
-	local assistBonus = deps.Config.SCRAP_ASSIST_BONUS or 2
-	WaveManager.addScrap(assistBonus)
-
-	-- Check if wave complete
-	if state.enemiesRemaining <= 0 and state.enemiesSpawned >= state.enemiesToSpawn then
+	if state.enemiesRemaining <= 0 and state.enemiesSpawned >= state.enemiesTotal then
 		WaveManager.waveComplete()
 	end
 end
 
-function WaveManager.onEnemyReachedCore(enemyId)
+function WaveManager.onEnemyReachedCore()
 	state.enemiesRemaining = state.enemiesRemaining - 1
 
-	-- Check if wave complete
-	if state.enemiesRemaining <= 0 and state.enemiesSpawned >= state.enemiesToSpawn then
+	if state.enemiesRemaining <= 0 and state.enemiesSpawned >= state.enemiesTotal then
 		WaveManager.waveComplete()
 	end
 end
 
 function WaveManager.waveComplete()
-	print("WaveManager: Wave", state.waveNumber, "complete!")
-
-	-- MELTDOWN: Kill all temporary bots (FORK clones die at wave end)
 	if deps.BotRegistry then
 		deps.BotRegistry.killTemporaryBots()
 	end
 
-	-- Bonus scrap for completing wave (50 * wave number)
-	local bonusScrap = state.waveNumber * 50
-	WaveManager.addScrap(bonusScrap)
-
-	-- Pre-generate next wave composition for preview
-	WaveManager.generateWave(state.waveNumber + 1)
-
-	-- Infinite waves - always go to build phase
-	WaveManager.setPhase("BUILD")
+	WaveManager.addScrap(state.waveNumber * 50)
+	WaveManager.startWave()
 end
 
---============================================================================
--- ECONOMY
---============================================================================
-
 function WaveManager.addScrap(amount)
-	state.scrap = (state.scrap or 0) + amount
+	state.scrap = state.scrap + amount
 end
 
 function WaveManager.removeScrap(amount)
-	local current = state.scrap or 0
-	if current >= amount then
-		state.scrap = current - amount
+	if state.scrap >= amount then
+		state.scrap = state.scrap - amount
 		return true
 	end
 	return false
 end
 
 function WaveManager.getScrap()
-	return state.scrap or 0
+	return state.scrap
 end
 
--- Remove from core stockpile (used by turret reload)
--- Returns actual amount taken (may be less than requested if not enough scrap)
 function WaveManager.removeCoreStockpile(amount)
-	local current = state.scrap or 0
-	local toTake = math.min(amount, current)
-	if toTake > 0 then
-		state.scrap = current - toTake
-	end
+	local toTake = math.min(amount, state.scrap)
+	state.scrap = state.scrap - toTake
 	return toTake
 end
 
--- Get core stockpile amount (same as scrap for now)
 function WaveManager.getCoreStockpile()
-	return state.scrap or 0
+	return state.scrap
 end
-
---============================================================================
--- GAME END
---============================================================================
 
 function WaveManager.gameOver()
 	state.phase = "GAMEOVER"
-	state.restartTimeRemaining = 10 -- 10 second countdown
-	print("WaveManager: GAME OVER - Core destroyed!")
+	state.restartTimeRemaining = 10
 end
 
 function WaveManager.restart()
-	print("WaveManager: Restarting game...")
-
-	-- Clear enemies
 	if EnemyManager then
 		EnemyManager.clear()
-		EnemyManager.setNewGamePlusMultiplier(1) -- Reset NG+ multiplier
+		EnemyManager.setNewGamePlusMultiplier(1)
 	end
 
-	-- Clear golems
 	if GolemRegistry then
 		GolemRegistry.clear()
 	end
 
-	-- Clear logistics (Supply Bots & Physical Scrap)
 	if deps.ScrapManager then
 		deps.ScrapManager.clear()
 	end
+
 	if deps.BotRegistry then
 		deps.BotRegistry.clear()
 	end
 
-	-- Reset state
 	state.phase = "LOBBY"
 	state.waveNumber = 0
 	state.coreHp = state.coreMaxHp
@@ -645,56 +444,40 @@ function WaveManager.restart()
 	state.spawnQueue = {}
 	state.enemiesRemaining = 0
 	state.enemiesSpawned = 0
-	state.currentWaveComposition = {}
-
-	-- Reset scrap
+	state.enemiesTotal = 0
 	state.scrap = deps.Config.STARTING_SCRAP or 200
 
-	-- Pre-generate first wave preview
-	WaveManager.generateWave(1)
-
-	-- Reset core visual
 	WaveManager.resetCoreVisual()
 
-	-- Call restart callback (spawns initial units)
 	if onRestartCallback then
 		onRestartCallback()
 	end
 
-	-- Broadcast updated state
 	WaveManager.broadcastState()
 end
 
---============================================================================
--- UPDATE LOOP
---============================================================================
-
 function WaveManager.update(dt)
-	if state.phase == "BUILD" then
-		-- Countdown build timer
-		state.buildTimeRemaining = state.buildTimeRemaining - dt
-		if state.buildTimeRemaining <= 0 then
-			WaveManager.setPhase("COMBAT")
-		end
-	elseif state.phase == "COMBAT" then
-		-- Process spawn queue
+	if state.phase == "COMBAT" then
 		local elapsed = tick() - state.waveStartTime
 
 		while #state.spawnQueue > 0 and state.spawnQueue[1].delay <= elapsed do
 			local spawn = table.remove(state.spawnQueue, 1)
-
 			if EnemyManager then
 				EnemyManager.spawn(spawn.type, spawn.gate, deps)
 				state.enemiesSpawned = state.enemiesSpawned + 1
 			end
 		end
+
+		lastBroadcast = lastBroadcast + dt
+		if lastBroadcast >= 0.5 then
+			lastBroadcast = 0
+			WaveManager.broadcastState()
+		end
 	elseif state.phase == "GAMEOVER" then
-		-- Countdown restart timer
 		local prevSecond = math.ceil(state.restartTimeRemaining)
 		state.restartTimeRemaining = state.restartTimeRemaining - dt
 		local newSecond = math.ceil(state.restartTimeRemaining)
 
-		-- Broadcast once per second so client sees countdown
 		if newSecond ~= prevSecond and state.restartTimeRemaining > 0 then
 			WaveManager.broadcastState()
 		end
@@ -705,32 +488,19 @@ function WaveManager.update(dt)
 	end
 end
 
---============================================================================
--- STATE BROADCAST
---============================================================================
-
 function WaveManager.broadcastState()
 	local stateData = {
 		phase = state.phase,
 		waveNumber = state.waveNumber,
 		coreHp = state.coreHp,
 		coreMaxHp = state.coreMaxHp,
-		buildTimeRemaining = state.buildTimeRemaining,
 		restartTimeRemaining = state.restartTimeRemaining,
 		enemiesRemaining = state.enemiesRemaining,
-		readyCount = 0,
-		totalPlayers = #Players:GetPlayers(),
-		wavePreview = WaveManager.getWavePreview(), -- Preview of next wave
+		enemiesTotal = state.enemiesTotal,
+		scrap = state.scrap,
 	}
 
-	-- Count ready players
-	for userId, _ in pairs(state.readyPlayers) do
-		stateData.readyCount = stateData.readyCount + 1
-	end
-
-	stateData.scrap = state.scrap or 0
 	for _, player in ipairs(Players:GetPlayers()) do
-		stateData.isReady = state.readyPlayers[player.UserId] or false
 		waveStateEvent:FireClient(player, stateData)
 	end
 end

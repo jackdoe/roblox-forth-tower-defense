@@ -50,7 +50,7 @@ function MindMode.enterGolem(golemId, golemStates, editor, program, bytecodePane
 
 	golemRegisterViewerEvent:FireServer(golemId)
 
-	editor:setMode("golem", golemData.spotId, golemData.maxBytecode)
+	editor:setMode("golem", golemData.spotId, golemData.maxBytecode, golemData.cpuHz)
 	program:setTheme("golem")
 	bytecodePanel:setTheme("golem")
 

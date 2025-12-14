@@ -15,9 +15,7 @@ local EditorPanel = require(script.Parent.UI.EditorPanel)
 local ProgramPanel = require(script.Parent.UI.ProgramPanel)
 local BytecodePanel = require(script.Parent.UI.BytecodePanel)
 local HUD = require(script.Parent.UI.HUD)
-local HelpPopup = require(script.Parent.UI.HelpPopup)
 local Effects = require(script.Parent.Effects)
-local PlayerHpBillboard = require(script.Parent.PlayerHpBillboard)
 local DragModule = require(script.Parent.UI.DragModule)
 local GridNavigator = require(script.Parent.GridNavigator)
 
@@ -27,21 +25,80 @@ local PlacementSystem = require(script.Parent.PlacementSystem)
 local MindMode = require(script.Parent.MindMode)
 local Overlays = require(script.Parent.Overlays)
 
+local selectionRing = nil
+local selectionRingTarget = nil
+local selectionRingModel = nil
+
+local function createSelectionRing()
+	if selectionRing then selectionRing:Destroy() end
+
+	local ring = Instance.new("Part")
+	ring.Name = "SelectionRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.08, 12, 12)
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(120, 200, 220)
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CastShadow = false
+	ring.Transparency = 0.5
+	ring.CFrame = CFrame.new(0, -1000, 0) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = workspace
+
+	selectionRing = ring
+	selectionRingModel = nil
+	return ring
+end
+
+local function destroySelectionRing()
+	if selectionRing then
+		selectionRing:Destroy()
+		selectionRing = nil
+	end
+	selectionRingTarget = nil
+	selectionRingModel = nil
+end
+
+local function updateSelectionRing()
+	if not selectionRingTarget or not selectionRing then return end
+
+	if selectionRingModel and selectionRingModel.Parent then
+		local hrp = selectionRingModel:FindFirstChild("HumanoidRootPart") or selectionRingModel.PrimaryPart
+		if hrp then
+			selectionRing.CFrame = CFrame.new(hrp.Position.X, Config.PLATFORM_Y + 0.5, hrp.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
+		end
+		return
+	end
+
+	local targetId = selectionRingTarget.id
+	local targetType = selectionRingTarget.type
+
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if not obj:IsA("Model") then continue end
+
+		local objId = targetType == "golem" and obj:GetAttribute("GolemId") or obj:GetAttribute("BotId")
+		if objId ~= targetId then continue end
+
+		selectionRingModel = obj
+		local hrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+		if hrp then
+			selectionRing.CFrame = CFrame.new(hrp.Position.X, Config.PLATFORM_Y + 0.5, hrp.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
+		end
+		return
+	end
+end
+
 local runProgramEvent = PythonTD:WaitForChild("RunProgram")
 local pauseProgramEvent = PythonTD:WaitForChild("PauseProgram")
 local stepProgramEvent = PythonTD:WaitForChild("StepProgram")
 local resetProgramEvent = PythonTD:WaitForChild("ResetProgram")
 local stateUpdateEvent = PythonTD:WaitForChild("StateUpdate")
 local attackHitEvent = PythonTD:WaitForChild("AttackHit")
-local playerHurtEvent = PythonTD:WaitForChild("PlayerHurt")
-local beepEvent = PythonTD:WaitForChild("Beep")
-local playAnimationEvent = PythonTD:WaitForChild("PlayAnimation")
-local manualAttackEvent = PythonTD:WaitForChild("ManualAttack")
 local playerFireEvent = PythonTD:WaitForChild("PlayerFire")
 
 local golemStateEvent = PythonTD:WaitForChild("GolemState")
 local playerReadyEvent = PythonTD:WaitForChild("PlayerReady")
-local skipBuildEvent = PythonTD:WaitForChild("SkipBuild")
+local waveStateEvent = PythonTD:WaitForChild("WaveState")
 local golemPlaceAtEvent = PythonTD:WaitForChild("GolemPlaceAt")
 local golemSellEvent = PythonTD:WaitForChild("GolemSell")
 local enterBuildModeEvent = PythonTD:WaitForChild("EnterBuildMode")
@@ -50,8 +107,8 @@ local playerMoveCompleteEvent = PythonTD:WaitForChild("PlayerMoveComplete")
 
 local golemRegisterViewerEvent = PythonTD:WaitForChild("GolemRegisterViewer")
 local golemUnregisterViewerEvent = PythonTD:WaitForChild("GolemUnregisterViewer")
-local golemMoveEvent = PythonTD:WaitForChild("GolemMove")
 local golemUpgradeEvent = PythonTD:WaitForChild("GolemUpgrade")
+local golemUpgradeRAMEvent = PythonTD:WaitForChild("GolemUpgradeRAM")
 local golemAmmoChangeEvent = PythonTD:WaitForChild("GolemAmmoChange")
 local golemFullStateEvent = PythonTD:WaitForChild("GolemFullState")
 
@@ -69,9 +126,7 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
-local helpPopup = HelpPopup.create(screenGui, DragModule)
-
-local editor, program, bytecodePanel, hud, hpBillboard
+local editor, program, bytecodePanel, hud
 
 local function showBytecodePanel()
 	if not ClientState.bytecodeUserOverride then
@@ -86,18 +141,24 @@ local function loadWeapon(index)
 end
 
 local function enterGolemMind(golemId)
+	createSelectionRing()
+	selectionRingTarget = { id = golemId, type = "golem" }
 	return MindMode.enterGolem(golemId, ClientState.golemStates, editor, program, bytecodePanel, golemRegisterViewerEvent, golemUnregisterViewerEvent, botUnregisterViewerEvent)
 end
 
 local function exitGolemMind()
+	destroySelectionRing()
 	MindMode.exitGolem(editor, program, bytecodePanel, golemUnregisterViewerEvent)
 end
 
 local function enterBotMind(botId)
+	createSelectionRing()
+	selectionRingTarget = { id = botId, type = "bot" }
 	return MindMode.enterBot(botId, ClientState.botStates, editor, program, bytecodePanel, botRegisterViewerEvent, botUnregisterViewerEvent, golemUnregisterViewerEvent)
 end
 
 local function exitBotMind()
+	destroySelectionRing()
 	MindMode.exitBot(editor, program, bytecodePanel, botUnregisterViewerEvent)
 end
 
@@ -114,9 +175,6 @@ editor = EditorPanel.create(screenGui, {
 	end,
 	onReset = function()
 		resetProgramEvent:FireServer()
-	end,
-	onHelp = function()
-		helpPopup.show(nil)
 	end,
 })
 
@@ -148,11 +206,6 @@ hud = HUD.create(screenGui, {
 		end
 	end,
 	onMove = function(id, unitType)
-		if unitType == "golem" then
-			ClientState.isMovingGolem = true
-			ClientState.movingGolemId = id
-			hud.deselect()
-		end
 	end,
 	onSell = function(id, unitType)
 		if unitType == "golem" then
@@ -167,6 +220,11 @@ hud = HUD.create(screenGui, {
 			golemUpgradeEvent:FireServer(id)
 		end
 	end,
+	onUpgradeRAM = function(id, unitType)
+		if unitType == "golem" then
+			golemUpgradeRAMEvent:FireServer(id)
+		end
+	end,
 	onAmmoChange = function(golemId, ammoType, ammoName)
 		if golemId and ammoType then
 			golemAmmoChangeEvent:FireServer(golemId, ammoType)
@@ -174,9 +232,6 @@ hud = HUD.create(screenGui, {
 	end,
 	onReady = function()
 		playerReadyEvent:FireServer()
-	end,
-	onSkipBuild = function()
-		skipBuildEvent:FireServer()
 	end,
 	onLoadWeapon = function(weaponIndex)
 		loadWeapon(weaponIndex)
@@ -217,32 +272,21 @@ editor.onSellGolem = function()
 	end
 end
 
-editor.onMoveGolem = function()
-	if ClientState.currentInterpreterTarget.type == "golem" and ClientState.currentInterpreterTarget.golemId then
-		ClientState.isMovingGolem = true
-		ClientState.movingGolemId = ClientState.currentInterpreterTarget.golemId
-	end
-end
-
-local function setupHpBillboard()
-	if hpBillboard then hpBillboard:destroy() end
-	if player.Character then
-		hpBillboard = PlayerHpBillboard.create(player.Character)
-	end
-end
-
-player.CharacterAdded:Connect(setupHpBillboard)
-if player.Character then setupHpBillboard() end
-
 stateUpdateEvent.OnClientEvent:Connect(function(state)
-	program:update(state)
-	bytecodePanel:update(state)
-	editor:setPaused(state.paused)
-
 	local target = ClientState.currentInterpreterTarget
 	local isTargetingGolem = (target.type == "golem")
 	local isTargetingBot = (target.type == "bot")
 	local isTargetingPlayer = (target.type == "player")
+
+	local isForCurrentTarget = (isTargetingGolem and state.isGolem and state.golemId == target.golemId)
+		or (isTargetingBot and state.isBot and state.botId == target.botId)
+		or (isTargetingPlayer and not state.isGolem and not state.isBot)
+
+	if isForCurrentTarget then
+		program:update(state)
+		bytecodePanel:update(state)
+		editor:setPaused(state.paused)
+	end
 
 	if state.isGolem and isTargetingGolem and state.golemId == target.golemId and not ClientState.golemProgramLoaded and state.source then
 		editor:setTextFormatted(state.source)
@@ -259,55 +303,21 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		ClientState.playerProgramLoaded = true
 	end
 
-	if hpBillboard then
-		hpBillboard:update(state.hp or 100, state.maxHp or 100)
-	end
-
 	if state.waveNumber then
 		ClientState.currentPhase = state.phase or "LOBBY"
 
-		hud.updateWave(state.waveNumber, state.wavePreview)
+		hud.updateWave(state.waveNumber, state.enemiesRemaining or 0, state.enemiesTotal or 0)
 		hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
-
-		local buildTimer = nil
-		if state.buildTimeRemaining and state.buildTimeRemaining > 0 then
-			buildTimer = math.ceil(state.buildTimeRemaining)
-		end
-		hud.updatePhase(state.phase or "LOBBY", buildTimer)
-
-		if state.nextWavePreview and state.nextWaveNumber then
-			hud.updateNextWave(state.nextWaveNumber, state.nextWavePreview)
-		end
+		hud.updatePhase(state.phase or "LOBBY")
 
 		ClientState.currentScrap = state.scrap or 0
+		hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, 75)
 
 		if state.scrapInventory then
 			hud.updateCargo(state.scrapInventory, state.maxCapacity or 50)
 		end
 
 		Overlays.updateGameState(state.phase, state.restartTimeRemaining)
-	end
-
-	Overlays.updateDeath(state.dead, state.deathTimeRemaining)
-
-	if state.dead then
-		local character = player.Character
-		if character then
-			local humanoid = character:FindFirstChild("Humanoid")
-			if humanoid then
-				humanoid.WalkSpeed = 0
-				humanoid.JumpPower = 0
-			end
-		end
-	else
-		local character = player.Character
-		if character then
-			local humanoid = character:FindFirstChild("Humanoid")
-			if humanoid and humanoid.WalkSpeed == 0 then
-				humanoid.WalkSpeed = Config.MANUAL_WALKING_SPEED
-				humanoid.JumpPower = 50
-			end
-		end
 	end
 end)
 
@@ -350,9 +360,17 @@ golemStateEvent.OnClientEvent:Connect(function(data)
 				dynamicRange = golemData.dynamicRange or 40,
 				status = golemData.paused and "PAUSED" or "ACTIVE",
 				tier = golemData.tier or 1,
-				tierName = golemData.tierName or "Basic",
+				tierName = golemData.tierName or "1 Hz",
 				upgradeCost = golemData.upgradeCost,
+				cpuHz = golemData.cpuHz or 1,
+				maxBytecode = golemData.maxBytecode or 32,
+				ramUpgradeCost = golemData.ramUpgradeCost,
 			})
+
+			if ClientState.currentInterpreterTarget.type == "golem" and ClientState.currentInterpreterTarget.golemId == golemData.id then
+				editor:setCpuHz(golemData.cpuHz or 1)
+				editor:setMaxBytecode(golemData.maxBytecode or 32)
+			end
 		end
 	end
 end)
@@ -400,30 +418,20 @@ botBuildEvent.OnClientEvent:Connect(function(success, result)
 	end
 end)
 
+waveStateEvent.OnClientEvent:Connect(function(state)
+	ClientState.currentPhase = state.phase or "LOBBY"
+	ClientState.currentScrap = state.scrap or 0
+
+	hud.updateWave(state.waveNumber, state.enemiesRemaining or 0, state.enemiesTotal or 0)
+	hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
+	hud.updatePhase(state.phase or "LOBBY")
+	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, 75)
+
+	Overlays.updateGameState(state.phase, state.restartTimeRemaining)
+end)
+
 attackHitEvent.OnClientEvent:Connect(function(data)
 	Effects.attackHit(data)
-end)
-
-playerHurtEvent.OnClientEvent:Connect(function(data)
-	Effects.playerHurt(data, workspace.CurrentCamera, screenGui)
-	if hpBillboard and data.newHp and data.maxHp then
-		hpBillboard:update(data.newHp, data.maxHp)
-	end
-end)
-
-beepEvent.OnClientEvent:Connect(function()
-	local sound = Instance.new("Sound")
-	sound.SoundId = "rbxassetid://9114074529"
-	sound.Volume = 0.5
-	sound.Parent = workspace
-	sound:Play()
-	sound.Ended:Connect(function() sound:Destroy() end)
-end)
-
-playAnimationEvent.OnClientEvent:Connect(function(animName, character)
-	if animName == "AxeSwing" then
-		Effects.playAxeSwing(character)
-	end
 end)
 
 playerTeleportEvent.OnClientEvent:Connect(function(x, z)
@@ -474,11 +482,6 @@ playerTeleportEvent.OnClientEvent:Connect(function(x, z)
 	end)
 end)
 
-golemMoveEvent.OnClientEvent:Connect(function(success, msg)
-	ClientState.isMovingGolem = false
-	ClientState.movingGolemId = nil
-end)
-
 golemSellEvent.OnClientEvent:Connect(function(success, result)
 	if success then
 		if ClientState.currentInterpreterTarget.type == "golem" then
@@ -524,7 +527,9 @@ golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
 					tier = tier,
 					tierName = tierName,
 					upgradeCost = golemData.upgradeCost,
-					unlockedAmmo = result.unlockedAmmo,
+					cpuHz = golemData.cpuHz or 1,
+					maxBytecode = golemData.maxBytecode or 32,
+					ramUpgradeCost = golemData.ramUpgradeCost,
 				})
 			end
 		end
@@ -572,23 +577,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 
 		local result = workspace:Raycast(ray.Origin, ray.Direction * 500, raycastParams)
 
-		if ClientState.isMovingGolem and ClientState.movingGolemId and result then
-			local hitPos = result.Position
-			golemMoveEvent:FireServer(ClientState.movingGolemId, hitPos.X, hitPos.Z)
-			return
-		end
-
 		if result and result.Instance then
 			local hitPart = result.Instance
 			local model = hitPart:FindFirstAncestorOfClass("Model")
-
-			if model then
-				local enemyId = model:GetAttribute("EnemyId")
-				if enemyId then
-					manualAttackEvent:FireServer()
-					return
-				end
-			end
 
 			if model then
 				local golemId = model:GetAttribute("GolemId")
@@ -605,8 +596,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 						dynamicRange = golemData.dynamicRange or 40,
 						status = golemData.paused and "PAUSED" or "ACTIVE",
 						tier = golemData.tier or 1,
-						tierName = golemData.tierName or "Basic",
+						tierName = golemData.tierName or "1 Hz",
 						upgradeCost = golemData.upgradeCost,
+						cpuHz = golemData.cpuHz or 1,
+						maxBytecode = golemData.maxBytecode or 32,
+						ramUpgradeCost = golemData.ramUpgradeCost,
 					})
 					enterGolemMind(golemId)
 					return
@@ -639,6 +633,8 @@ end)
 local mouse = player:GetMouse()
 
 RunService.RenderStepped:Connect(function(dt)
+	updateSelectionRing()
+
 	local mouseTarget = mouse.Hit
 	if not mouseTarget then return end
 
@@ -669,8 +665,6 @@ RunService.RenderStepped:Connect(function(dt)
 		local animState = botAnimStates[botId]
 
 		local isMoving = obj:GetAttribute("IsMoving") or false
-		local emoteType = obj:GetAttribute("EmoteType") or ""
-		local emoteEndTime = obj:GetAttribute("EmoteEndTime") or 0
 		local baseY = obj:GetAttribute("BaseY") or 2.5
 		local facingAngle = obj:GetAttribute("FacingAngle") or 0
 
@@ -683,27 +677,10 @@ RunService.RenderStepped:Connect(function(dt)
 		local tilt = math.sin(animState.walkCycle * 0.5) * 0.12
 		local lean = isMoving and -0.08 or 0
 
-		local emoteRotation = 0
-		local emoteYOffset = 0
-		local emoteTilt = 0
-
-		if emoteType ~= "" and tick() < emoteEndTime then
-			local emoteDuration = 2
-			local emoteProgress = 1 - ((emoteEndTime - tick()) / emoteDuration)
-
-			if emoteType == "spin" then
-				emoteRotation = emoteProgress * math.pi * 8
-			elseif emoteType == "jump" then
-				emoteYOffset = math.sin(emoteProgress * math.pi) * 3
-			elseif emoteType == "shake" then
-				emoteTilt = math.sin(tick() * 30) * 0.3
-			end
-		end
-
 		local serverPos = hrp.Position
-		hrp.CFrame = CFrame.new(serverPos.X, baseY + bounce + emoteYOffset, serverPos.Z)
-			* CFrame.Angles(0, facingAngle + emoteRotation, 0)
-			* CFrame.Angles(lean, emoteTilt, -tilt)
+		hrp.CFrame = CFrame.new(serverPos.X, baseY + bounce, serverPos.Z)
+			* CFrame.Angles(0, facingAngle, 0)
+			* CFrame.Angles(lean, 0, -tilt)
 	end
 end)
 
@@ -772,8 +749,6 @@ mouse.Button1Down:Connect(function()
 		exitBotMind()
 		return
 	end
-
-	manualAttackEvent:FireServer()
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -890,8 +865,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 							dynamicRange = golemData.dynamicRange or 40,
 							status = golemData.paused and "PAUSED" or "ACTIVE",
 							tier = golemData.tier or 1,
-							tierName = golemData.tierName or "Basic",
+							tierName = golemData.tierName or "1 Hz",
 							upgradeCost = golemData.upgradeCost,
+							cpuHz = golemData.cpuHz or 1,
+							maxBytecode = golemData.maxBytecode or 32,
+							ramUpgradeCost = golemData.ramUpgradeCost,
 						})
 						enterGolemMind(nearestId)
 					elseif nearestType == "bot" then

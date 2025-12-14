@@ -23,8 +23,7 @@ local Interpreter = nil
 local WaveManager = nil
 local EnemyManager = nil
 
-local mapData = nil
-local restrictedZones = {}
+local PathMap = nil
 local golemMinDistance = 8
 local nextGolemNumber = 1
 
@@ -34,8 +33,8 @@ local golemSellEvent = nil
 local golemFullStateEvent = nil
 local golemRegisterViewerEvent = nil
 local golemUnregisterViewerEvent = nil
-local golemMoveEvent = nil
 local golemUpgradeEvent = nil
+local golemUpgradeRAMEvent = nil
 local golemAmmoChangeEvent = nil
 
 local golemViewers = {}
@@ -99,15 +98,6 @@ function GolemRegistry.init(dependencies, interpreterModule)
 		end
 	end)
 
-	golemMoveEvent = Instance.new("RemoteEvent")
-	golemMoveEvent.Name = "GolemMove"
-	golemMoveEvent.Parent = PythonTD
-
-	golemMoveEvent.OnServerEvent:Connect(function(player, golemId, newX, newZ)
-		local success, msg = GolemRegistry.moveGolem(player, golemId, newX, newZ)
-		golemMoveEvent:FireClient(player, success, msg)
-	end)
-
 	golemUpgradeEvent = Instance.new("RemoteEvent")
 	golemUpgradeEvent.Name = "GolemUpgrade"
 	golemUpgradeEvent.Parent = PythonTD
@@ -115,6 +105,15 @@ function GolemRegistry.init(dependencies, interpreterModule)
 	golemUpgradeEvent.OnServerEvent:Connect(function(player, golemId)
 		local success, result = GolemRegistry.upgradeGolem(player, golemId)
 		golemUpgradeEvent:FireClient(player, success, result)
+	end)
+
+	golemUpgradeRAMEvent = Instance.new("RemoteEvent")
+	golemUpgradeRAMEvent.Name = "GolemUpgradeRAM"
+	golemUpgradeRAMEvent.Parent = PythonTD
+
+	golemUpgradeRAMEvent.OnServerEvent:Connect(function(player, golemId)
+		local success, result = GolemRegistry.upgradeRAM(player, golemId)
+		golemUpgradeRAMEvent:FireClient(player, success, result)
 	end)
 
 	golemAmmoChangeEvent = Instance.new("RemoteEvent")
@@ -138,52 +137,13 @@ function GolemRegistry.setEnemyManager(enemyMgr)
 	EnemyManager = enemyMgr
 end
 
-function GolemRegistry.setMapData(map)
-	mapData = map
-	restrictedZones = map.restrictedZones or {}
-	golemMinDistance = map.golemMinDistance or 8
-end
-
-local function isPointInCircle(px, pz, cx, cz, radius)
-	local dx = px - cx
-	local dz = pz - cz
-	return (dx * dx + dz * dz) <= (radius * radius)
-end
-
-local function isPointInRect(px, pz, x1, z1, x2, z2)
-	return px >= x1 and px <= x2 and pz >= z1 and pz <= z2
+function GolemRegistry.setPathMap(pathMapModule)
+	PathMap = pathMapModule
 end
 
 function GolemRegistry.isInRestrictedZone(x, z)
-	if not mapData then return false end
-
-	local mapWidth = (mapData.width or 50) * 6
-	local mapHeight = (mapData.height or 50) * 6
-
-	for _, zone in ipairs(restrictedZones) do
-		if zone.reason == "path" then
-			continue
-		end
-
-		if zone.type == "circle" then
-			if isPointInCircle(x, z, zone.x, zone.z, zone.radius) then
-				return true, zone.reason
-			end
-		elseif zone.type == "rect" then
-			if isPointInRect(x, z, zone.x1, zone.z1, zone.x2, zone.z2) then
-				return true, zone.reason
-			end
-		elseif zone.type == "line" then
-			continue
-		elseif zone.type == "boundary" then
-			local margin = zone.margin or 10
-			if x < margin or x > mapWidth - margin or z < margin or z > mapHeight - margin then
-				return true, zone.reason
-			end
-		end
-	end
-
-	return false
+	if not PathMap then return false end
+	return PathMap.isRestrictedForTurret(x, z, golemMinDistance)
 end
 
 function GolemRegistry.isTooCloseToOtherGolem(x, z, excludeId)
@@ -284,45 +244,12 @@ function GolemRegistry.sellGolem(player, golemId)
 	return true, refund
 end
 
-function GolemRegistry.moveGolem(player, golemId, newX, newZ)
-	local golem = golems[golemId]
-	if not golem then return false, "Golem not found" end
-
-	if golem.ownerId ~= player.UserId then
-		return false, "You don't own this golem"
-	end
-
-	if WaveManager then
-		local phase = WaveManager.getPhase()
-		if phase ~= "BUILD" and phase ~= "LOBBY" then
-			return false, "Can only move during BUILD phase"
-		end
-	end
-
-	local inZone, zoneReason = GolemRegistry.isInRestrictedZone(newX, newZ)
-	if inZone then
-		return false, "Cannot place here: " .. (zoneReason or "restricted area")
-	end
-
-	if GolemRegistry.isTooCloseToOtherGolem(newX, newZ, golemId) then
-		return false, "Too close to another turret"
-	end
-
-	if golem.character then
-		golem.character:PivotTo(CFrame.new(newX, GROUND_Y + 3, newZ))
-	end
-
-	GolemRegistry.broadcastState()
-
-	return true, "Moved successfully"
-end
-
 function GolemRegistry.getUpgradeCost(golemId)
 	local golem = golems[golemId]
 	if not golem then return nil end
 
 	local currentTier = golem.tier or 1
-	if currentTier >= GolemStats.MAX_TIER then return nil end
+	if currentTier >= GolemStats.MAX_CPU_TIER then return nil end
 
 	local nextTier = UpgradeTiers[currentTier + 1]
 	return nextTier and nextTier.upgradeCost or nil
@@ -339,8 +266,8 @@ function GolemRegistry.upgradeGolem(player, golemId)
 	end
 
 	local currentTier = golem.tier or 1
-	if currentTier >= GolemStats.MAX_TIER then
-		return false, "Already at max tier"
+	if currentTier >= GolemStats.MAX_CPU_TIER then
+		return false, "CPU already at max"
 	end
 
 	local nextTierData = UpgradeTiers[currentTier + 1]
@@ -396,6 +323,46 @@ function GolemRegistry.upgradeGolem(player, golemId)
 		tier = golem.tier,
 		tierName = newTierData.name,
 		unlockedAmmo = GolemStats.getUnlockedAmmo(golem.tier)
+	}
+end
+
+function GolemRegistry.upgradeRAM(player, golemId)
+	local golem = golems[golemId]
+	if not golem then
+		return false, "Golem not found"
+	end
+
+	if golem.ownerId ~= player.UserId then
+		return false, "You don't own this turret"
+	end
+
+	local currentRAMTier = golem.ramTier or 1
+	if currentRAMTier >= GolemStats.MAX_RAM_TIER then
+		return false, "RAM already at max"
+	end
+
+	local cost = GolemStats.getRAMUpgradeCost(currentRAMTier)
+	if not cost then
+		return false, "No upgrade available"
+	end
+
+	if WaveManager then
+		local scrap = WaveManager.getScrap()
+		if scrap < cost then
+			return false, "Not enough scrap (" .. scrap .. "/" .. cost .. ")"
+		end
+		WaveManager.removeScrap(cost)
+	end
+
+	golem.ramTier = currentRAMTier + 1
+	local newRAMData = GolemStats.RAMTiers[golem.ramTier]
+
+	GolemModel.applyColorUpgrade(golem)
+	GolemRegistry.broadcastState()
+
+	return true, {
+		ramTier = golem.ramTier,
+		maxBytecode = newRAMData.maxBytecode,
 	}
 end
 
@@ -473,6 +440,7 @@ function GolemRegistry.create(x, z)
 		spotId = nil,
 		ownerId = nil,
 		tier = 1,
+		ramTier = 1,
 
 		facingAngle = 0,
 		targetAngle = 0,
@@ -666,8 +634,9 @@ function GolemRegistry.update(dt)
 				end
 			end
 
+			local tickRate = GolemStats.getTickRate(golem.tier)
 			golem.tickAccum = (golem.tickAccum or 0) + dt
-			if golem.tickAccum >= (deps.Config.GOLEM_TICK_RATE or 0.1) then
+			if golem.tickAccum >= tickRate then
 				golem.tickAccum = 0
 				if interp.status == "READY" or interp.status == "RUNNING" then
 					local freeSteps = deps.Config.GOLEM_FREE_STEPS_PER_TICK or 8
@@ -973,70 +942,6 @@ function GolemRegistry.clear()
 	nextGolemNumber = 1
 end
 
-function GolemRegistry.createZoneVisuals()
-	if not mapData then return end
-
-	local existingFolder = workspace:FindFirstChild("ZoneVisuals")
-	if existingFolder then
-		existingFolder:Destroy()
-	end
-
-	local folder = Instance.new("Folder")
-	folder.Name = "ZoneVisuals"
-	folder.Parent = workspace
-
-	local pathMaterial = Enum.Material.ForceField
-	local pathColor = Color3.fromRGB(50, 200, 255)
-	local pathTransparency = 0.85
-
-	for i, zone in ipairs(restrictedZones) do
-		if zone.type == "circle" and zone.reason ~= "boundary" then
-			local part = Instance.new("Part")
-			part.Name = "Zone_" .. i .. "_" .. zone.reason
-			part.Shape = Enum.PartType.Cylinder
-			part.Size = Vector3.new(0.5, zone.radius * 2, zone.radius * 2)
-			part.Position = Vector3.new(zone.x, GROUND_Y + 0.3, zone.z)
-			part.Orientation = Vector3.new(0, 0, 90)
-			part.Anchored = true
-			part.CanCollide = false
-			part.Material = pathMaterial
-			part.Color = zone.reason == "core" and Color3.fromRGB(100, 200, 255) or pathColor
-			part.Transparency = pathTransparency
-			part.Parent = folder
-		elseif zone.type == "rect" then
-			local width = zone.x2 - zone.x1
-			local depth = zone.z2 - zone.z1
-			local part = Instance.new("Part")
-			part.Name = "Zone_" .. i .. "_" .. zone.reason
-			part.Size = Vector3.new(width, 0.5, depth)
-			part.Position = Vector3.new(zone.x1 + width / 2, GROUND_Y + 0.3, zone.z1 + depth / 2)
-			part.Anchored = true
-			part.CanCollide = false
-			part.Material = pathMaterial
-			part.Color = pathColor
-			part.Transparency = pathTransparency
-			part.Parent = folder
-		elseif zone.type == "line" then
-			local dx = zone.x2 - zone.x1
-			local dz = zone.z2 - zone.z1
-			local length = math.sqrt(dx * dx + dz * dz)
-			local angle = math.atan2(dx, dz)
-
-			local part = Instance.new("Part")
-			part.Name = "Zone_" .. i .. "_" .. zone.reason
-			part.Size = Vector3.new(zone.width, 0.5, length)
-			part.Position = Vector3.new((zone.x1 + zone.x2) / 2, GROUND_Y + 0.3, (zone.z1 + zone.z2) / 2)
-			part.Orientation = Vector3.new(0, math.deg(angle), 0)
-			part.Anchored = true
-			part.CanCollide = false
-			part.Material = pathMaterial
-			part.Color = pathColor
-			part.Transparency = pathTransparency
-			part.Parent = folder
-		end
-	end
-end
-
 function GolemRegistry.getStateForPlayer(player)
 	local golemList = {}
 	local playerId = player and player.UserId or nil
@@ -1047,6 +952,10 @@ function GolemRegistry.getStateForPlayer(player)
 			local tier = golem.tier or 1
 			local tierData = UpgradeTiers[tier]
 			local upgradeCost = GolemRegistry.getUpgradeCost(id)
+
+			local ramTier = golem.ramTier or 1
+			local ramTierData = GolemStats.RAMTiers[ramTier]
+			local ramUpgradeCost = GolemStats.getRAMUpgradeCost(ramTier)
 
 			table.insert(golemList, {
 				id = id,
@@ -1059,9 +968,12 @@ function GolemRegistry.getStateForPlayer(player)
 				ownerId = golem.ownerId,
 				paused = interp.paused or false,
 				tier = tier,
-				tierName = tierData and tierData.name or "Basic",
+				tierName = tierData and tierData.name or "1 Hz",
 				upgradeCost = upgradeCost,
-				maxBytecode = tierData and tierData.maxBytecode or 64,
+				cpuHz = tierData and tierData.cpuHz or 1,
+				ramTier = ramTier,
+				maxBytecode = ramTierData and ramTierData.maxBytecode or 32,
+				ramUpgradeCost = ramUpgradeCost,
 				unlockedAmmo = GolemStats.getUnlockedAmmo(tier),
 				selectedAmmoType = golem.selectedAmmoType or 1,
 			})
@@ -1102,8 +1014,12 @@ function GolemRegistry.getGolemStats()
 	return GolemStats.BASE
 end
 
-function GolemRegistry.getMaxBytecode(tier)
-	return GolemStats.getMaxBytecode(tier)
+function GolemRegistry.getCpuHz(tier)
+	return GolemStats.getCpuHz(tier)
+end
+
+function GolemRegistry.getMaxBytecode(ramTier)
+	return GolemStats.getMaxBytecode(ramTier)
 end
 
 function GolemRegistry.startUpdateLoop()

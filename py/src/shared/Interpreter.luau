@@ -18,9 +18,6 @@ function Interpreter.new(player, isMonster, deps)
 	self.player = not isMonster and player or nil
 	self.character = nil
 
-	self.hp = deps.Config.DEFAULT_HP
-	self.maxHp = deps.Config.DEFAULT_HP
-
 	-- Python runtime
 	self.runtime = Python.createRuntime()
 	self.source = ""
@@ -259,25 +256,15 @@ function Interpreter:getDynamicState()
 	end
 
 	return {
-		-- VM state (client derives currentLine from bytecode[ip].line)
 		vm = vmState,
 		bytecode = bytecode,
-
-		-- Interpreter state
 		status = self.status,
 		error = self.error,
 		output = output,
 		paused = self.paused,
-		dead = self.dead,
-
-		-- Game state
-		hp = self.hp,
-		maxHp = self.maxHp,
 		ammo = self.ammo,
 		maxAmmo = self.maxAmmo,
 		dynamicRange = self.dynamicRange,
-
-		-- Python variables
 		variables = variables,
 	}
 end

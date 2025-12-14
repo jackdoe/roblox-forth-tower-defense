@@ -2,44 +2,11 @@ local TweenService = game:GetService("TweenService")
 
 local Overlays = {}
 
-local deathOverlay, respawnLabel
 local gameOverOverlay, restartCountdownLabel
 local victoryOverlay
 local notificationFrame, notificationTitle, notificationWord, notificationHint
 
 function Overlays.create(screenGui)
-	deathOverlay = Instance.new("Frame")
-	deathOverlay.Name = "DeathOverlay"
-	deathOverlay.Size = UDim2.new(1, 0, 0, 60)
-	deathOverlay.Position = UDim2.new(0, 0, 0.4, 0)
-	deathOverlay.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
-	deathOverlay.BackgroundTransparency = 0.3
-	deathOverlay.BorderSizePixel = 0
-	deathOverlay.Visible = false
-	deathOverlay.ZIndex = 50
-	deathOverlay.Parent = screenGui
-
-	local deathLabel = Instance.new("TextLabel")
-	deathLabel.Size = UDim2.new(1, 0, 1, 0)
-	deathLabel.BackgroundTransparency = 1
-	deathLabel.Text = "YOU DIED"
-	deathLabel.TextColor3 = Color3.fromRGB(200, 100, 100)
-	deathLabel.Font = Enum.Font.GothamBold
-	deathLabel.TextSize = 28
-	deathLabel.Parent = deathOverlay
-
-	respawnLabel = Instance.new("TextLabel")
-	respawnLabel.Size = UDim2.new(1, 0, 0, 20)
-	respawnLabel.Position = UDim2.new(0, 0, 0.55, 0)
-	respawnLabel.BackgroundTransparency = 1
-	respawnLabel.Text = "Respawning in 10..."
-	respawnLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-	respawnLabel.Font = Enum.Font.Gotham
-	respawnLabel.TextSize = 14
-	respawnLabel.ZIndex = 51
-	respawnLabel.Visible = false
-	respawnLabel.Parent = screenGui
-
 	gameOverOverlay = Instance.new("Frame")
 	gameOverOverlay.Name = "GameOverOverlay"
 	gameOverOverlay.Size = UDim2.new(1, 0, 0, 100)
@@ -168,15 +135,6 @@ function Overlays.showNotification(title, word, hint, duration)
 		tweenOut.Completed:Wait()
 		notificationFrame.Visible = false
 	end)
-end
-
-function Overlays.updateDeath(isDead, timeRemaining)
-	deathOverlay.Visible = isDead
-	respawnLabel.Visible = isDead
-
-	if isDead and timeRemaining then
-		respawnLabel.Text = "Respawning in " .. math.ceil(timeRemaining) .. "..."
-	end
 end
 
 function Overlays.updateGameState(phase, restartTime)

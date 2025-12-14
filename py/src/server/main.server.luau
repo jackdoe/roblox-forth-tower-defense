@@ -12,7 +12,8 @@ local GolemRegistry = require(script.Parent.GolemRegistry)
 local ScrapManager = require(script.Parent.ScrapManager)
 local BotRegistry = require(script.Parent.BotRegistry)
 local PlayerCombat = require(script.Parent.PlayerCombat)
-local ArenaMap = require(script.Parent.maps.Arena)
+local MapGenerator = require(script.Parent.maps.MapGenerator)
+local PathMap = require(script.Parent.PathMap)
 
 local RemoteEvents = require(script.Parent.RemoteEvents)
 local PlayerManager = require(script.Parent.PlayerManager)
@@ -25,9 +26,6 @@ local deps = {
 	Config = Config,
 	EntityRegistry = EntityRegistry,
 	attackHitEvent = RemoteEvents.attackHit,
-	playerHurtEvent = RemoteEvents.playerHurt,
-	beepEvent = RemoteEvents.beep,
-	playAnimationEvent = RemoteEvents.playAnimation,
 	stateUpdateEvent = RemoteEvents.stateUpdate,
 	WaveManager = nil,
 	EnemyManager = nil,
@@ -62,8 +60,19 @@ deps.BotRegistry = BotRegistry
 PlayerCombat.init(deps)
 deps.PlayerCombat = PlayerCombat
 
-UnitSpawning.init(GolemRegistry, BotRegistry, ArenaMap)
-PlayerManager.init(deps, ArenaMap, UnitSpawning)
+PathMap.init(MapGenerator.getLayout(), MapGenerator.getCellSize())
+
+local mapConfig = {
+	core = PathMap.getCoreWorldPos(),
+	playerSpawn = PathMap.getPlayerSpawn(),
+	spawnGates = PathMap.getSpawnGates(),
+	initialGolems = {},
+	initialBots = {},
+}
+mapConfig.core.hp = Config.CORE_HP
+
+UnitSpawning.init(GolemRegistry, BotRegistry, mapConfig)
+PlayerManager.init(deps, mapConfig, UnitSpawning)
 
 WaveManager.setOnWaveStart(function(waveNumber)
 	UnitSpawning.spawnForWave(waveNumber)
@@ -116,33 +125,28 @@ end)
 
 EnemyManager.startUpdateLoop()
 GolemRegistry.startUpdateLoop()
-ScrapManager.startUpdateLoop()
 BotRegistry.startUpdateLoop()
 
-local function loadArenaMap()
-	WaveManager.createCore(ArenaMap.core)
-	EnemyManager.setSpawnGates(ArenaMap.spawnGates)
-	if ArenaMap.enemyPath then
-		EnemyManager.setEnemyPath(ArenaMap.enemyPath)
-	end
-	WaveManager.createGateVisuals(ArenaMap.spawnGates)
-	GolemRegistry.setMapData(ArenaMap)
+local function loadMap()
+	WaveManager.createCore(mapConfig.core)
+	WaveManager.createGateVisuals(mapConfig.spawnGates)
+	EnemyManager.setSpawnGates(mapConfig.spawnGates)
+	GolemRegistry.setPathMap(PathMap)
 
-	local floorSize = ArenaMap.width * Config.CELL_SIZE
+	local worldW, worldH = PathMap.getWorldSize()
 	local floor = Instance.new("Part")
 	floor.Name = "ArenaFloor"
-	floor.Size = Vector3.new(floorSize, 4, floorSize)
-	floor.Position = Vector3.new(floorSize / 2, Config.PLATFORM_Y - 2, floorSize / 2)
+	floor.Size = Vector3.new(worldW, 4, worldH)
+	floor.Position = Vector3.new(worldW / 2, Config.PLATFORM_Y - 2, worldH / 2)
 	floor.Anchored = true
 	floor.Material = Config.FLOOR_MATERIAL
 	floor.Color = Color3.fromRGB(60, 70, 80)
 	floor.Parent = workspace
 
-	GolemRegistry.createZoneVisuals()
 	UnitSpawning.spawnForWave(1)
 end
 
-loadArenaMap()
+loadMap()
 
 Players.PlayerAdded:Connect(PlayerManager.onPlayerAdded)
 Players.PlayerRemoving:Connect(PlayerManager.onPlayerRemoving)
@@ -233,9 +237,9 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, target)
 				end
 			elseif target.type == "golem" then
 				if golem then
-					local maxBytecode = GolemRegistry.getMaxBytecode(golem.tier)
+					local maxBytecode = GolemRegistry.getMaxBytecode(golem.ramTier)
 					if instructionCount > maxBytecode then
-						interp.error = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions) - Upgrade for more!"
+						interp.error = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions)"
 						interp.status = "ERROR"
 						sendInterpreterState(player, target)
 						return
@@ -283,23 +287,6 @@ RemoteEvents.resetProgram.OnServerEvent:Connect(function(player)
 	RemoteEvents.stateUpdate:FireClient(player, interp:getState())
 end)
 
-RemoteEvents.manualAttack.OnServerEvent:Connect(function(player)
-	if not PlayerManager.checkRateLimit(player, "attack", 0.2) then return end
-
-	local interp = PlayerManager.get(player.UserId)
-	if not interp then return end
-
-	if player.Character then
-		interp.character = player.Character
-	end
-
-	if interp.gameEnv and interp.gameEnv.hit then
-		interp.gameEnv.hit()
-	end
-
-	RemoteEvents.stateUpdate:FireClient(player, interp:getState())
-end)
-
 RemoteEvents.playerMoveComplete.OnServerEvent:Connect(function(player)
 	local interp = PlayerManager.get(player.UserId)
 	if interp and interp.runtime and interp.runtime.vm then
@@ -341,9 +328,7 @@ RunService.Heartbeat:Connect(function(dt)
 					interp.character = player.Character
 				end
 
-				PlayerManager.updateDeath(interp)
-
-				if not interp.paused and not interp.dead and (interp.status == "READY" or interp.status == "RUNNING") then
+				if not interp.paused and (interp.status == "READY" or interp.status == "RUNNING") then
 					interp:run(Config.PLAYER_TICKS_PER_UPDATE or 1)
 				end
 
@@ -355,5 +340,6 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 
 		GolemRegistry.broadcastState()
+		BotRegistry.broadcastState()
 	end
 end)

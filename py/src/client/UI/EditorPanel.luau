@@ -2,13 +2,15 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local DragModule = require(script.Parent.DragModule)
 local UITheme = require(script.Parent.UITheme)
-local HelpDatabase = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("HelpDatabase"))
 local Python = require(ReplicatedStorage:WaitForChild("PythonTD"):WaitForChild("Python"))
 
 local EditorPanel = {}
+local THEMES = UITheme.THEMES
+local COLORS = UITheme.COLORS
 
 local MAX_CHARS = 300
 local DEFAULT_RAM = 32
+local DEFAULT_CPU_HZ = 1
 
 local function formatCode(source)
 	local lines = {}
@@ -22,43 +24,19 @@ local function formatCode(source)
 	return table.concat(lines, "\n")
 end
 
-local THEMES = {
-	player = {
-		topBarBg = UITheme.THEMES.player.headerBg,
-		frameBg = UITheme.THEMES.player.frameBg,
-		startBtn = Color3.fromRGB(60, 100, 60),
-		accent = UITheme.THEMES.player.accent,
-		modeColor = UITheme.THEMES.player.accent,
-	},
-	golem = {
-		topBarBg = UITheme.THEMES.golem.headerBg,
-		frameBg = UITheme.THEMES.golem.frameBg,
-		startBtn = Color3.fromRGB(80, 80, 90),
-		accent = UITheme.THEMES.golem.accent,
-		modeColor = Color3.fromRGB(200, 200, 220),
-	},
-	bot = {
-		topBarBg = UITheme.THEMES.bot.headerBg,
-		frameBg = UITheme.THEMES.bot.frameBg,
-		startBtn = Color3.fromRGB(120, 80, 40),
-		accent = UITheme.THEMES.bot.accent,
-		modeColor = UITheme.THEMES.bot.varName,
-	}
-}
-
 function EditorPanel.create(parent, callbacks)
 	local panel = {}
 	callbacks = callbacks or {}
 
 	local currentMode = "player"
 	local currentMaxRAM = DEFAULT_RAM
+	local currentCpuHz = DEFAULT_CPU_HZ
 
-	-- Main frame (compact: ~6 lines of code visible, aligned with debugger below)
 	local frame = Instance.new("Frame")
 	frame.Name = "EditorPanel"
-	frame.Size = UDim2.new(0, 340, 0, 150)  -- Same width as debugger (340px)
-	frame.Position = UDim2.new(1, -350, 1, -518)  -- Above debugger: -360 - 150 - 8 gap = -518
-	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	frame.Size = UDim2.new(0, 380, 0, 260)
+	frame.Position = UDim2.new(1, -390, 1, -628)
+	frame.BackgroundColor3 = THEMES.player.frameBg
 	frame.BorderSizePixel = 0
 	frame.Parent = parent
 
@@ -77,11 +55,10 @@ function EditorPanel.create(parent, callbacks)
 	inputSink.ZIndex = 0  -- Behind all other elements
 	inputSink.Parent = frame
 
-	-- Top bar (compact)
 	local topBar = Instance.new("Frame")
 	topBar.Name = "TopBar"
 	topBar.Size = UDim2.new(1, 0, 0, 32)
-	topBar.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	topBar.BackgroundColor3 = THEMES.player.headerBg
 	topBar.BorderSizePixel = 0
 	topBar.Parent = frame
 
@@ -91,16 +68,15 @@ function EditorPanel.create(parent, callbacks)
 
 	DragModule.makeDraggable(frame, topBar)
 
-	-- Mode indicator badge (shows unit type and ID)
 	local modeIndicator = Instance.new("TextLabel")
 	modeIndicator.Name = "ModeIndicator"
 	modeIndicator.Size = UDim2.new(0, 80, 0, 20)
 	modeIndicator.Position = UDim2.new(0.5, -40, 0, -24)
-	modeIndicator.BackgroundColor3 = Color3.fromRGB(100, 70, 30)
+	modeIndicator.BackgroundColor3 = THEMES.bot.headerBg
 	modeIndicator.BackgroundTransparency = 0.2
 	modeIndicator.BorderSizePixel = 0
 	modeIndicator.Text = ""
-	modeIndicator.TextColor3 = Color3.fromRGB(255, 200, 100)
+	modeIndicator.TextColor3 = THEMES.bot.accent
 	modeIndicator.Font = Enum.Font.GothamBold
 	modeIndicator.TextSize = 12
 	modeIndicator.Visible = false
@@ -110,15 +86,30 @@ function EditorPanel.create(parent, callbacks)
 	modeCorner.CornerRadius = UDim.new(0, 6)
 	modeCorner.Parent = modeIndicator
 
-	-- RAM display (top-right of top bar, shows instruction count)
+	local cpuLabel = Instance.new("TextLabel")
+	cpuLabel.Name = "CPULabel"
+	cpuLabel.Size = UDim2.new(0, 50, 0, 22)
+	cpuLabel.Position = UDim2.new(1, -130, 0, 5)
+	cpuLabel.BackgroundColor3 = COLORS.bg
+	cpuLabel.BackgroundTransparency = 0.3
+	cpuLabel.Text = "1 Hz"
+	cpuLabel.TextColor3 = COLORS.success
+	cpuLabel.Font = Enum.Font.Code
+	cpuLabel.TextSize = 9
+	cpuLabel.Parent = topBar
+
+	local cpuCorner = Instance.new("UICorner")
+	cpuCorner.CornerRadius = UDim.new(0, 4)
+	cpuCorner.Parent = cpuLabel
+
 	local ramLabel = Instance.new("TextLabel")
 	ramLabel.Name = "RAMLabel"
 	ramLabel.Size = UDim2.new(0, 70, 0, 22)
 	ramLabel.Position = UDim2.new(1, -75, 0, 5)
-	ramLabel.BackgroundColor3 = Color3.fromRGB(30, 40, 50)
+	ramLabel.BackgroundColor3 = COLORS.bg
 	ramLabel.BackgroundTransparency = 0.3
 	ramLabel.Text = "RAM: 0/32"
-	ramLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+	ramLabel.TextColor3 = COLORS.accent
 	ramLabel.Font = Enum.Font.Code
 	ramLabel.TextSize = 9
 	ramLabel.Parent = topBar
@@ -129,14 +120,13 @@ function EditorPanel.create(parent, callbacks)
 
 	-- SELL and MOVE buttons removed from IDE - now in HUD inspector panel
 
-	-- Control buttons (compact)
 	local startBtn = Instance.new("TextButton")
 	startBtn.Name = "StartBtn"
 	startBtn.Size = UDim2.new(0, 50, 0, 22)
 	startBtn.Position = UDim2.new(0, 4, 0, 5)
-	startBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
+	startBtn.BackgroundColor3 = COLORS.success
 	startBtn.Text = "RUN ^1"
-	startBtn.TextColor3 = Color3.fromRGB(200, 255, 200)
+	startBtn.TextColor3 = COLORS.text
 	startBtn.Font = Enum.Font.GothamBold
 	startBtn.TextSize = 9
 	startBtn.Parent = topBar
@@ -149,9 +139,9 @@ function EditorPanel.create(parent, callbacks)
 	pauseBtn.Name = "PauseBtn"
 	pauseBtn.Size = UDim2.new(0, 55, 0, 22)
 	pauseBtn.Position = UDim2.new(0, 58, 0, 5)
-	pauseBtn.BackgroundColor3 = Color3.fromRGB(100, 80, 60)
+	pauseBtn.BackgroundColor3 = COLORS.warning
 	pauseBtn.Text = "PAUSE ^2"
-	pauseBtn.TextColor3 = Color3.fromRGB(255, 220, 200)
+	pauseBtn.TextColor3 = COLORS.text
 	pauseBtn.Font = Enum.Font.GothamBold
 	pauseBtn.TextSize = 9
 	pauseBtn.Parent = topBar
@@ -164,9 +154,9 @@ function EditorPanel.create(parent, callbacks)
 	stepBtn.Name = "StepBtn"
 	stepBtn.Size = UDim2.new(0, 50, 0, 22)
 	stepBtn.Position = UDim2.new(0, 117, 0, 5)
-	stepBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
+	stepBtn.BackgroundColor3 = COLORS.panel
 	stepBtn.Text = "STEP ^3"
-	stepBtn.TextColor3 = Color3.fromRGB(200, 200, 255)
+	stepBtn.TextColor3 = COLORS.text
 	stepBtn.Font = Enum.Font.GothamBold
 	stepBtn.TextSize = 9
 	stepBtn.Parent = topBar
@@ -175,40 +165,6 @@ function EditorPanel.create(parent, callbacks)
 	stepBtnCorner.CornerRadius = UDim.new(0, 4)
 	stepBtnCorner.Parent = stepBtn
 
-	local helpBtn = Instance.new("TextButton")
-	helpBtn.Name = "HelpBtn"
-	helpBtn.Size = UDim2.new(0, 22, 0, 22)
-	helpBtn.Position = UDim2.new(0, 171, 0, 5)
-	helpBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 100)
-	helpBtn.Text = "?"
-	helpBtn.TextColor3 = Color3.fromRGB(150, 150, 255)
-	helpBtn.Font = Enum.Font.GothamBold
-	helpBtn.TextSize = 12
-	helpBtn.Parent = topBar
-
-	local helpBtnCorner = Instance.new("UICorner")
-	helpBtnCorner.CornerRadius = UDim.new(0, 4)
-	helpBtnCorner.Parent = helpBtn
-
-	helpBtn.MouseButton1Click:Connect(function()
-		if callbacks.onHelp then
-			callbacks.onHelp()
-		end
-	end)
-
-	-- Character counter (shows current/max) - hidden by default, only for bot mode
-	local charCountLabel = Instance.new("TextLabel")
-	charCountLabel.Name = "CharCount"
-	charCountLabel.Size = UDim2.new(0, 55, 0, 22)
-	charCountLabel.Position = UDim2.new(0, 197, 0, 5)
-	charCountLabel.BackgroundTransparency = 1
-	charCountLabel.Text = "0/" .. MAX_CHARS
-	charCountLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
-	charCountLabel.Font = Enum.Font.Code
-	charCountLabel.TextSize = 9
-	charCountLabel.TextXAlignment = Enum.TextXAlignment.Right
-	charCountLabel.Visible = false  -- Only show in bot mode
-	charCountLabel.Parent = topBar
 
 	-- Line numbers (inside its own scrolling frame to sync with code)
 	local lineScroll = Instance.new("ScrollingFrame")
@@ -228,7 +184,7 @@ function EditorPanel.create(parent, callbacks)
 	lineNumbers.Position = UDim2.new(0, 0, 0, 0)
 	lineNumbers.BackgroundTransparency = 1
 	lineNumbers.Text = "1\n2\n3\n4\n5\n6\n7\n8"
-	lineNumbers.TextColor3 = Color3.fromRGB(100, 100, 120)
+	lineNumbers.TextColor3 = COLORS.subtext
 	lineNumbers.TextXAlignment = Enum.TextXAlignment.Right
 	lineNumbers.TextYAlignment = Enum.TextYAlignment.Top
 	lineNumbers.Font = Enum.Font.Code
@@ -236,36 +192,34 @@ function EditorPanel.create(parent, callbacks)
 	lineNumbers.AutomaticSize = Enum.AutomaticSize.Y
 	lineNumbers.Parent = lineScroll
 
-	-- Code input container (ScrollingFrame for scrolling long programs)
 	local codeScroll = Instance.new("ScrollingFrame")
 	codeScroll.Name = "CodeScroll"
-	codeScroll.Size = UDim2.new(1, -35, 1, -82)  -- Room for top bar + suggestion bar + hints (compact)
+	codeScroll.Size = UDim2.new(1, -35, 1, -82)
 	codeScroll.Position = UDim2.new(0, 30, 0, 33)
 	codeScroll.BackgroundTransparency = 1
 	codeScroll.BorderSizePixel = 0
 	codeScroll.ScrollBarThickness = 4
-	codeScroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-	codeScroll.CanvasSize = UDim2.new(0, 0, 0, 500) -- Will be updated dynamically
+	codeScroll.ScrollBarImageColor3 = COLORS.subtext
+	codeScroll.CanvasSize = UDim2.new(0, 0, 0, 500)
 	codeScroll.ScrollingEnabled = true
 	codeScroll.Parent = frame
 
-	-- Code input (TextBox inside ScrollingFrame)
 	local textBox = Instance.new("TextBox")
 	textBox.Name = "CodeInput"
-	textBox.Size = UDim2.new(1, -10, 1, 0) -- Fill the scroll area
+	textBox.Size = UDim2.new(1, -10, 1, 0)
 	textBox.Position = UDim2.new(0, 0, 0, 0)
 	textBox.BackgroundTransparency = 1
 	textBox.Text = ""
 	textBox.PlaceholderText = "Enter Python code..."
-	textBox.PlaceholderColor3 = Color3.fromRGB(80, 80, 100)
-	textBox.TextColor3 = Color3.fromRGB(220, 220, 240)
+	textBox.PlaceholderColor3 = COLORS.subtext
+	textBox.TextColor3 = COLORS.text
 	textBox.TextXAlignment = Enum.TextXAlignment.Left
 	textBox.TextYAlignment = Enum.TextYAlignment.Top
 	textBox.Font = Enum.Font.Code
 	textBox.TextSize = 14
 	textBox.MultiLine = true
 	textBox.ClearTextOnFocus = false
-	textBox.TextWrapped = false -- Allow horizontal overflow
+	textBox.TextWrapped = false
 	textBox.Parent = codeScroll
 
 	-- Sync line numbers scroll with code scroll
@@ -273,12 +227,11 @@ function EditorPanel.create(parent, callbacks)
 		lineScroll.CanvasPosition = Vector2.new(0, codeScroll.CanvasPosition.Y)
 	end)
 
-	-- Suggestion bar (autocomplete snippets)
 	local suggestBar = Instance.new("ScrollingFrame")
 	suggestBar.Name = "SuggestBar"
 	suggestBar.Size = UDim2.new(1, -6, 0, 20)
 	suggestBar.Position = UDim2.new(0, 3, 1, -35)
-	suggestBar.BackgroundColor3 = Color3.fromRGB(25, 30, 35)
+	suggestBar.BackgroundColor3 = COLORS.bg
 	suggestBar.BorderSizePixel = 0
 	suggestBar.ScrollBarThickness = 0
 	suggestBar.ScrollingDirection = Enum.ScrollingDirection.X
@@ -301,17 +254,16 @@ function EditorPanel.create(parent, callbacks)
 	suggestPadding.PaddingTop = UDim.new(0, 2)
 	suggestPadding.Parent = suggestBar
 
-	-- Pool of suggestion buttons
 	local MAX_SUGGESTIONS = 10
 	local suggestionBtns = {}
-	local suggestionConns = {}  -- Store click connections separately
+	local suggestionConns = {}
 	for i = 1, MAX_SUGGESTIONS do
 		local btn = Instance.new("TextButton")
 		btn.Name = "Suggest" .. i
 		btn.Size = UDim2.new(0, 70, 0, 16)
-		btn.BackgroundColor3 = Color3.fromRGB(50, 60, 70)
+		btn.BackgroundColor3 = COLORS.panel
 		btn.Text = ""
-		btn.TextColor3 = Color3.fromRGB(180, 200, 220)
+		btn.TextColor3 = COLORS.text
 		btn.Font = Enum.Font.Code
 		btn.TextSize = 9
 		btn.AutomaticSize = Enum.AutomaticSize.X
@@ -332,16 +284,15 @@ function EditorPanel.create(parent, callbacks)
 		suggestionConns[i] = nil
 	end
 
-	-- Help tooltip (shows above suggestion bar when 1 match)
 	local helpTooltip = Instance.new("TextLabel")
 	helpTooltip.Name = "HelpTooltip"
 	helpTooltip.Size = UDim2.new(1, -6, 0, 14)
 	helpTooltip.Position = UDim2.new(0, 3, 1, -50)
-	helpTooltip.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
+	helpTooltip.BackgroundColor3 = COLORS.panel
 	helpTooltip.BackgroundTransparency = 0.1
 	helpTooltip.BorderSizePixel = 0
 	helpTooltip.Text = ""
-	helpTooltip.TextColor3 = Color3.fromRGB(150, 200, 150)
+	helpTooltip.TextColor3 = COLORS.success
 	helpTooltip.Font = Enum.Font.Code
 	helpTooltip.TextSize = 9
 	helpTooltip.TextXAlignment = Enum.TextXAlignment.Left
@@ -359,14 +310,14 @@ function EditorPanel.create(parent, callbacks)
 	-- Hints bar and old memory label removed - RAM now shown in top bar
 
 	-- Update line numbers and sync canvas sizes
-	local LINE_HEIGHT = 16 -- Approximate height per line at TextSize 14
+	local LINE_HEIGHT = 16
 	local function updateLineNumbers()
 		local text = textBox.Text
 		local lines = 1
 		for _ in string.gmatch(text, "\n") do
 			lines = lines + 1
 		end
-		lines = math.max(lines, 8)
+		lines = math.max(lines, 10)
 		local nums = {}
 		for i = 1, lines do
 			table.insert(nums, tostring(i))
@@ -387,29 +338,6 @@ function EditorPanel.create(parent, callbacks)
 	end
 
 	textBox:GetPropertyChangedSignal("Text"):Connect(updateLineNumbers)
-
-	-- Character count update
-	local function updateCharCount()
-		local text = textBox.Text
-		local len = #text
-		charCountLabel.Text = len .. "/" .. MAX_CHARS
-
-		if len > MAX_CHARS then
-			-- Over limit: red text, disable run
-			charCountLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-			startBtn.Active = false
-			startBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-			startBtn.Text = "LONG!"
-		else
-			-- Under limit: gray text, enable run
-			charCountLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
-			startBtn.Active = true
-			startBtn.BackgroundColor3 = THEMES[currentMode].startBtn
-			startBtn.Text = "RUN ^1"
-		end
-	end
-
-	textBox:GetPropertyChangedSignal("Text"):Connect(updateCharCount)
 
 	local lastInstructionCount = 0
 	local function updateInstructionCount()
@@ -519,10 +447,6 @@ function EditorPanel.create(parent, callbacks)
 		-- Personality
 		{word = "say", snippet = "say('')", help = "say(msg) | Show chat bubble"},
 		{word = "color", snippet = "color('cyan')", help = "color(name) | red/blue/green/cyan/..."},
-		{word = "dance", snippet = "dance()", help = "dance() | Spin animation"},
-		{word = "jump", snippet = "jump()", help = "jump() | Hop animation"},
-		{word = "shake", snippet = "shake()", help = "shake() | Shiver animation"},
-		{word = "emote", snippet = "emote('happy')", help = "emote(type) | happy/panic/spin"},
 		-- Combat
 		{word = "shield", snippet = "shield()", help = "shield(sec) | Activate shield"},
 		{word = "shielded", snippet = "shielded()", help = "shielded() -> bool | Shield active?"},
@@ -574,7 +498,6 @@ function EditorPanel.create(parent, callbacks)
 		{word = "scraps", snippet = "scraps()", help = "scraps() -> list | All scrap"},
 		{word = "collect", snippet = "collect(s[0])", help = "collect(scrap) | Pick up scrap"},
 		{word = "supply", snippet = "supply(T1)", help = "supply(turret) | Give ammo"},
-		{word = "hit", snippet = "hit()", help = "hit() -> bool | Melee attack"},
 	}
 
 	-- Golem self methods (when editing turret code)
@@ -872,10 +795,10 @@ function EditorPanel.create(parent, callbacks)
 	function panel:setPaused(paused)
 		if paused then
 			pauseBtn.Text = "PLAY ^2"
-			pauseBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
+			pauseBtn.BackgroundColor3 = COLORS.success
 		else
 			pauseBtn.Text = "PAUSE ^2"
-			pauseBtn.BackgroundColor3 = Color3.fromRGB(100, 80, 60)
+			pauseBtn.BackgroundColor3 = COLORS.warning
 		end
 	end
 
@@ -905,56 +828,57 @@ function EditorPanel.create(parent, callbacks)
 
 	local currentWeaponName = "BULLET"
 
-	function panel:setMode(mode, spotId, maxRAM)
+	function panel:setMode(mode, spotId, maxRAM, cpuHz)
 		currentMode = mode or "player"
 		currentMaxRAM = maxRAM or DEFAULT_RAM
+		currentCpuHz = cpuHz or DEFAULT_CPU_HZ
 		local theme = THEMES[currentMode] or THEMES.player
 
 		frame.BackgroundColor3 = theme.frameBg
-		topBar.BackgroundColor3 = theme.topBarBg
+		topBar.BackgroundColor3 = theme.headerBg
 
 		panel:setMemoryUsage(0, currentMaxRAM)
+		panel:setCpuHz(currentCpuHz)
 		updateInstructionCount()
 
 		if currentMode == "player" then
-			-- Player mode: READ-ONLY but with debugger controls
 			modeIndicator.Text = currentWeaponName
-			modeIndicator.TextColor3 = theme.modeColor
-			modeIndicator.BackgroundColor3 = theme.topBarBg
+			modeIndicator.TextColor3 = theme.accent
+			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
-			startBtn.Visible = false  -- No RUN - weapons auto-run
-			pauseBtn.Visible = true   -- Can pause weapon
-			stepBtn.Visible = true    -- Can step through
-			charCountLabel.Visible = false  -- No char limit for weapons
-			textBox.TextEditable = false  -- READ-ONLY (change weapons with 1-4)
-			textBox.Active = false  -- Prevent focus/click capture so WASD still works
+			startBtn.Visible = false
+			pauseBtn.Visible = true
+			stepBtn.Visible = true
+			cpuLabel.Visible = false
+			ramLabel.Visible = false
+			textBox.TextEditable = false
+			textBox.Active = false
 		elseif currentMode == "golem" then
-			-- Turret mode: FULL PROGRAMMING (like bots)
 			modeIndicator.Text = "TURRET #" .. (spotId or "?")
-			modeIndicator.TextColor3 = theme.modeColor
-			modeIndicator.BackgroundColor3 = theme.topBarBg
-			modeIndicator.Visible = true
-			-- Show all controls - turrets are now fully programmable
-			startBtn.Visible = true
-			startBtn.BackgroundColor3 = theme.startBtn or COLORS.accent
-			pauseBtn.Visible = true
-			stepBtn.Visible = true
-			charCountLabel.Visible = true  -- Show RAM limit
-			textBox.TextEditable = true  -- EDITABLE
-			textBox.Active = true  -- Allow focus/editing
-		elseif currentMode == "bot" then
-			-- Bot mode: FULL PROGRAMMING
-			modeIndicator.Text = "BOT #" .. (spotId or "?")
-			modeIndicator.TextColor3 = theme.modeColor
-			modeIndicator.BackgroundColor3 = theme.topBarBg
+			modeIndicator.TextColor3 = theme.accent
+			modeIndicator.BackgroundColor3 = theme.headerBg
 			modeIndicator.Visible = true
 			startBtn.Visible = true
-			startBtn.BackgroundColor3 = theme.startBtn
+			startBtn.BackgroundColor3 = COLORS.success
 			pauseBtn.Visible = true
 			stepBtn.Visible = true
-			charCountLabel.Visible = true  -- Show char limit for bots
+			cpuLabel.Visible = true
+			ramLabel.Visible = true
 			textBox.TextEditable = true
-			textBox.Active = true  -- Allow focus/editing for bot programming
+			textBox.Active = true
+		elseif currentMode == "bot" then
+			modeIndicator.Text = "BOT #" .. (spotId or "?")
+			modeIndicator.TextColor3 = theme.accent
+			modeIndicator.BackgroundColor3 = theme.headerBg
+			modeIndicator.Visible = true
+			startBtn.Visible = true
+			startBtn.BackgroundColor3 = COLORS.success
+			pauseBtn.Visible = true
+			stepBtn.Visible = true
+			cpuLabel.Visible = false
+			ramLabel.Visible = true
+			textBox.TextEditable = true
+			textBox.Active = true
 		end
 	end
 
@@ -978,21 +902,37 @@ function EditorPanel.create(parent, callbacks)
 		end
 	end
 
-	-- Update memory display (instruction count) - shown for all modes
 	function panel:setMemoryUsage(used, max)
 		max = max or 32
 		used = used or 0
 		ramLabel.Text = "RAM: " .. used .. "/" .. max
 
-		-- Color based on usage
 		local ratio = used / max
 		if ratio > 1 then
-			ramLabel.TextColor3 = Color3.fromRGB(255, 80, 80)  -- Red: over limit
+			ramLabel.TextColor3 = COLORS.danger
 		elseif ratio > 0.8 then
-			ramLabel.TextColor3 = Color3.fromRGB(255, 200, 80)  -- Yellow: near limit
+			ramLabel.TextColor3 = COLORS.warning
 		else
-			ramLabel.TextColor3 = Color3.fromRGB(100, 200, 255)  -- Cyan: OK
+			ramLabel.TextColor3 = COLORS.accent
 		end
+	end
+
+	function panel:setCpuHz(hz)
+		currentCpuHz = hz or DEFAULT_CPU_HZ
+		cpuLabel.Text = currentCpuHz .. " Hz"
+
+		if currentCpuHz >= 20 then
+			cpuLabel.TextColor3 = COLORS.warning
+		elseif currentCpuHz >= 5 then
+			cpuLabel.TextColor3 = COLORS.accent
+		else
+			cpuLabel.TextColor3 = COLORS.success
+		end
+	end
+
+	function panel:setMaxBytecode(max)
+		currentMaxRAM = max or DEFAULT_RAM
+		panel:setMemoryUsage(lastInstructionCount, currentMaxRAM)
 	end
 
 	-- Callback for exiting golem/bot mode (set by main client)

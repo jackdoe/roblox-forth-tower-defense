@@ -3,6 +3,7 @@ local UITheme = require(script.Parent.UITheme)
 
 local BytecodePanel = {}
 local THEMES = UITheme.THEMES
+local COLORS = UITheme.COLORS
 local OP_COLORS = UITheme.OP_COLORS
 local formatArg = UITheme.formatArg
 local formatStackValue = UITheme.formatStackValue
@@ -11,13 +12,12 @@ function BytecodePanel.create(parent)
 	local panel = {}
 	local currentTheme = "player"
 
-	-- Main frame (anchored to bottom-right, grows upward)
 	local frame = Instance.new("Frame")
 	frame.Name = "BytecodePanel"
-	frame.Size = UDim2.new(0, 280, 0, 250)  -- Initial size, will auto-resize
-	frame.AnchorPoint = Vector2.new(0, 1)  -- Anchor at bottom
-	frame.Position = UDim2.new(1, -640, 1, -10)  -- Left of ProgramPanel, 10px from bottom
-	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	frame.Size = UDim2.new(0, 280, 0, 250)
+	frame.AnchorPoint = Vector2.new(0, 1)
+	frame.Position = UDim2.new(1, -640, 1, -10)
+	frame.BackgroundColor3 = THEMES.player.frameBg
 	frame.BorderSizePixel = 0
 	frame.ClipsDescendants = true
 	frame.Parent = parent
@@ -26,11 +26,10 @@ function BytecodePanel.create(parent)
 	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = frame
 
-	-- Header
 	local header = Instance.new("Frame")
 	header.Name = "Header"
 	header.Size = UDim2.new(1, 0, 0, 28)
-	header.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	header.BackgroundColor3 = THEMES.player.headerBg
 	header.BorderSizePixel = 0
 	header.Parent = frame
 
@@ -45,20 +44,19 @@ function BytecodePanel.create(parent)
 	title.Position = UDim2.new(0, 10, 0, 0)
 	title.BackgroundTransparency = 1
 	title.Text = "BYTECODE"
-	title.TextColor3 = Color3.fromRGB(180, 180, 200)
+	title.TextColor3 = COLORS.text
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Font = Enum.Font.Code
 	title.TextSize = 12
 	title.Parent = header
 
-	-- Copy button
 	local copyBtn = Instance.new("TextButton")
 	copyBtn.Name = "CopyBtn"
 	copyBtn.Size = UDim2.new(0, 45, 0, 18)
 	copyBtn.Position = UDim2.new(1, -125, 0, 5)
-	copyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+	copyBtn.BackgroundColor3 = COLORS.panel
 	copyBtn.Text = "COPY"
-	copyBtn.TextColor3 = Color3.fromRGB(150, 150, 180)
+	copyBtn.TextColor3 = COLORS.text
 	copyBtn.Font = Enum.Font.Code
 	copyBtn.TextSize = 10
 	copyBtn.Parent = header
@@ -73,7 +71,7 @@ function BytecodePanel.create(parent)
 	ipLabel.Position = UDim2.new(1, -75, 0, 0)
 	ipLabel.BackgroundTransparency = 1
 	ipLabel.Text = "IP: 0"
-	ipLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+	ipLabel.TextColor3 = COLORS.accent
 	ipLabel.TextXAlignment = Enum.TextXAlignment.Right
 	ipLabel.Font = Enum.Font.Code
 	ipLabel.TextSize = 12
@@ -99,7 +97,7 @@ function BytecodePanel.create(parent)
 	bcHeader.Position = UDim2.new(0, 10, 0, BC_HEADER_Y)
 	bcHeader.BackgroundTransparency = 1
 	bcHeader.Text = "INSTRUCTIONS"
-	bcHeader.TextColor3 = Color3.fromRGB(120, 120, 140)
+	bcHeader.TextColor3 = COLORS.subtext
 	bcHeader.TextXAlignment = Enum.TextXAlignment.Left
 	bcHeader.Font = Enum.Font.Code
 	bcHeader.TextSize = 10
@@ -109,10 +107,10 @@ function BytecodePanel.create(parent)
 	bcScroll.Name = "BytecodeScroll"
 	bcScroll.Size = UDim2.new(1, -20, 0, MIN_BC_HEIGHT)
 	bcScroll.Position = UDim2.new(0, 10, 0, BC_SCROLL_Y)
-	bcScroll.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	bcScroll.BackgroundColor3 = THEMES.player.codeBg
 	bcScroll.BorderSizePixel = 0
 	bcScroll.ScrollBarThickness = 4
-	bcScroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
+	bcScroll.ScrollBarImageColor3 = COLORS.subtext
 	bcScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	bcScroll.Parent = frame
 
@@ -127,7 +125,7 @@ function BytecodePanel.create(parent)
 	bcLabel.BackgroundTransparency = 1
 	bcLabel.Text = ""
 	bcLabel.RichText = true
-	bcLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+	bcLabel.TextColor3 = COLORS.text
 	bcLabel.TextXAlignment = Enum.TextXAlignment.Left
 	bcLabel.TextYAlignment = Enum.TextYAlignment.Top
 	bcLabel.Font = Enum.Font.Code
@@ -141,10 +139,10 @@ function BytecodePanel.create(parent)
 
 	local stackHeader = Instance.new("TextLabel")
 	stackHeader.Size = UDim2.new(1, -20, 0, STACK_HEADER_HEIGHT)
-	stackHeader.Position = UDim2.new(0, 10, 0, 0)  -- Will be repositioned
+	stackHeader.Position = UDim2.new(0, 10, 0, 0)
 	stackHeader.BackgroundTransparency = 1
 	stackHeader.Text = "STACK"
-	stackHeader.TextColor3 = Color3.fromRGB(120, 120, 140)
+	stackHeader.TextColor3 = COLORS.subtext
 	stackHeader.TextXAlignment = Enum.TextXAlignment.Left
 	stackHeader.Font = Enum.Font.Code
 	stackHeader.TextSize = 10
@@ -153,8 +151,8 @@ function BytecodePanel.create(parent)
 	local stackFrame = Instance.new("Frame")
 	stackFrame.Name = "StackFrame"
 	stackFrame.Size = UDim2.new(1, -20, 0, STACK_FRAME_HEIGHT)
-	stackFrame.Position = UDim2.new(0, 10, 0, 0)  -- Will be repositioned
-	stackFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	stackFrame.Position = UDim2.new(0, 10, 0, 0)
+	stackFrame.BackgroundColor3 = THEMES.player.codeBg
 	stackFrame.BorderSizePixel = 0
 	stackFrame.ClipsDescendants = true
 	stackFrame.Parent = frame
@@ -170,7 +168,7 @@ function BytecodePanel.create(parent)
 	stackLabel.BackgroundTransparency = 1
 	stackLabel.Text = "(empty)"
 	stackLabel.RichText = true
-	stackLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
+	stackLabel.TextColor3 = COLORS.subtext
 	stackLabel.TextXAlignment = Enum.TextXAlignment.Left
 	stackLabel.TextYAlignment = Enum.TextYAlignment.Top
 	stackLabel.Font = Enum.Font.Code
@@ -199,18 +197,18 @@ function BytecodePanel.create(parent)
 			if setclipboard then
 				setclipboard("IP: " .. currentIP .. "\n" .. currentBytecodeText)
 				copyBtn.Text = "DONE!"
-				copyBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+				copyBtn.BackgroundColor3 = COLORS.success
 			else
 				-- Fallback: print to output
 				print("=== BYTECODE (IP: " .. currentIP .. ") ===")
 				print(currentBytecodeText)
 				print("================")
 				copyBtn.Text = "LOG"
-				copyBtn.BackgroundColor3 = Color3.fromRGB(120, 120, 60)
+				copyBtn.BackgroundColor3 = COLORS.warning
 			end
 			task.delay(1, function()
 				copyBtn.Text = "COPY"
-				copyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+				copyBtn.BackgroundColor3 = COLORS.panel
 			end)
 		end
 	end)

@@ -705,25 +705,19 @@ local function createBotProxy(spotId, deps, directBot)
 		return false
 	end
 
-	-- collect_nearest() - Find and collect the nearest scrap (does NOT return to core)
-	-- BLOCKING: VM waits until bot reaches scrap and picks it up
-	-- Use supply(CORE) separately to deposit, or explode() to use as fuel
 	proxy.collect_nearest = function()
 		local bot = getBot()
 		if not bot or not isAlive() then return false end
 
-		-- Find nearest scrap from bot's current position
 		local hrp = bot.character and bot.character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return false end
 
-		local scrap = ScrapManager and ScrapManager.findNearest(hrp.Position.X, hrp.Position.Z)
-		if not scrap or not scrap.part then return false end
+		local pickupRange = bot.pickupRange or 20
+		local clusterX, clusterZ, total = ScrapManager.findBestCluster(hrp.Position.X, hrp.Position.Z, 200, pickupRange)
+		if not clusterX or total == 0 then return false end
 
-		-- Go to that scrap's position and pick it up
-		local worldX, worldZ = scrap.part.Position.X, scrap.part.Position.Z
 		if BotRegistry.issueCommand then
-			local success = BotRegistry.issueCommand(bot.id, "COLLECT_AREA", { x = worldX, z = worldZ }, true)
-			-- Block the VM until collect task completes
+			local success = BotRegistry.issueCommand(bot.id, "COLLECT_AREA", { x = clusterX, z = clusterZ }, true)
 			if success and bot.interpreter then
 				local vm = bot.interpreter.runtime and bot.interpreter.runtime.vm
 				if vm and vm.block then
@@ -762,10 +756,10 @@ local function createBotProxy(spotId, deps, directBot)
 		if not bot or not bot.character or not ScrapManager then return nil end
 
 		local x, z = getCharacterPos(bot.character)
-		local scrap = ScrapManager.findNearest(x, z)
-		if scrap and scrap.part and scrap.part.Parent then
-			-- Return user coords (relative to core)
-			local userX, userZ = toUserCoords(scrap.part.Position.X, scrap.part.Position.Z)
+		local pickupRange = bot.pickupRange or 20
+		local clusterX, clusterZ, total = ScrapManager.findBestCluster(x, z, 200, pickupRange)
+		if clusterX and total > 0 then
+			local userX, userZ = toUserCoords(clusterX, clusterZ)
 			return {userX, userZ}
 		end
 		return nil
@@ -881,45 +875,6 @@ local function createBotProxy(spotId, deps, directBot)
 		local bot = getBot()
 		if bot then
 			showChatBubble(bot.character, message)
-		end
-	end
-
-	proxy.emote = function(emoteType)
-		local bot = getBot()
-		if not bot or not bot.character then return end
-		local char = bot.character
-
-		if emoteType == "happy" then
-			local baseY = char:GetAttribute("BaseY") or 2.5
-			task.spawn(function()
-				char:SetAttribute("BaseY", baseY + 1.5)
-				task.wait(0.2)
-				char:SetAttribute("BaseY", baseY)
-			end)
-		elseif emoteType == "panic" then
-			local head = char:FindFirstChild("Head")
-			if head then
-				local lEye = head:FindFirstChild("LeftEye")
-				local rEye = head:FindFirstChild("RightEye")
-				if lEye and rEye then
-					local oldColor = lEye.Color
-					lEye.Color = Color3.fromRGB(255, 50, 50)
-					rEye.Color = Color3.fromRGB(255, 50, 50)
-					task.delay(1.5, function()
-						if lEye and lEye.Parent then lEye.Color = oldColor end
-						if rEye and rEye.Parent then rEye.Color = oldColor end
-					end)
-				end
-			end
-		elseif emoteType == "spin" then
-			task.spawn(function()
-				local startAngle = char:GetAttribute("FacingAngle") or 0
-				for i = 1, 20 do
-					char:SetAttribute("FacingAngle", startAngle + (i / 20) * math.pi * 2)
-					task.wait(0.02)
-				end
-				char:SetAttribute("FacingAngle", startAngle)
-			end)
 		end
 	end
 
@@ -1203,34 +1158,9 @@ function GameAPI.createBotEnvironment(bot, deps)
 	-- VISUAL & FUN METHODS (Instant gratification for kids!)
 	-- =========================================================
 
-	-- self.say("Hello!") - Shows a chat bubble above the bot
 	env.self.say = function(message)
 		if BotRegistry and BotRegistry.setChatBubble then
 			return BotRegistry.setChatBubble(bot.id, tostring(message))
-		end
-		return false
-	end
-
-	-- self.dance() - Makes the bot spin
-	env.self.dance = function()
-		if BotRegistry and BotRegistry.playEmote then
-			return BotRegistry.playEmote(bot.id, "dance")
-		end
-		return false
-	end
-
-	-- self.jump() - Makes the bot hop
-	env.self.jump = function()
-		if BotRegistry and BotRegistry.playEmote then
-			return BotRegistry.playEmote(bot.id, "jump")
-		end
-		return false
-	end
-
-	-- self.shake() - Makes the bot shake/shiver
-	env.self.shake = function()
-		if BotRegistry and BotRegistry.playEmote then
-			return BotRegistry.playEmote(bot.id, "shake")
 		end
 		return false
 	end
@@ -1608,26 +1538,6 @@ function GameAPI.createPlayerEnvironment(player, interp, deps)
 	end
 
 	-- NOTE: Turrets auto-reload from core stockpile (no manual supply needed)
-
-	-- =========================================================
-	-- COMBAT
-	-- =========================================================
-
-	-- self.hit() - Melee attack nearest enemy
-	env.self.hit = function()
-		if deps.attackHitEvent and interp.character then
-			local hrp = getHRP()
-			if hrp and deps.EnemyManager then
-				local x, z = getPlayerPos()
-				local enemy = deps.EnemyManager.findNearest(x, z, 6)
-				if enemy then
-					deps.EnemyManager.damage(enemy.id, deps.Config.ATTACK_DAMAGE)
-					return true
-				end
-			end
-		end
-		return false
-	end
 
 	-- self.scan() - Find enemies in range (like turrets)
 	env.self.scan = function()

@@ -530,9 +530,15 @@ function HUD.create(parent, callbacks)
 		end
 	end)
 
-	local upgradeBtn = createActionBtn("UPGRADE", COLORS.success, function()
+	local upgradeBtn = createActionBtn("CPU", COLORS.success, function()
 		if hud.selection and callbacks.onUpgrade then
 			callbacks.onUpgrade(hud.selection.id, hud.selection.type)
+		end
+	end)
+
+	local upgradeRAMBtn = createActionBtn("RAM", COLORS.accent, function()
+		if hud.selection and callbacks.onUpgradeRAM then
+			callbacks.onUpgradeRAM(hud.selection.id, hud.selection.type)
 		end
 	end)
 
@@ -728,80 +734,52 @@ function HUD.create(parent, callbacks)
 	scrapText.Parent = scrapDisplay
 
 	--=========================================================================
-	-- 5b. NEXT WAVE INFO (Below Scrap)
+	-- 5b. WAVE INFO (Below Scrap) - Shows wave number and enemies remaining
 	--=========================================================================
-	local nextWaveDisplay = Instance.new("Frame")
-	nextWaveDisplay.Name = "NextWaveDisplay"
-	nextWaveDisplay.Size = UDim2.new(0, 160, 0, 40)
-	nextWaveDisplay.Position = UDim2.new(0, 15, 0, 98)
-	nextWaveDisplay.BackgroundColor3 = COLORS.panel
-	nextWaveDisplay.Parent = parent
+	local waveDisplay = Instance.new("Frame")
+	waveDisplay.Name = "WaveDisplay"
+	waveDisplay.Size = UDim2.new(0, 160, 0, 40)
+	waveDisplay.Position = UDim2.new(0, 15, 0, 98)
+	waveDisplay.BackgroundColor3 = COLORS.panel
+	waveDisplay.Parent = parent
 
-	local nextWaveCorner = Instance.new("UICorner")
-	nextWaveCorner.CornerRadius = UDim.new(0, 8)
-	nextWaveCorner.Parent = nextWaveDisplay
+	local waveCorner = Instance.new("UICorner")
+	waveCorner.CornerRadius = UDim.new(0, 8)
+	waveCorner.Parent = waveDisplay
 
-	local nextWaveTitle = Instance.new("TextLabel")
-	nextWaveTitle.Name = "Title"
-	nextWaveTitle.Size = UDim2.new(1, -10, 0, 14)
-	nextWaveTitle.Position = UDim2.new(0, 5, 0, 4)
-	nextWaveTitle.BackgroundTransparency = 1
-	nextWaveTitle.Text = "NEXT WAVE:"
-	nextWaveTitle.TextColor3 = COLORS.subtext
-	nextWaveTitle.Font = Enum.Font.Gotham
-	nextWaveTitle.TextSize = 9
-	nextWaveTitle.TextXAlignment = Enum.TextXAlignment.Left
-	nextWaveTitle.Parent = nextWaveDisplay
+	local waveTitle = Instance.new("TextLabel")
+	waveTitle.Name = "Title"
+	waveTitle.Size = UDim2.new(1, -10, 0, 18)
+	waveTitle.Position = UDim2.new(0, 5, 0, 4)
+	waveTitle.BackgroundTransparency = 1
+	waveTitle.Text = "WAVE 1"
+	waveTitle.TextColor3 = COLORS.accent
+	waveTitle.Font = Enum.Font.GothamBold
+	waveTitle.TextSize = 14
+	waveTitle.TextXAlignment = Enum.TextXAlignment.Left
+	waveTitle.Parent = waveDisplay
 
-	-- Container for enemy type icons
-	local nextWaveIcons = Instance.new("Frame")
-	nextWaveIcons.Name = "Icons"
-	nextWaveIcons.Size = UDim2.new(1, -10, 0, 18)
-	nextWaveIcons.Position = UDim2.new(0, 5, 0, 18)
-	nextWaveIcons.BackgroundTransparency = 1
-	nextWaveIcons.Parent = nextWaveDisplay
-
-	local nextWaveLayout = Instance.new("UIListLayout")
-	nextWaveLayout.FillDirection = Enum.FillDirection.Horizontal
-	nextWaveLayout.Padding = UDim.new(0, 4)
-	nextWaveLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	nextWaveLayout.Parent = nextWaveIcons
+	local enemyCount = Instance.new("TextLabel")
+	enemyCount.Name = "EnemyCount"
+	enemyCount.Size = UDim2.new(1, -10, 0, 14)
+	enemyCount.Position = UDim2.new(0, 5, 0, 22)
+	enemyCount.BackgroundTransparency = 1
+	enemyCount.Text = "0 / 0"
+	enemyCount.TextColor3 = COLORS.danger
+	enemyCount.Font = Enum.Font.Gotham
+	enemyCount.TextSize = 12
+	enemyCount.TextXAlignment = Enum.TextXAlignment.Left
+	enemyCount.Parent = waveDisplay
 
 	--=========================================================================
-	-- 6. PHASE INDICATOR (Top Left, below Next Wave)
-	--=========================================================================
-	local phaseDisplay = Instance.new("Frame")
-	phaseDisplay.Name = "PhaseDisplay"
-	phaseDisplay.Size = UDim2.new(0, 160, 0, 35)
-	phaseDisplay.Position = UDim2.new(0, 15, 0, 143)
-	phaseDisplay.BackgroundColor3 = COLORS.panel
-	phaseDisplay.Parent = parent
-
-	local phaseCorner = Instance.new("UICorner")
-	phaseCorner.CornerRadius = UDim.new(0, 8)
-	phaseCorner.Parent = phaseDisplay
-
-	local phaseText = Instance.new("TextLabel")
-	phaseText.Name = "Text"
-	phaseText.Size = UDim2.new(1, -10, 1, 0)
-	phaseText.Position = UDim2.new(0, 5, 0, 0)
-	phaseText.BackgroundTransparency = 1
-	phaseText.Text = "BUILD PHASE"
-	phaseText.TextColor3 = COLORS.accent
-	phaseText.Font = Enum.Font.GothamBold
-	phaseText.TextSize = 14
-	phaseText.TextXAlignment = Enum.TextXAlignment.Left
-	phaseText.Parent = phaseDisplay
-
-	--=========================================================================
-	-- 7. WAVE ACTION BUTTON (Ready/Skip)
+	-- 6. READY BUTTON (Only visible in LOBBY)
 	--=========================================================================
 	local waveActionBtn = Instance.new("TextButton")
 	waveActionBtn.Name = "WaveActionBtn"
 	waveActionBtn.Size = UDim2.new(0, 160, 0, 35)
-	waveActionBtn.Position = UDim2.new(0, 15, 0, 183)
+	waveActionBtn.Position = UDim2.new(0, 15, 0, 143)
 	waveActionBtn.BackgroundColor3 = COLORS.accent
-	waveActionBtn.Text = "READY"
+	waveActionBtn.Text = "START"
 	waveActionBtn.TextColor3 = COLORS.bg
 	waveActionBtn.Font = Enum.Font.GothamBold
 	waveActionBtn.TextSize = 14
@@ -812,14 +790,11 @@ function HUD.create(parent, callbacks)
 	waveActionCorner.CornerRadius = UDim.new(0, 8)
 	waveActionCorner.Parent = waveActionBtn
 
-	-- Track current phase for button behavior
 	local currentPhase = "LOBBY"
 
 	waveActionBtn.MouseButton1Click:Connect(function()
 		if currentPhase == "LOBBY" then
 			if callbacks.onReady then callbacks.onReady() end
-		elseif currentPhase == "BUILD" then
-			if callbacks.onSkipBuild then callbacks.onSkipBuild() end
 		end
 	end)
 
@@ -828,8 +803,8 @@ function HUD.create(parent, callbacks)
 	--=========================================================================
 	local partyFrame = Instance.new("Frame")
 	partyFrame.Name = "PartyFrame"
-	partyFrame.Size = UDim2.new(0, 60, 0, 220)  -- 4 bot slots stacked vertically
-	partyFrame.Position = UDim2.new(1, -75, 0.5, -110)  -- Right side, centered
+	partyFrame.Size = UDim2.new(0, 60, 0, 220)
+	partyFrame.Position = UDim2.new(0, 15, 0, 190)
 	partyFrame.BackgroundColor3 = COLORS.panel
 	partyFrame.BackgroundTransparency = 0.3
 	partyFrame.Parent = parent
@@ -1004,55 +979,12 @@ function HUD.create(parent, callbacks)
 	-- PUBLIC FUNCTIONS
 	--=========================================================================
 
-	local currentWaveNum = 1
-
-	-- Update wave number
-	function hud.updateWave(waveNum, previewList)
-		currentWaveNum = waveNum or 1
-	end
-
-	function hud.updateNextWave(waveNum, preview)
-		nextWaveTitle.Text = "WAVE " .. (waveNum or "?") .. ":"
-
-		-- Clear old icons
-		for _, child in ipairs(nextWaveIcons:GetChildren()) do
-			if child:IsA("Frame") then
-				child:Destroy()
-			end
-		end
-
-		-- Add icons for each enemy type
-		if preview then
-			for typeName, count in pairs(preview) do
-				local icon = ENEMY_ICONS[typeName] or "●"
-				local color = ENEMY_COLORS[typeName] or COLORS.subtext
-
-				local iconFrame = Instance.new("Frame")
-				iconFrame.Name = typeName
-				iconFrame.Size = UDim2.new(0, 36, 0, 18)
-				iconFrame.BackgroundTransparency = 1
-				iconFrame.Parent = nextWaveIcons
-
-				local iconLabel = Instance.new("TextLabel")
-				iconLabel.Size = UDim2.new(0, 14, 1, 0)
-				iconLabel.BackgroundTransparency = 1
-				iconLabel.Text = icon
-				iconLabel.TextColor3 = color
-				iconLabel.Font = Enum.Font.GothamBold
-				iconLabel.TextSize = 12
-				iconLabel.Parent = iconFrame
-
-				local countLabel = Instance.new("TextLabel")
-				countLabel.Size = UDim2.new(0, 20, 1, 0)
-				countLabel.Position = UDim2.new(0, 14, 0, 0)
-				countLabel.BackgroundTransparency = 1
-				countLabel.Text = "x" .. count
-				countLabel.TextColor3 = COLORS.text
-				countLabel.Font = Enum.Font.Gotham
-				countLabel.TextSize = 10
-				countLabel.TextXAlignment = Enum.TextXAlignment.Left
-				countLabel.Parent = iconFrame
-			end
+	function hud.updateWave(waveNum, remaining, total)
+		waveTitle.Text = "WAVE " .. (waveNum or 0)
+		if total and total > 0 then
+			enemyCount.Text = (remaining or 0) .. " / " .. total .. " remaining"
+		else
+			enemyCount.Text = ""
 		end
 	end
 
@@ -1131,36 +1063,14 @@ function HUD.create(parent, callbacks)
 		end
 	end
 
-	function hud.updatePhase(phaseName, timer)
-		-- Update tracked phase for button behavior
+	function hud.updatePhase(phaseName)
 		currentPhase = phaseName or "LOBBY"
 
-		if phaseName == "BUILD" then
-			if timer then
-				phaseText.Text = "BUILD: " .. timer .. "s"
-			else
-				phaseText.Text = "BUILD PHASE"
-			end
-			phaseText.TextColor3 = COLORS.accent
-			-- Show SKIP button during build
-			waveActionBtn.Text = "SKIP BUILD"
-			waveActionBtn.BackgroundColor3 = COLORS.warning
-			waveActionBtn.Visible = true
-		elseif phaseName == "COMBAT" then
-			phaseText.Text = "COMBAT!"
-			phaseText.TextColor3 = COLORS.danger
-			-- Hide button during combat
+		if phaseName == "COMBAT" then
 			waveActionBtn.Visible = false
 		elseif phaseName == "LOBBY" then
-			phaseText.Text = "WAITING..."
-			phaseText.TextColor3 = COLORS.subtext
-			-- Show READY button in lobby
-			waveActionBtn.Text = "READY"
-			waveActionBtn.BackgroundColor3 = COLORS.accent
 			waveActionBtn.Visible = true
 		else
-			phaseText.Text = phaseName or "---"
-			phaseText.TextColor3 = COLORS.text
 			waveActionBtn.Visible = false
 		end
 	end
@@ -1178,33 +1088,42 @@ function HUD.create(parent, callbacks)
 		-- Update title and buttons based on type
 		if objData.type == "golem" then
 			local tier = objData.tier or 1
-			local ramAmount = objData.maxBytecode or 64
-			inspectTitle.Text = "TURRET #" .. (objData.spotId or "?") .. " [" .. ramAmount .. " RAM]"
-			inspectTitle.TextColor3 = tier == 3 and Color3.fromRGB(255, 220, 50) or   -- Hazard Yellow for Dreadnought
-			                          tier == 2 and Color3.fromRGB(255, 150, 0) or    -- Industrial Orange for Arachnid
+			local cpuHz = objData.cpuHz or 1
+			local maxBytecode = objData.maxBytecode or 32
+			inspectTitle.Text = "TURRET #" .. (objData.spotId or "?") .. " [" .. cpuHz .. "Hz " .. maxBytecode .. "B]"
+			inspectTitle.TextColor3 = tier == 3 and Color3.fromRGB(255, 220, 50) or
+			                          tier == 2 and Color3.fromRGB(255, 150, 0) or
 			                          COLORS.accent
 
-			-- Show UPGRADE button with cost if not at max tier
-			-- Upgrades now give more RAM (bytecode limit)
 			if objData.upgradeCost then
 				upgradeBtn.Visible = true
-				upgradeBtn.Text = "UPGRADE (" .. objData.upgradeCost .. ") → " .. (ramAmount * 2) .. " RAM"
+				local nextHz = cpuHz == 1 and 5 or cpuHz == 5 and 20 or cpuHz * 2
+				upgradeBtn.Text = "CPU (" .. objData.upgradeCost .. ") → " .. nextHz .. "Hz"
 			else
-				upgradeBtn.Visible = false  -- At max tier
+				upgradeBtn.Visible = false
 			end
 
-			-- Ammo selector removed - turrets are now fully programmable
+			if objData.ramUpgradeCost then
+				upgradeRAMBtn.Visible = true
+				local nextRAM = maxBytecode * 2
+				upgradeRAMBtn.Text = "RAM (" .. objData.ramUpgradeCost .. ") → " .. nextRAM .. "B"
+			else
+				upgradeRAMBtn.Visible = false
+			end
+
 			ammoContainer.Visible = false
 
 		elseif objData.type == "bot" then
 			inspectTitle.Text = "BOT #" .. (objData.spotId or "?")
 			inspectTitle.TextColor3 = COLORS.warning
-			upgradeBtn.Visible = false  -- Bots can't be upgraded
-			ammoContainer.Visible = false  -- Bots don't have ammo types
+			upgradeBtn.Visible = false
+			upgradeRAMBtn.Visible = false
+			ammoContainer.Visible = false
 		else
 			inspectTitle.Text = "UNIT"
 			inspectTitle.TextColor3 = COLORS.text
 			upgradeBtn.Visible = false
+			upgradeRAMBtn.Visible = false
 			ammoContainer.Visible = false
 		end
 

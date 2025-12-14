@@ -103,7 +103,7 @@ local function onCharacterAdded(player, playerId, character)
 	interp.playerName = player.Name
 	interp.ammoInventory = Config.STARTING_AMMO or 100
 	interp.scrapInventory = 0
-	interp.maxCapacity = 500
+	interp.maxCapacity = Config.PLAYER_CAPACITY or 5
 
 	local gameEnv = Python.createPlayerEnvironment(player, interp, deps)
 	interp:setGameEnvironment(gameEnv)
@@ -168,65 +168,27 @@ function PlayerManager.onPlayerRemoving(player)
 	deps.BotRegistry.broadcastState()
 end
 
-function PlayerManager.updateDeath(interp)
-	if interp.hp <= 0 and not interp.dead then
-		interp.dead = true
-		interp.deathTime = tick()
-
-		if interp.character then
-			local humanoid = interp.character:FindFirstChild("Humanoid")
-			if humanoid then
-				humanoid.PlatformStand = true
-				humanoid.WalkSpeed = 0
-				humanoid.JumpPower = 0
-			end
-		end
-	end
-
-	if interp.dead and interp.deathTime and (tick() - interp.deathTime > Config.RESPAWN_TIME) then
-		interp.dead = false
-		interp.hp = interp.maxHp
-		interp.deathTime = nil
-
-		if interp.character then
-			local humanoid = interp.character:FindFirstChild("Humanoid")
-			if humanoid then
-				humanoid.PlatformStand = false
-				humanoid.WalkSpeed = Config.MANUAL_WALKING_SPEED
-				humanoid.JumpPower = 50
-			end
-
-			local spawnPos = arenaMap.playerSpawn
-			if spawnPos then
-				local hrp = interp.character:FindFirstChild("HumanoidRootPart")
-				if hrp then
-					hrp.CFrame = CFrame.new(spawnPos.x, Config.PLATFORM_Y + 3, spawnPos.z)
-				end
-			end
-		end
-	end
-end
-
 function PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
-	if interp.dead or not player.Character then return end
+	if not player.Character then return end
 
 	local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
 	local px, pz = hrp.Position.X, hrp.Position.Z
 
-	local scrapsInRange = ScrapManager.findInRange(px, pz, 5)
-	for _, scrap in ipairs(scrapsInRange) do
-		local capacity = (interp.maxCapacity or 50) - (interp.scrapInventory or 0)
-		if capacity > 0 then
-			ScrapManager.collect(scrap.id, interp)
+	local capacity = Config.PLAYER_CAPACITY or 5
+	if (interp.scrapInventory or 0) < capacity then
+		local scrap = ScrapManager.findNearest(px, pz, Config.PICKUP_RANGE or 5)
+		if scrap and scrap.id and ScrapManager.collect(scrap.id) then
+			interp.scrapInventory = (interp.scrapInventory or 0) + 1
 		end
 	end
 
 	local coreX, coreZ = arenaMap.core.x, arenaMap.core.z
 	local distToCore = math.sqrt((px - coreX)^2 + (pz - coreZ)^2)
 	if distToCore <= 10 and (interp.scrapInventory or 0) > 0 then
-		WaveManager.addScrap(interp.scrapInventory)
+		local pieceValue = Config.SCRAP_PIECE_VALUE or 10
+		WaveManager.addScrap(interp.scrapInventory * pieceValue)
 		interp.scrapInventory = 0
 	end
 end
@@ -275,9 +237,6 @@ function PlayerManager.buildClientState(userId, interp)
 			table.insert(allPlayers, {
 				id = entity.playerId,
 				name = entity.playerName or "Player",
-				hp = entity.hp,
-				maxHp = entity.maxHp,
-				dead = entity.dead,
 				isMe = (entity.id == interp.id),
 			})
 		end
@@ -296,25 +255,12 @@ function PlayerManager.buildClientState(userId, interp)
 	state.phase = waveState.phase
 	state.coreHp = waveState.coreHp
 	state.coreMaxHp = waveState.coreMaxHp
-	state.buildTimeRemaining = waveState.buildTimeRemaining
 	state.restartTimeRemaining = waveState.restartTimeRemaining
 	state.enemiesRemaining = waveState.enemiesRemaining
+	state.enemiesTotal = waveState.enemiesTotal
 
 	state.enemyMinimap = deps.EnemyManager.getMinimapData()
 	state.pathLength = deps.EnemyManager.getPathLength()
-
-	local nextWavePreview = deps.WaveManager.getWavePreview()
-	local nextWaveSummary = {}
-	for _, typeName in ipairs(nextWavePreview) do
-		nextWaveSummary[typeName] = (nextWaveSummary[typeName] or 0) + 1
-	end
-	state.nextWavePreview = nextWaveSummary
-	state.nextWaveNumber = waveState.waveNumber + 1
-
-	if interp.dead and interp.deathTime then
-		state.deathTimeRemaining = math.max(0, Config.RESPAWN_TIME - (tick() - interp.deathTime))
-		state.dead = true
-	end
 
 	return state
 end

@@ -16,8 +16,9 @@ GolemStats.BASE = {
 
 GolemStats.UpgradeTiers = {
 	[1] = {
-		name = "Basic",
-		maxBytecode = 64,
+		name = "1 Hz",
+		cpuHz = 1,
+		tickRate = 1.0,
 		damageMultiplier = 1.0,
 		rangeMultiplier = 1.0,
 		ammoMultiplier = 1.0,
@@ -26,8 +27,9 @@ GolemStats.UpgradeTiers = {
 		accentColor = Color3.fromRGB(0, 255, 255),
 	},
 	[2] = {
-		name = "Enhanced",
-		maxBytecode = 128,
+		name = "5 Hz",
+		cpuHz = 5,
+		tickRate = 0.2,
 		damageMultiplier = 1.0,
 		rangeMultiplier = 1.0,
 		ammoMultiplier = 1.0,
@@ -37,8 +39,9 @@ GolemStats.UpgradeTiers = {
 		accentColor = Color3.fromRGB(255, 150, 0),
 	},
 	[3] = {
-		name = "Advanced",
-		maxBytecode = 256,
+		name = "20 Hz",
+		cpuHz = 20,
+		tickRate = 0.05,
 		damageMultiplier = 1.0,
 		rangeMultiplier = 1.0,
 		ammoMultiplier = 1.0,
@@ -49,7 +52,33 @@ GolemStats.UpgradeTiers = {
 	},
 }
 
-GolemStats.MAX_TIER = 3
+GolemStats.MAX_CPU_TIER = 3
+
+GolemStats.RAMTiers = {
+	[1] = {
+		name = "32B",
+		maxBytecode = 32,
+		upgradeCost = nil,
+		color = Color3.fromRGB(200, 200, 210),
+		accentColor = Color3.fromRGB(0, 255, 255),
+	},
+	[2] = {
+		name = "64B",
+		maxBytecode = 64,
+		upgradeCost = 150,
+		color = Color3.fromRGB(80, 80, 90),
+		accentColor = Color3.fromRGB(255, 150, 0),
+	},
+	[3] = {
+		name = "128B",
+		maxBytecode = 128,
+		upgradeCost = 300,
+		color = Color3.fromRGB(70, 80, 60),
+		accentColor = Color3.fromRGB(255, 220, 50),
+	},
+}
+
+GolemStats.MAX_RAM_TIER = 3
 
 GolemStats.AmmoStats = {
 	[1] = {
@@ -159,9 +188,24 @@ function GolemStats.getUnlockedAmmo(tier)
 	return GolemStats.TIER_AMMO_UNLOCKS[tier] or {1}
 end
 
-function GolemStats.getMaxBytecode(tier)
+function GolemStats.getCpuHz(tier)
 	local tierData = GolemStats.UpgradeTiers[tier or 1]
-	return tierData and tierData.maxBytecode or 64
+	return tierData and tierData.cpuHz or 1
+end
+
+function GolemStats.getTickRate(tier)
+	local tierData = GolemStats.UpgradeTiers[tier or 1]
+	return tierData and tierData.tickRate or 1.0
+end
+
+function GolemStats.getMaxBytecode(ramTier)
+	local tierData = GolemStats.RAMTiers[ramTier or 1]
+	return tierData and tierData.maxBytecode or 32
+end
+
+function GolemStats.getRAMUpgradeCost(ramTier)
+	local nextTier = GolemStats.RAMTiers[(ramTier or 1) + 1]
+	return nextTier and nextTier.upgradeCost or nil
 end
 
 return GolemStats

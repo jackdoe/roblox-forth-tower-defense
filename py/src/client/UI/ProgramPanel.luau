@@ -3,6 +3,7 @@ local UITheme = require(script.Parent.UITheme)
 
 local ProgramPanel = {}
 local THEMES = UITheme.THEMES
+local COLORS = UITheme.COLORS
 local formatValue = UITheme.formatValue
 
 function ProgramPanel.create(parent)
@@ -15,12 +16,11 @@ function ProgramPanel.create(parent)
 	local MIN_PANEL_HEIGHT = 350
 	local VAR_LINE_HEIGHT = 18
 
-	-- Main frame (will auto-resize)
 	local frame = Instance.new("Frame")
 	frame.Name = "ProgramPanel"
-	frame.Size = UDim2.new(0, 340, 0, MIN_PANEL_HEIGHT)
-	frame.Position = UDim2.new(1, -350, 1, -360)
-	frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	frame.Size = UDim2.new(0, 380, 0, MIN_PANEL_HEIGHT)
+	frame.Position = UDim2.new(1, -390, 1, -360)
+	frame.BackgroundColor3 = THEMES.player.frameBg
 	frame.BorderSizePixel = 0
 	frame.ClipsDescendants = true
 	frame.Parent = parent
@@ -29,11 +29,10 @@ function ProgramPanel.create(parent)
 	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = frame
 
-	-- Header
 	local header = Instance.new("Frame")
 	header.Name = "Header"
 	header.Size = UDim2.new(1, 0, 0, 28)
-	header.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	header.BackgroundColor3 = THEMES.player.headerBg
 	header.BorderSizePixel = 0
 	header.Parent = frame
 
@@ -48,20 +47,19 @@ function ProgramPanel.create(parent)
 	title.Position = UDim2.new(0, 10, 0, 0)
 	title.BackgroundTransparency = 1
 	title.Text = "PYTHON DEBUGGER"
-	title.TextColor3 = Color3.fromRGB(180, 180, 200)
+	title.TextColor3 = COLORS.text
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Font = Enum.Font.Code
 	title.TextSize = 12
 	title.Parent = header
 
-	-- Bytecode toggle button
 	local bytecodeToggle = Instance.new("TextButton")
 	bytecodeToggle.Name = "BytecodeToggle"
 	bytecodeToggle.Size = UDim2.new(0, 24, 0, 18)
 	bytecodeToggle.Position = UDim2.new(1, -115, 0, 5)
-	bytecodeToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+	bytecodeToggle.BackgroundColor3 = COLORS.panel
 	bytecodeToggle.Text = "{}"
-	bytecodeToggle.TextColor3 = Color3.fromRGB(100, 200, 255)
+	bytecodeToggle.TextColor3 = COLORS.accent
 	bytecodeToggle.Font = Enum.Font.Code
 	bytecodeToggle.TextSize = 10
 	bytecodeToggle.Parent = header
@@ -76,7 +74,7 @@ function ProgramPanel.create(parent)
 	statusLabel.Position = UDim2.new(1, -85, 0, 0)
 	statusLabel.BackgroundTransparency = 1
 	statusLabel.Text = "IDLE"
-	statusLabel.TextColor3 = Color3.fromRGB(100, 200, 100)
+	statusLabel.TextColor3 = COLORS.success
 	statusLabel.TextXAlignment = Enum.TextXAlignment.Right
 	statusLabel.Font = Enum.Font.Code
 	statusLabel.TextSize = 12
@@ -91,14 +89,13 @@ function ProgramPanel.create(parent)
 		end
 	end)
 
-	-- Update toggle button appearance
 	function panel:setBytecodeVisible(visible)
 		if visible then
-			bytecodeToggle.BackgroundColor3 = Color3.fromRGB(40, 100, 120)
-			bytecodeToggle.TextColor3 = Color3.fromRGB(150, 255, 255)
+			bytecodeToggle.BackgroundColor3 = COLORS.accent
+			bytecodeToggle.TextColor3 = COLORS.text
 		else
-			bytecodeToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-			bytecodeToggle.TextColor3 = Color3.fromRGB(100, 200, 255)
+			bytecodeToggle.BackgroundColor3 = COLORS.panel
+			bytecodeToggle.TextColor3 = COLORS.accent
 		end
 	end
 
@@ -110,7 +107,7 @@ function ProgramPanel.create(parent)
 	codeHeader.Position = UDim2.new(0, 10, 0, codeY)
 	codeHeader.BackgroundTransparency = 1
 	codeHeader.Text = "SOURCE CODE"
-	codeHeader.TextColor3 = Color3.fromRGB(120, 120, 140)
+	codeHeader.TextColor3 = COLORS.subtext
 	codeHeader.TextXAlignment = Enum.TextXAlignment.Left
 	codeHeader.Font = Enum.Font.Code
 	codeHeader.TextSize = 10
@@ -120,10 +117,10 @@ function ProgramPanel.create(parent)
 	codeScroll.Name = "CodeScroll"
 	codeScroll.Size = UDim2.new(1, -20, 0, 100)
 	codeScroll.Position = UDim2.new(0, 10, 0, codeY + 18)
-	codeScroll.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	codeScroll.BackgroundColor3 = THEMES.player.codeBg
 	codeScroll.BorderSizePixel = 0
 	codeScroll.ScrollBarThickness = 4
-	codeScroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
+	codeScroll.ScrollBarImageColor3 = COLORS.subtext
 	codeScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	codeScroll.Parent = frame
 
@@ -138,7 +135,7 @@ function ProgramPanel.create(parent)
 	codeLabel.BackgroundTransparency = 1
 	codeLabel.Text = ""
 	codeLabel.RichText = true
-	codeLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+	codeLabel.TextColor3 = COLORS.text
 	codeLabel.TextXAlignment = Enum.TextXAlignment.Left
 	codeLabel.TextYAlignment = Enum.TextYAlignment.Top
 	codeLabel.Font = Enum.Font.Code
@@ -156,7 +153,7 @@ function ProgramPanel.create(parent)
 	varsHeader.Position = UDim2.new(0, 10, 0, varsY)
 	varsHeader.BackgroundTransparency = 1
 	varsHeader.Text = "VARIABLES"
-	varsHeader.TextColor3 = Color3.fromRGB(120, 120, 140)
+	varsHeader.TextColor3 = COLORS.subtext
 	varsHeader.TextXAlignment = Enum.TextXAlignment.Left
 	varsHeader.Font = Enum.Font.Code
 	varsHeader.TextSize = 10
@@ -166,7 +163,7 @@ function ProgramPanel.create(parent)
 	varsFrame.Name = "VarsFrame"
 	varsFrame.Size = UDim2.new(1, -20, 0, baseVarsHeight)
 	varsFrame.Position = UDim2.new(0, 10, 0, varsY + 18)
-	varsFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	varsFrame.BackgroundColor3 = THEMES.player.codeBg
 	varsFrame.BorderSizePixel = 0
 	varsFrame.ClipsDescendants = true
 	varsFrame.Parent = frame
@@ -187,7 +184,6 @@ function ProgramPanel.create(parent)
 	varsPadding.PaddingBottom = UDim.new(0, 4)
 	varsPadding.Parent = varsFrame
 
-	-- Pool of variable labels
 	local varLabels = {}
 	for i = 1, MAX_VARIABLES do
 		local label = Instance.new("TextLabel")
@@ -197,7 +193,7 @@ function ProgramPanel.create(parent)
 		label.BackgroundTransparency = 1
 		label.Text = ""
 		label.RichText = true
-		label.TextColor3 = Color3.fromRGB(180, 180, 200)
+		label.TextColor3 = COLORS.text
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.Font = Enum.Font.Code
 		label.TextSize = 11
@@ -206,14 +202,13 @@ function ProgramPanel.create(parent)
 		varLabels[i] = label
 	end
 
-	-- "No variables" placeholder
 	local noVarsLabel = Instance.new("TextLabel")
 	noVarsLabel.Name = "NoVars"
 	noVarsLabel.Size = UDim2.new(1, 0, 0, VAR_LINE_HEIGHT)
 	noVarsLabel.LayoutOrder = 0
 	noVarsLabel.BackgroundTransparency = 1
 	noVarsLabel.Text = "(no variables yet)"
-	noVarsLabel.TextColor3 = Color3.fromRGB(80, 80, 100)
+	noVarsLabel.TextColor3 = COLORS.subtext
 	noVarsLabel.TextXAlignment = Enum.TextXAlignment.Left
 	noVarsLabel.Font = Enum.Font.Code
 	noVarsLabel.TextSize = 11
@@ -242,9 +237,9 @@ function ProgramPanel.create(parent)
 				errorScrollEl.Position = UDim2.new(0, 10, 0, errorY + 14)
 			end
 
-			local totalHeight = errorY + 70  -- More space for error
-			frame.Size = UDim2.new(0, 340, 0, totalHeight)
-			frame.Position = UDim2.new(1, -350, 1, -totalHeight - 10)
+			local totalHeight = errorY + 70
+			frame.Size = UDim2.new(0, 380, 0, totalHeight)
+			frame.Position = UDim2.new(1, -390, 1, -totalHeight - 10)
 		end
 	end
 
@@ -260,19 +255,18 @@ function ProgramPanel.create(parent)
 	outputHeaderEl.Position = UDim2.new(0, 10, 0, outputY)
 	outputHeaderEl.BackgroundTransparency = 1
 	outputHeaderEl.Text = "OUTPUT:"
-	outputHeaderEl.TextColor3 = Color3.fromRGB(120, 120, 140)
+	outputHeaderEl.TextColor3 = COLORS.subtext
 	outputHeaderEl.TextXAlignment = Enum.TextXAlignment.Left
 	outputHeaderEl.Font = Enum.Font.Code
 	outputHeaderEl.TextSize = 10
 	outputHeaderEl.Parent = frame
 
-	-- Expand button
 	local outputExpandBtn = Instance.new("TextButton")
 	outputExpandBtn.Size = UDim2.new(0, 50, 0, 14)
 	outputExpandBtn.Position = UDim2.new(1, -80, 0, outputY)
-	outputExpandBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+	outputExpandBtn.BackgroundColor3 = COLORS.panel
 	outputExpandBtn.Text = "EXPAND"
-	outputExpandBtn.TextColor3 = Color3.fromRGB(150, 150, 180)
+	outputExpandBtn.TextColor3 = COLORS.text
 	outputExpandBtn.Font = Enum.Font.Code
 	outputExpandBtn.TextSize = 9
 	outputExpandBtn.Parent = frame
@@ -286,18 +280,17 @@ function ProgramPanel.create(parent)
 	outputClearBtnEl.Position = UDim2.new(1, -30, 0, outputY)
 	outputClearBtnEl.BackgroundTransparency = 1
 	outputClearBtnEl.Text = "X"
-	outputClearBtnEl.TextColor3 = Color3.fromRGB(150, 150, 150)
+	outputClearBtnEl.TextColor3 = COLORS.subtext
 	outputClearBtnEl.Font = Enum.Font.Code
 	outputClearBtnEl.TextSize = 10
 	outputClearBtnEl.Parent = frame
 
-	-- Single line output display
 	outputLabelEl = Instance.new("TextLabel")
 	outputLabelEl.Size = UDim2.new(1, -20, 0, 18)
 	outputLabelEl.Position = UDim2.new(0, 10, 0, outputY + 14)
-	outputLabelEl.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	outputLabelEl.BackgroundColor3 = THEMES.player.codeBg
 	outputLabelEl.Text = ""
-	outputLabelEl.TextColor3 = Color3.fromRGB(200, 200, 100)
+	outputLabelEl.TextColor3 = COLORS.warning
 	outputLabelEl.TextXAlignment = Enum.TextXAlignment.Left
 	outputLabelEl.TextYAlignment = Enum.TextYAlignment.Center
 	outputLabelEl.Font = Enum.Font.Code
@@ -314,12 +307,11 @@ function ProgramPanel.create(parent)
 	outputPadding.PaddingLeft = UDim.new(0, 4)
 	outputPadding.Parent = outputLabelEl
 
-	-- Output Modal (for expanded view)
 	local outputModal = Instance.new("Frame")
 	outputModal.Name = "OutputModal"
 	outputModal.Size = UDim2.new(0, 400, 0, 350)
 	outputModal.Position = UDim2.new(0.5, -200, 0.5, -175)
-	outputModal.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	outputModal.BackgroundColor3 = THEMES.player.frameBg
 	outputModal.BorderSizePixel = 0
 	outputModal.Visible = false
 	outputModal.ZIndex = 100
@@ -330,14 +322,13 @@ function ProgramPanel.create(parent)
 	modalCorner.Parent = outputModal
 
 	local modalStroke = Instance.new("UIStroke")
-	modalStroke.Color = Color3.fromRGB(80, 80, 100)
+	modalStroke.Color = COLORS.subtext
 	modalStroke.Thickness = 1
 	modalStroke.Parent = outputModal
 
-	-- Modal header
 	local modalHeader = Instance.new("Frame")
 	modalHeader.Size = UDim2.new(1, 0, 0, 30)
-	modalHeader.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	modalHeader.BackgroundColor3 = THEMES.player.headerBg
 	modalHeader.BorderSizePixel = 0
 	modalHeader.Parent = outputModal
 
@@ -345,11 +336,10 @@ function ProgramPanel.create(parent)
 	modalHeaderCorner.CornerRadius = UDim.new(0, 8)
 	modalHeaderCorner.Parent = modalHeader
 
-	-- Fix corner overlap
 	local headerFix = Instance.new("Frame")
 	headerFix.Size = UDim2.new(1, 0, 0, 10)
 	headerFix.Position = UDim2.new(0, 0, 1, -10)
-	headerFix.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	headerFix.BackgroundColor3 = THEMES.player.headerBg
 	headerFix.BorderSizePixel = 0
 	headerFix.Parent = modalHeader
 
@@ -358,7 +348,7 @@ function ProgramPanel.create(parent)
 	modalTitle.Position = UDim2.new(0, 10, 0, 0)
 	modalTitle.BackgroundTransparency = 1
 	modalTitle.Text = "OUTPUT LOG"
-	modalTitle.TextColor3 = Color3.fromRGB(200, 200, 100)
+	modalTitle.TextColor3 = COLORS.warning
 	modalTitle.TextXAlignment = Enum.TextXAlignment.Left
 	modalTitle.Font = Enum.Font.Code
 	modalTitle.TextSize = 12
@@ -367,9 +357,9 @@ function ProgramPanel.create(parent)
 	local modalCloseBtn = Instance.new("TextButton")
 	modalCloseBtn.Size = UDim2.new(0, 24, 0, 24)
 	modalCloseBtn.Position = UDim2.new(1, -27, 0, 3)
-	modalCloseBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+	modalCloseBtn.BackgroundColor3 = COLORS.danger
 	modalCloseBtn.Text = "X"
-	modalCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	modalCloseBtn.TextColor3 = COLORS.text
 	modalCloseBtn.Font = Enum.Font.Code
 	modalCloseBtn.TextSize = 12
 	modalCloseBtn.Parent = modalHeader
@@ -378,14 +368,13 @@ function ProgramPanel.create(parent)
 	closeBtnCorner.CornerRadius = UDim.new(0, 4)
 	closeBtnCorner.Parent = modalCloseBtn
 
-	-- Modal scroll area
 	local modalScroll = Instance.new("ScrollingFrame")
 	modalScroll.Size = UDim2.new(1, -20, 1, -50)
 	modalScroll.Position = UDim2.new(0, 10, 0, 40)
-	modalScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+	modalScroll.BackgroundColor3 = COLORS.bg
 	modalScroll.BorderSizePixel = 0
 	modalScroll.ScrollBarThickness = 6
-	modalScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 60)
+	modalScroll.ScrollBarImageColor3 = COLORS.subtext
 	modalScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	modalScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	modalScroll.Parent = outputModal
@@ -400,7 +389,7 @@ function ProgramPanel.create(parent)
 	modalOutputLabel.BackgroundTransparency = 1
 	modalOutputLabel.Text = ""
 	modalOutputLabel.RichText = true
-	modalOutputLabel.TextColor3 = Color3.fromRGB(200, 200, 100)
+	modalOutputLabel.TextColor3 = COLORS.warning
 	modalOutputLabel.TextXAlignment = Enum.TextXAlignment.Left
 	modalOutputLabel.TextYAlignment = Enum.TextYAlignment.Top
 	modalOutputLabel.Font = Enum.Font.Code
@@ -428,15 +417,14 @@ function ProgramPanel.create(parent)
 	panel.outputModal = outputModal
 	panel.outputHistory = outputHistory
 
-	-- ===== ERROR SECTION =====
-	local errorY = outputY + 36  -- Smaller output section now
+	local errorY = outputY + 36
 
 	errorHeaderEl = Instance.new("TextLabel")
 	errorHeaderEl.Size = UDim2.new(1, -40, 0, 14)
 	errorHeaderEl.Position = UDim2.new(0, 10, 0, errorY)
 	errorHeaderEl.BackgroundTransparency = 1
 	errorHeaderEl.Text = "ERROR:"
-	errorHeaderEl.TextColor3 = Color3.fromRGB(120, 120, 140)
+	errorHeaderEl.TextColor3 = COLORS.subtext
 	errorHeaderEl.TextXAlignment = Enum.TextXAlignment.Left
 	errorHeaderEl.Font = Enum.Font.Code
 	errorHeaderEl.TextSize = 10
@@ -447,12 +435,11 @@ function ProgramPanel.create(parent)
 	errorClearBtnEl.Position = UDim2.new(1, -30, 0, errorY)
 	errorClearBtnEl.BackgroundTransparency = 1
 	errorClearBtnEl.Text = "X"
-	errorClearBtnEl.TextColor3 = Color3.fromRGB(150, 150, 150)
+	errorClearBtnEl.TextColor3 = COLORS.subtext
 	errorClearBtnEl.Font = Enum.Font.Code
 	errorClearBtnEl.TextSize = 10
 	errorClearBtnEl.Parent = frame
 
-	-- Error display with scrolling for long errors
 	errorScrollEl = Instance.new("ScrollingFrame")
 	local errorScroll = errorScrollEl
 	errorScroll.Name = "ErrorScroll"
@@ -461,7 +448,7 @@ function ProgramPanel.create(parent)
 	errorScroll.BackgroundColor3 = Color3.fromRGB(40, 25, 25)
 	errorScroll.BorderSizePixel = 0
 	errorScroll.ScrollBarThickness = 4
-	errorScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 60, 60)
+	errorScroll.ScrollBarImageColor3 = COLORS.danger
 	errorScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	errorScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	errorScroll.Parent = frame
@@ -475,7 +462,7 @@ function ProgramPanel.create(parent)
 	errorLabelEl.Position = UDim2.new(0, 4, 0, 2)
 	errorLabelEl.BackgroundTransparency = 1
 	errorLabelEl.Text = ""
-	errorLabelEl.TextColor3 = Color3.fromRGB(255, 100, 100)
+	errorLabelEl.TextColor3 = COLORS.danger
 	errorLabelEl.TextXAlignment = Enum.TextXAlignment.Left
 	errorLabelEl.TextYAlignment = Enum.TextYAlignment.Top
 	errorLabelEl.Font = Enum.Font.Code
@@ -519,15 +506,15 @@ function ProgramPanel.create(parent)
 		statusLabel.Text = displayStatus
 
 		if state.status == "ERROR" then
-			statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+			statusLabel.TextColor3 = COLORS.danger
 		elseif state.paused then
-			statusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+			statusLabel.TextColor3 = COLORS.warning
 		elseif state.status == "RUNNING" then
-			statusLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+			statusLabel.TextColor3 = COLORS.accent
 		elseif state.status == "DONE" then
-			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+			statusLabel.TextColor3 = COLORS.success
 		else
-			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+			statusLabel.TextColor3 = COLORS.subtext
 		end
 
 		-- Code display - show Python source with line numbers

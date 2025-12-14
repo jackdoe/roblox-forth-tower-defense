@@ -1,8 +1,3 @@
--- EnemyManager.luau
--- Simplified enemy system for Tower Defense
--- Enemies are DUMB - they just walk to the Core
--- No interpreter, no complex AI - just pathfinding to target
-
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -10,109 +5,87 @@ local RunService = game:GetService("RunService")
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
 
+local PathMap = require(script.Parent.PathMap)
+
 local EnemyManager = {}
 
--- Ground level Y coordinate
 local GROUND_Y = Config.PLATFORM_Y
 
 local enemies = {}
 local deps = nil
 local WaveManager = nil
-local BotRegistry = nil  -- For hunter targeting
 
--- Spatial partitioning grid for optimized enemy lookups
-local GRID_CELL_SIZE = 20  -- studs per grid cell
-local enemyGrid = {}       -- Key: "gx_gz", Value: table of enemy references
-
--- Max search range for unbounded queries (map diagonal ~250 studs)
--- This ensures spatial grid is ALWAYS used, avoiding O(n) full scans
+local GRID_CELL_SIZE = 20
+local enemyGrid = {}
 local MAX_SEARCH_RANGE = 300
 
--- Base enemy type definitions (these get scaled per wave)
--- Buffed for "Action Strategy" - more HP, more scrap, faster pace
 local EnemyTypes = {
 	Zombie = {
 		name = "Zombie",
 		modelName = "Zombie",
-		hp = 50,          -- Slight buff (was 40)
-		speed = 7,        -- Faster! (was 6)
-		damage = 10,      -- Damage to Core (was 8)
-		scrap = 15,       -- HUGE BUFF (was 5). Pays for 300 bullets!
+		hp = 50,
+		speed = 7,
+		damage = 10,
+		scrap = 10,
 		size = 1,
 	},
 	Runner = {
 		name = "Runner",
 		modelName = "Runner",
-		hp = 30,          -- Slight buff (was 25)
-		speed = 14,       -- Zoom (was 12)
+		hp = 30,
+		speed = 14,
 		damage = 5,
-		scrap = 10,       -- Buff (was 3)
+		scrap = 10,
 		size = 0.8,
 	},
 	Tank = {
 		name = "Tank",
 		modelName = "Tank",
-		hp = 400,         -- Tankier (was 150)
+		hp = 400,
 		speed = 4,
-		damage = 30,      -- Was 25
-		scrap = 100,      -- Loot pinata (was 15)
+		damage = 30,
+		scrap = 50,
 		size = 1.5,
 	},
 	Boss = {
 		name = "Boss",
 		modelName = "Boss",
-		hp = 1000,        -- Was 800
+		hp = 1000,
 		speed = 5,
-		damage = 100,     -- Was 80
-		scrap = 250,      -- Big payday (was 100)
+		damage = 100,
+		scrap = 100,
 		size = 2.5,
 	},
 }
 
--- Wave scaling configuration - TESTING: aggressive scaling
 local WaveScaling = {
-	hpPerWave = 0.30,      -- +30% HP per wave (was 15%)
-	damagePerWave = 0.15,  -- +15% damage per wave (was 10%)
-	sizePerWave = 0.10,    -- +10% size per wave (was 3%) - enemies grow visibly bigger!
-	speedPerWave = 0.03,   -- +3% speed per wave (capped)
-	maxSpeedMult = 1.8,    -- Max speed multiplier (was 1.5)
+	hpPerWave = 0.30,
+	damagePerWave = 0.15,
+	sizePerWave = 0.10,
+	speedPerWave = 0.03,
+	maxSpeedMult = 1.8,
 }
 
--- Current wave (set by WaveManager)
 local currentWave = 1
-local newGamePlusMultiplier = 1  -- Doubles after all 8 gates unlocked
-
--- Spawn gates (set from map)
+local newGamePlusMultiplier = 1
 local spawnGates = {}
+local mapData = nil
 
--- Enemy path waypoints (set from map)
-local enemyPath = {}
-
---============================================================================
--- SPATIAL PARTITIONING HELPERS (must be defined early for spawn/kill)
---============================================================================
-
--- Convert world position to grid key
 local function getGridKey(x, z)
 	local gx = math.floor(x / GRID_CELL_SIZE)
 	local gz = math.floor(z / GRID_CELL_SIZE)
 	return gx .. "_" .. gz
 end
 
--- Update enemy's grid position only when crossing cell boundaries
--- Much more efficient than rebuilding entire grid every frame
 local function updateEnemyGridPosition(enemy, newX, newZ)
 	local newKey = getGridKey(newX, newZ)
 
-	-- Only update grid if cell changed
 	if newKey ~= enemy.currentGridKey then
-		-- Remove from old cell
 		if enemy.currentGridKey and enemyGrid[enemy.currentGridKey] then
 			local cell = enemyGrid[enemy.currentGridKey]
 			for i, e in ipairs(cell) do
 				if e.id == enemy.id then
 					table.remove(cell, i)
-					-- Clean up empty cells
 					if #cell == 0 then
 						enemyGrid[enemy.currentGridKey] = nil
 					end
@@ -121,7 +94,6 @@ local function updateEnemyGridPosition(enemy, newX, newZ)
 			end
 		end
 
-		-- Add to new cell
 		if not enemyGrid[newKey] then
 			enemyGrid[newKey] = {}
 		end
@@ -130,7 +102,6 @@ local function updateEnemyGridPosition(enemy, newX, newZ)
 	end
 end
 
--- Remove enemy from grid (called on death/despawn)
 local function removeEnemyFromGrid(enemy)
 	if enemy.currentGridKey and enemyGrid[enemy.currentGridKey] then
 		local cell = enemyGrid[enemy.currentGridKey]
@@ -147,14 +118,8 @@ local function removeEnemyFromGrid(enemy)
 	enemy.currentGridKey = nil
 end
 
---============================================================================
--- INITIALIZATION
---============================================================================
-
 function EnemyManager.init(dependencies)
 	deps = dependencies
-	BotRegistry = dependencies.BotRegistry
-	print("EnemyManager: Initialized")
 end
 
 function EnemyManager.setWaveManager(waveMgr)
@@ -163,12 +128,6 @@ end
 
 function EnemyManager.setSpawnGates(gates)
 	spawnGates = gates
-	print("EnemyManager: Set", #gates, "spawn gates")
-end
-
-function EnemyManager.setEnemyPath(path)
-	enemyPath = path or {}
-	print("EnemyManager: Set enemy path with", #enemyPath, "waypoints")
 end
 
 function EnemyManager.setWave(wave)
@@ -177,10 +136,8 @@ end
 
 function EnemyManager.setNewGamePlusMultiplier(mult)
 	newGamePlusMultiplier = mult
-	print("EnemyManager: NG+ multiplier set to", mult)
 end
 
--- Calculate scaled stats for current wave
 local function getScaledStats(enemyType)
 	local base = EnemyTypes[enemyType]
 	if not base then return nil end
@@ -196,14 +153,10 @@ local function getScaledStats(enemyType)
 		hp = math.floor(base.hp * waveMult * newGamePlusMultiplier),
 		speed = base.speed * speedMult,
 		damage = math.floor(base.damage * damageMult * newGamePlusMultiplier),
-		scrap = math.floor(base.scrap * (1 + (currentWave - 1) * 0.1)),  -- Scrap also scales
+		scrap = math.floor(base.scrap * (1 + (currentWave - 1) * 0.1)),
 		size = base.size * sizeMult,
 	}
 end
-
---============================================================================
--- HELPERS
---============================================================================
 
 local function getEnemyModelsFolder()
 	return ServerStorage:FindFirstChild("Enemies") or ServerStorage:FindFirstChild("Monsters")
@@ -224,12 +177,8 @@ local function findModelInFolder(folder)
 end
 
 local function createSimpleEnemy(typeName, position, scaledType)
-	-- Use scaled stats if provided, otherwise get base type
 	local enemyType = scaledType or EnemyTypes[typeName]
-	if not enemyType then
-		warn("EnemyManager: Unknown enemy type:", typeName)
-		return nil
-	end
+	if not enemyType then return nil end
 
 	local modelsFolder = getEnemyModelsFolder()
 	local character = nil
@@ -241,7 +190,6 @@ local function createSimpleEnemy(typeName, position, scaledType)
 			local sourceModel = findModelInFolder(modelFolder)
 			if sourceModel then
 				character = sourceModel:Clone()
-				-- Scale the model based on wave-scaled size
 				if sizeScale ~= 1 then
 					character:ScaleTo(sizeScale)
 				end
@@ -249,7 +197,6 @@ local function createSimpleEnemy(typeName, position, scaledType)
 		end
 	end
 
-	-- Fallback: create simple part if no model
 	if not character then
 		character = Instance.new("Model")
 		character.Name = typeName
@@ -262,8 +209,7 @@ local function createSimpleEnemy(typeName, position, scaledType)
 		hrp.CanCollide = false
 		hrp.Material = Enum.Material.SmoothPlastic
 
-		-- Color by type (brighter for higher waves to show strength)
-		local waveTint = math.min(1, currentWave * 0.05)  -- Gets redder each wave
+		local waveTint = math.min(1, currentWave * 0.05)
 		if typeName == "Zombie" then
 			hrp.Color = Color3.fromRGB(100 + waveTint * 100, 150 - waveTint * 50, 100 - waveTint * 50)
 		elseif typeName == "Runner" then
@@ -281,27 +227,16 @@ local function createSimpleEnemy(typeName, position, scaledType)
 	return character
 end
 
---============================================================================
--- SPAWNING
---============================================================================
-
-function EnemyManager.spawn(typeName, gateIndex, dependencies)
+function EnemyManager.spawn(typeName, gateIndex)
 	local gate = spawnGates[gateIndex]
 	if not gate then
-		warn("EnemyManager: Invalid gate index:", gateIndex)
-		-- Fallback to first gate
 		gate = spawnGates[1]
 		if not gate then return nil end
 	end
 
-	-- Get scaled stats for current wave
 	local enemyType = getScaledStats(typeName)
-	if not enemyType then
-		warn("EnemyManager: Unknown enemy type:", typeName)
-		return nil
-	end
+	if not enemyType then return nil end
 
-	-- Randomize spawn position slightly
 	local spawnX = gate.x + (math.random() - 0.5) * 6
 	local spawnZ = gate.z + (math.random() - 0.5) * 6
 	local spawnPos = Vector3.new(spawnX, GROUND_Y + 3, spawnZ)
@@ -309,13 +244,11 @@ function EnemyManager.spawn(typeName, gateIndex, dependencies)
 	local character = createSimpleEnemy(typeName, spawnPos, enemyType)
 	if not character then return nil end
 
-	-- Position the model
 	local hrp = character:FindFirstChild("HumanoidRootPart")
 	if hrp then
 		character:PivotTo(CFrame.new(spawnPos))
 	end
 
-	-- Anchor all parts
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") then
 			part.Anchored = true
@@ -325,42 +258,30 @@ function EnemyManager.spawn(typeName, gateIndex, dependencies)
 
 	character.Parent = workspace
 
-	-- 20% chance to be a Bot Hunter (purple enemies that target bots)
 	local isHunter = math.random() < 0.20
 
-	-- Create enemy data
 	local id = game:GetService("HttpService"):GenerateGUID()
 	local enemy = {
 		id = id,
 		character = character,
 		typeData = enemyType,
-		typeName = typeName, -- Store type name for wave preview
+		typeName = typeName,
 		hp = enemyType.hp,
 		maxHp = enemyType.hp,
 		speed = enemyType.speed,
 		damage = enemyType.damage,
 		scrap = enemyType.scrap,
-
-		-- Movement
-		targetPos = nil,      -- Will be set to Core position
 		velocityX = 0,
 		velocityZ = 0,
-
-		-- Waypoint pathfinding
-		currentWaypoint = 1,  -- Index into enemyPath
-
-		-- Animation
 		time = math.random() * 10,
 		baseY = GROUND_Y + 3,
-
-		-- Hunter behavior
 		isHunter = isHunter,
 		targetBotId = nil,
 		lastAttackTime = 0,
 		attackCooldown = 1.0,
+		pathBias = (math.random() > 0.5) and 1 or -1,
 	}
 
-	-- Visual indication for hunters: Purple tint
 	if isHunter then
 		for _, part in pairs(character:GetDescendants()) do
 			if part:IsA("BasePart") then
@@ -370,41 +291,30 @@ function EnemyManager.spawn(typeName, gateIndex, dependencies)
 	end
 
 	enemies[id] = enemy
-
-	-- Add to spatial grid at spawn position
 	updateEnemyGridPosition(enemy, spawnX, spawnZ)
-
-	-- Set attribute for client click detection
 	character:SetAttribute("EnemyId", id)
 
-	-- Register with EntityRegistry for targeting
 	if deps.EntityRegistry then
 		deps.EntityRegistry.register({
 			id = id,
 			isEnemy = true,
-			isMonster = true,  -- For compatibility with existing targeting code
+			isMonster = true,
 			character = character,
 			hp = enemy.hp,
 			maxHp = enemy.maxHp,
 		})
 	end
 
-	-- Create HP bar billboard
 	EnemyManager.createHpBar(enemy)
 
 	return id
 end
-
---============================================================================
--- HP BAR BILLBOARD
---============================================================================
 
 function EnemyManager.createHpBar(enemy)
 	local character = enemy.character
 	local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
 	if not hrp then return end
 
-	-- Billboard GUI
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "EnemyHpBar"
 	billboard.Size = UDim2.new(0, 60, 0, 10)
@@ -413,7 +323,6 @@ function EnemyManager.createHpBar(enemy)
 	billboard.MaxDistance = 50
 	billboard.Parent = hrp
 
-	-- Background bar
 	local bgBar = Instance.new("Frame")
 	bgBar.Name = "Background"
 	bgBar.Size = UDim2.new(1, 0, 1, 0)
@@ -425,7 +334,6 @@ function EnemyManager.createHpBar(enemy)
 	bgCorner.CornerRadius = UDim.new(0, 3)
 	bgCorner.Parent = bgBar
 
-	-- HP fill bar
 	local hpBar = Instance.new("Frame")
 	hpBar.Name = "HpBar"
 	hpBar.Size = UDim2.new(1, 0, 1, 0)
@@ -437,7 +345,6 @@ function EnemyManager.createHpBar(enemy)
 	hpCorner.CornerRadius = UDim.new(0, 3)
 	hpCorner.Parent = hpBar
 
-	-- Enemy name label (small, above bar)
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name = "NameLabel"
 	nameLabel.Size = UDim2.new(1, 0, 0, 12)
@@ -448,7 +355,6 @@ function EnemyManager.createHpBar(enemy)
 	nameLabel.TextStrokeTransparency = 0.5
 	nameLabel.Parent = billboard
 
-	-- Hunter enemies get special label
 	if enemy.isHunter then
 		nameLabel.Text = "⚔ HUNTER"
 		nameLabel.TextColor3 = Color3.fromRGB(200, 100, 255)
@@ -472,7 +378,6 @@ function EnemyManager.updateHpBar(enemy)
 	local ratio = math.max(0, enemy.hp / enemy.maxHp)
 	hpBar.Size = UDim2.new(ratio, 0, 1, 0)
 
-	-- Color based on HP percentage
 	if ratio > 0.5 then
 		hpBar.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
 	elseif ratio > 0.25 then
@@ -482,17 +387,12 @@ function EnemyManager.updateHpBar(enemy)
 	end
 end
 
---============================================================================
--- DAMAGE
---============================================================================
-
 function EnemyManager.damage(enemyId, amount, sourceGolemId)
 	local enemy = enemies[enemyId]
 	if not enemy then return false end
 
 	enemy.hp = enemy.hp - amount
 
-	-- Update EntityRegistry
 	if deps.EntityRegistry then
 		local entity = deps.EntityRegistry.get(enemyId)
 		if entity then
@@ -500,10 +400,8 @@ function EnemyManager.damage(enemyId, amount, sourceGolemId)
 		end
 	end
 
-	-- Update HP bar
 	EnemyManager.updateHpBar(enemy)
 
-	-- Damage number visual
 	if enemy.character then
 		local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 		if hrp and deps.attackHitEvent then
@@ -529,18 +427,15 @@ function EnemyManager.applySlow(enemyId, slowAmount, duration)
 	local enemy = enemies[enemyId]
 	if not enemy then return end
 
-	-- Apply slow effect (stacks refresh duration, doesn't stack intensity)
 	enemy.slowAmount = slowAmount
 	enemy.slowExpires = tick() + duration
 
-	-- Visual indicator - tint the enemy blue
 	if enemy.character then
 		for _, part in ipairs(enemy.character:GetDescendants()) do
 			if part:IsA("BasePart") and not part:GetAttribute("OriginalColor") then
 				part:SetAttribute("OriginalColor", part.Color:ToHex())
 			end
 			if part:IsA("BasePart") then
-				-- Blend toward ice blue
 				local origHex = part:GetAttribute("OriginalColor")
 				if origHex then
 					local orig = Color3.fromHex(origHex)
@@ -555,7 +450,6 @@ function EnemyManager.clearSlow(enemy)
 	enemy.slowAmount = nil
 	enemy.slowExpires = nil
 
-	-- Restore original colors
 	if enemy.character then
 		for _, part in ipairs(enemy.character:GetDescendants()) do
 			if part:IsA("BasePart") then
@@ -568,11 +462,6 @@ function EnemyManager.clearSlow(enemy)
 	end
 end
 
---============================================================================
--- STATUS EFFECT SYSTEM (Combos!)
---============================================================================
-
--- Apply "oiled" status (from ROCKET) - takes 2x shock damage
 function EnemyManager.applyOiled(enemyId, duration)
 	local enemy = enemies[enemyId]
 	if not enemy then return end
@@ -580,7 +469,6 @@ function EnemyManager.applyOiled(enemyId, duration)
 	enemy.oiled = true
 	enemy.oiledExpires = tick() + (duration or 5)
 
-	-- Visual: Orange tint
 	if enemy.character then
 		for _, part in ipairs(enemy.character:GetDescendants()) do
 			if part:IsA("BasePart") and not part:GetAttribute("OriginalColor") then
@@ -590,14 +478,13 @@ function EnemyManager.applyOiled(enemyId, duration)
 				local origHex = part:GetAttribute("OriginalColor")
 				if origHex then
 					local orig = Color3.fromHex(origHex)
-					part.Color = orig:Lerp(Color3.fromRGB(255, 140, 0), 0.6) -- Orange
+					part.Color = orig:Lerp(Color3.fromRGB(255, 140, 0), 0.6)
 				end
 			end
 		end
 	end
 end
 
--- Apply "burning" status (from LASER) - DoT damage
 function EnemyManager.applyBurning(enemyId, duration, damagePerTick)
 	local enemy = enemies[enemyId]
 	if not enemy then return end
@@ -607,7 +494,6 @@ function EnemyManager.applyBurning(enemyId, duration, damagePerTick)
 	enemy.burningDamage = damagePerTick or 5
 	enemy.burningLastTick = tick()
 
-	-- Visual: Red/orange fire tint
 	if enemy.character then
 		for _, part in ipairs(enemy.character:GetDescendants()) do
 			if part:IsA("BasePart") and not part:GetAttribute("OriginalColor") then
@@ -617,12 +503,11 @@ function EnemyManager.applyBurning(enemyId, duration, damagePerTick)
 				local origHex = part:GetAttribute("OriginalColor")
 				if origHex then
 					local orig = Color3.fromHex(origHex)
-					part.Color = orig:Lerp(Color3.fromRGB(255, 80, 20), 0.5) -- Fire red
+					part.Color = orig:Lerp(Color3.fromRGB(255, 80, 20), 0.5)
 				end
 			end
 		end
 
-		-- Add fire particles
 		local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 		if hrp and not hrp:FindFirstChild("FireEffect") then
 			local fire = Instance.new("ParticleEmitter")
@@ -638,7 +523,6 @@ function EnemyManager.applyBurning(enemyId, duration, damagePerTick)
 	end
 end
 
--- Shock an enemy (from Bot) - bonus damage if oiled, chain if burning
 function EnemyManager.shock(enemyId, baseDamage, sourceX, sourceZ)
 	local enemy = enemies[enemyId]
 	if not enemy then return 0 end
@@ -646,20 +530,16 @@ function EnemyManager.shock(enemyId, baseDamage, sourceX, sourceZ)
 	baseDamage = baseDamage or 30
 	local totalDamage = baseDamage
 
-	-- Combo: Oiled + Shock = 2x damage explosion!
 	if enemy.oiled then
 		totalDamage = baseDamage * 2
 		enemy.oiled = nil
 		enemy.oiledExpires = nil
-		-- Explosion visual
 		EnemyManager.createShockExplosion(enemy)
 	end
 
-	-- Combo: Burning + Shock = chain lightning to nearby enemies
 	if enemy.burning then
 		enemy.burning = nil
 		enemy.burningExpires = nil
-		-- Remove fire particles
 		if enemy.character then
 			local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 			if hrp then
@@ -667,29 +547,21 @@ function EnemyManager.shock(enemyId, baseDamage, sourceX, sourceZ)
 				if fire then fire:Destroy() end
 			end
 		end
-		-- Chain to nearby enemies
 		EnemyManager.chainLightning(enemyId, baseDamage * 0.5, sourceX, sourceZ)
 	end
 
-	-- Apply damage
 	EnemyManager.damage(enemyId, totalDamage)
-
-	-- Electric spark visual on enemy
 	EnemyManager.createShockSparks(enemy)
 
 	return totalDamage
 end
 
--- Shatter combo: Frozen + ROCKET = bonus damage
 function EnemyManager.checkShatterCombo(enemyId, rocketDamage)
 	local enemy = enemies[enemyId]
 	if not enemy then return rocketDamage end
 
-	-- If frozen (slowed by ICE), shatter for 1.5x damage
 	if enemy.slowAmount and enemy.slowAmount >= 0.5 then
-		-- Clear the freeze
 		EnemyManager.clearSlow(enemy)
-		-- Shatter visual
 		EnemyManager.createShatterEffect(enemy)
 		return rocketDamage * 1.5
 	end
@@ -697,13 +569,11 @@ function EnemyManager.checkShatterCombo(enemyId, rocketDamage)
 	return rocketDamage
 end
 
--- Visual: Shock explosion (oiled combo)
 function EnemyManager.createShockExplosion(enemy)
 	if not enemy.character then return end
 	local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	-- Bright flash sphere
 	local explosion = Instance.new("Part")
 	explosion.Shape = Enum.PartType.Ball
 	explosion.Size = Vector3.new(1, 1, 1)
@@ -711,11 +581,10 @@ function EnemyManager.createShockExplosion(enemy)
 	explosion.Anchored = true
 	explosion.CanCollide = false
 	explosion.Material = Enum.Material.Neon
-	explosion.Color = Color3.fromRGB(255, 200, 50) -- Yellow/orange
+	explosion.Color = Color3.fromRGB(255, 200, 50)
 	explosion.Transparency = 0.3
 	explosion.Parent = workspace
 
-	-- Expand and fade
 	task.spawn(function()
 		for i = 1, 15 do
 			explosion.Size = Vector3.new(i * 1.5, i * 1.5, i * 1.5)
@@ -726,13 +595,11 @@ function EnemyManager.createShockExplosion(enemy)
 	end)
 end
 
--- Visual: Electric sparks
 function EnemyManager.createShockSparks(enemy)
 	if not enemy.character then return end
 	local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	-- Brief electric particle burst
 	local sparks = Instance.new("ParticleEmitter")
 	sparks.Color = ColorSequence.new(Color3.fromRGB(100, 200, 255), Color3.fromRGB(255, 255, 100))
 	sparks.Size = NumberSequence.new(0.3, 0)
@@ -748,13 +615,11 @@ function EnemyManager.createShockSparks(enemy)
 	end)
 end
 
--- Visual: Shatter effect (frozen + rocket)
 function EnemyManager.createShatterEffect(enemy)
 	if not enemy.character then return end
 	local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	-- Ice shards burst
 	for i = 1, 8 do
 		local shard = Instance.new("Part")
 		shard.Size = Vector3.new(0.3, 0.6, 0.2)
@@ -766,7 +631,6 @@ function EnemyManager.createShatterEffect(enemy)
 		shard.Transparency = 0.3
 		shard.Parent = workspace
 
-		-- Random velocity outward
 		local angle = (i / 8) * math.pi * 2
 		local vel = Instance.new("BodyVelocity")
 		vel.Velocity = Vector3.new(math.cos(angle) * 20, 10, math.sin(angle) * 20)
@@ -779,7 +643,6 @@ function EnemyManager.createShatterEffect(enemy)
 	end
 end
 
--- Chain lightning (burning + shock combo)
 function EnemyManager.chainLightning(sourceEnemyId, chainDamage, sourceX, sourceZ)
 	local sourceEnemy = enemies[sourceEnemyId]
 	if not sourceEnemy or not sourceEnemy.character then return end
@@ -787,15 +650,12 @@ function EnemyManager.chainLightning(sourceEnemyId, chainDamage, sourceX, source
 	local sourceHrp = sourceEnemy.character:FindFirstChild("HumanoidRootPart")
 	if not sourceHrp then return end
 
-	-- Find up to 3 nearby enemies to chain to
 	local nearbyEnemies = EnemyManager.findInRange(sourceHrp.Position.X, sourceHrp.Position.Z, 15)
 	local chainCount = 0
 
 	for _, nearbyEnemy in ipairs(nearbyEnemies) do
 		if nearbyEnemy.id ~= sourceEnemyId and chainCount < 3 then
-			-- Draw lightning bolt visual
 			EnemyManager.createLightningBolt(sourceHrp.Position, nearbyEnemy.character)
-			-- Apply chain damage
 			EnemyManager.damage(nearbyEnemy.id, chainDamage)
 			EnemyManager.createShockSparks(nearbyEnemy)
 			chainCount = chainCount + 1
@@ -803,7 +663,6 @@ function EnemyManager.chainLightning(sourceEnemyId, chainDamage, sourceX, source
 	end
 end
 
--- Visual: Lightning bolt between two points
 function EnemyManager.createLightningBolt(startPos, targetChar)
 	if not targetChar then return end
 	local targetHrp = targetChar:FindFirstChild("HumanoidRootPart")
@@ -811,7 +670,6 @@ function EnemyManager.createLightningBolt(startPos, targetChar)
 
 	local endPos = targetHrp.Position
 
-	-- Simple beam effect
 	local beam = Instance.new("Part")
 	beam.Anchored = true
 	beam.CanCollide = false
@@ -828,24 +686,19 @@ function EnemyManager.createLightningBolt(startPos, targetChar)
 	end)
 end
 
--- Clear status effects (called in update loop)
 function EnemyManager.updateStatusEffects(enemy)
 	local now = tick()
 
-	-- Clear expired oiled
 	if enemy.oiledExpires and now > enemy.oiledExpires then
 		enemy.oiled = nil
 		enemy.oiledExpires = nil
-		-- Restore color handled by next tint or clearSlow
 	end
 
-	-- Process burning DoT
 	if enemy.burning then
 		if enemy.burningExpires and now > enemy.burningExpires then
 			enemy.burning = nil
 			enemy.burningExpires = nil
 			enemy.burningDamage = nil
-			-- Remove fire particles
 			if enemy.character then
 				local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 				if hrp then
@@ -854,7 +707,6 @@ function EnemyManager.updateStatusEffects(enemy)
 				end
 			end
 		elseif enemy.burningLastTick and now - enemy.burningLastTick >= 0.5 then
-			-- Tick damage every 0.5s
 			enemy.burningLastTick = now
 			EnemyManager.damage(enemy.id, enemy.burningDamage or 5)
 		end
@@ -865,17 +717,14 @@ function EnemyManager.kill(enemyId, killerGolemId)
 	local enemy = enemies[enemyId]
 	if not enemy then return end
 
-	-- Store position before death effect destroys character
 	local deathPosition = nil
 	local scrapAmount = enemy.scrap or 10
 
-	-- Death effect
 	if enemy.character then
 		local hrp = enemy.character:FindFirstChild("HumanoidRootPart")
 		if hrp then
 			deathPosition = hrp.Position
 
-			-- Quick shrink animation
 			task.spawn(function()
 				for i = 1, 10 do
 					if enemy.character and enemy.character.Parent then
@@ -891,33 +740,22 @@ function EnemyManager.kill(enemyId, killerGolemId)
 		end
 	end
 
-	-- DROP PHYSICAL SCRAP (for Supply Bots to collect!)
 	if deps.ScrapManager and deathPosition then
 		deps.ScrapManager.spawn(deathPosition, scrapAmount)
 	end
 
-	-- Unregister
 	if deps.EntityRegistry then
 		deps.EntityRegistry.unregister(enemyId)
 	end
 
-	-- Notify WaveManager (no longer gives scrap directly)
 	if WaveManager then
-		WaveManager.onEnemyKilled(enemyId, killerGolemId)
+		WaveManager.onEnemyKilled()
 	end
 
-	-- Remove from spatial grid
 	removeEnemyFromGrid(enemy)
-
 	enemies[enemyId] = nil
 end
 
---============================================================================
--- SPATIAL PARTITIONING QUERIES
---============================================================================
-
--- Get all grid cells that could contain enemies within range of (x, z)
--- Returns enemies in those cells
 local function getEnemiesNearPoint(x, z, range)
 	local cellsToCheck = math.ceil(range / GRID_CELL_SIZE)
 	local gx = math.floor(x / GRID_CELL_SIZE)
@@ -940,26 +778,17 @@ local function getEnemiesNearPoint(x, z, range)
 	return results
 end
 
---============================================================================
--- UPDATE LOOP
---============================================================================
-
 function EnemyManager.update(dt)
 	if not WaveManager then return end
 
 	local corePos = WaveManager.getCorePosition()
 	if not corePos then return end
 
-	-- Grid is now updated incrementally as enemies move (no full rebuild needed)
-
 	local toRemove = {}
-
-	-- BulkMoveTo optimization: collect all parts and CFrames
 	local partList = {}
 	local cframeList = {}
 
-	-- Pre-calculate core reach distance squared (avoid sqrt in loop)
-	local CORE_REACH_DIST_SQ = 4 * 4  -- 16
+	local CORE_REACH_DIST_SQ = 4 * 4
 
 	for id, enemy in pairs(enemies) do
 		local character = enemy.character
@@ -970,58 +799,20 @@ function EnemyManager.update(dt)
 			continue
 		end
 
-		-- Already dead?
 		if enemy.hp <= 0 then
 			continue
 		end
 
 		local myX, myZ = hrp.Position.X, hrp.Position.Z
-		local targetX, targetZ = corePos.x, corePos.z
 
-		-- WAYPOINT PATHFINDING: Follow the path instead of beelining to core
-		if #enemyPath > 0 and enemy.currentWaypoint then
-			local waypoint = enemyPath[enemy.currentWaypoint]
-			if waypoint then
-				targetX, targetZ = waypoint.x, waypoint.z
-
-				-- Check if reached current waypoint (within 3 studs)
-				local waypointDx = targetX - myX
-				local waypointDz = targetZ - myZ
-				local waypointDistSq = waypointDx * waypointDx + waypointDz * waypointDz
-				if waypointDistSq < 9 then -- 3^2 = 9
-					-- Move to next waypoint
-					enemy.currentWaypoint = enemy.currentWaypoint + 1
-					if enemy.currentWaypoint > #enemyPath then
-						-- Reached end of path, target core directly
-						targetX, targetZ = corePos.x, corePos.z
-					else
-						local nextWp = enemyPath[enemy.currentWaypoint]
-						if nextWp then
-							targetX, targetZ = nextWp.x, nextWp.z
-						end
-					end
-				end
-			end
-		end
-
-		-- Calculate direction to target (current waypoint or core)
-		local dx = targetX - myX
-		local dz = targetZ - myZ
-		local distSq = dx * dx + dz * dz  -- Squared distance (no sqrt!)
-
-		-- Check if reached Core (only when past all waypoints)
 		local coreDx = corePos.x - myX
 		local coreDz = corePos.z - myZ
 		local coreDistSq = coreDx * coreDx + coreDz * coreDz
+
 		if coreDistSq < CORE_REACH_DIST_SQ then
-			-- Deal damage to Core
-			WaveManager.damageCore(enemy.damage, id)
-			WaveManager.onEnemyReachedCore(id)
-
-			-- Remove from spatial grid
+			WaveManager.damageCore(enemy.damage)
+			WaveManager.onEnemyReachedCore()
 			removeEnemyFromGrid(enemy)
-
-			-- Remove enemy
 			if character then character:Destroy() end
 			if deps.EntityRegistry then
 				deps.EntityRegistry.unregister(id)
@@ -1030,71 +821,78 @@ function EnemyManager.update(dt)
 			continue
 		end
 
-		-- Check/clear slow effect
 		if enemy.slowExpires and tick() > enemy.slowExpires then
 			EnemyManager.clearSlow(enemy)
 		end
 
-		-- Process status effects (oiled, burning DoT, etc.)
 		EnemyManager.updateStatusEffects(enemy)
 
-		-- Calculate effective speed (apply slow if active)
 		local effectiveSpeed = enemy.speed
 		if enemy.slowAmount then
 			effectiveSpeed = enemy.speed * (1 - enemy.slowAmount)
 		end
 
-		-- Move toward Core
-		if distSq > 0.01 then  -- 0.1^2 = 0.01
-			-- Only compute sqrt when needed for normalization
-			local dist = math.sqrt(distSq)
-			local dirX = dx / dist
-			local dirZ = dz / dist
+		if not enemy.targetCenter then
+			enemy.targetCenter = PathMap.getBestNextCenter(myX, myZ)
+		end
 
-			-- Smooth velocity
+		local target = enemy.targetCenter
+		if not target then
+			target = corePos
+		end
+
+		local dx = target.x - myX
+		local dz = target.z - myZ
+		local distToTarget = math.sqrt(dx * dx + dz * dz)
+
+		if distToTarget < 2 then
+			enemy.targetCenter = PathMap.getBestNextCenter(myX, myZ)
+			target = enemy.targetCenter or corePos
+			dx = target.x - myX
+			dz = target.z - myZ
+			distToTarget = math.sqrt(dx * dx + dz * dz)
+		end
+
+		local dirX, dirZ = 0, 0
+		if distToTarget > 0.1 then
+			dirX = dx / distToTarget
+			dirZ = dz / distToTarget
+		end
+
+		if dirX ~= 0 or dirZ ~= 0 then
 			local targetVelX = dirX * effectiveSpeed
 			local targetVelZ = dirZ * effectiveSpeed
 
-			enemy.velocityX = enemy.velocityX + (targetVelX - enemy.velocityX) * 0.1
-			enemy.velocityZ = enemy.velocityZ + (targetVelZ - enemy.velocityZ) * 0.1
+			enemy.velocityX = enemy.velocityX + (targetVelX - enemy.velocityX) * 0.15
+			enemy.velocityZ = enemy.velocityZ + (targetVelZ - enemy.velocityZ) * 0.15
 
 			local newX = myX + enemy.velocityX * dt
 			local newZ = myZ + enemy.velocityZ * dt
 
-			-- Update spatial grid only when crossing cell boundaries (efficient!)
 			updateEnemyGridPosition(enemy, newX, newZ)
 
-			-- Simple bobbing animation
 			enemy.time = enemy.time + dt
 			local bobAmount = 0.2
 			local bobSpeed = enemy.speed * 2
 			local bob = math.sin(enemy.time * bobSpeed) * bobAmount
 			local newY = enemy.baseY + bob
 
-			-- Update facing direction
-			local facingAngle = math.atan2(dx, dz) + math.pi
+			local facingAngle = math.atan2(enemy.velocityX, enemy.velocityZ) + math.pi
 
-			-- Queue for BulkMoveTo instead of individual PivotTo
 			local newCF = CFrame.new(newX, newY, newZ) * CFrame.Angles(0, facingAngle, 0)
 			table.insert(partList, hrp)
 			table.insert(cframeList, newCF)
 		end
 	end
 
-	-- BulkMoveTo: Update all enemy positions in a single physics step
 	if #partList > 0 then
 		workspace:BulkMoveTo(partList, cframeList, Enum.BulkMoveMode.FireCFrameChanged)
 	end
 
-	-- Clean up
 	for _, id in ipairs(toRemove) do
 		enemies[id] = nil
 	end
 end
-
---============================================================================
--- QUERIES
---============================================================================
 
 function EnemyManager.get(id)
 	return enemies[id]
@@ -1110,43 +908,38 @@ function EnemyManager.count()
 	return n
 end
 
--- Get lightweight enemy data for minimap display
--- Returns array of {id, typeName, pathProgress} where pathProgress is 0-1 (0=spawn, 1=gate/core)
 function EnemyManager.getMinimapData()
 	local data = {}
-	local totalWaypoints = #enemyPath + 1  -- +1 for core as final target
 
 	for id, enemy in pairs(enemies) do
 		if enemy.hp > 0 then
-			-- Calculate path progress (0 = at spawn, 1 = at core)
-			local progress = 0
-			if totalWaypoints > 1 then
-				progress = ((enemy.currentWaypoint or 1) - 1) / totalWaypoints
-			end
+			local character = enemy.character
+			local hrp = character and character:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local dist = PathMap.getDistance(hrp.Position.X, hrp.Position.Z)
+				local maxDist = 200
+				local progress = 1 - math.min(1, dist / maxDist)
 
-			table.insert(data, {
-				id = id,
-				typeName = enemy.typeName,
-				pathProgress = progress,
-			})
+				table.insert(data, {
+					id = id,
+					typeName = enemy.typeName,
+					pathProgress = progress,
+				})
+			end
 		end
 	end
 
 	return data
 end
 
--- Get total path length for minimap scaling
 function EnemyManager.getPathLength()
-	return #enemyPath + 1
+	return 200
 end
 
 function EnemyManager.findNearest(x, z, maxRange)
-	-- Cap range to MAX_SEARCH_RANGE to always use spatial grid
-	-- This prevents O(n) full scans on large enemy counts
 	local effectiveRange = math.min(maxRange or MAX_SEARCH_RANGE, MAX_SEARCH_RANGE)
 	local nearestDistSq = effectiveRange * effectiveRange
 
-	-- Always use spatial grid for performance
 	local candidates = getEnemiesNearPoint(x, z, effectiveRange)
 	local nearest = nil
 
@@ -1156,7 +949,7 @@ function EnemyManager.findNearest(x, z, maxRange)
 			if hrp then
 				local dx = hrp.Position.X - x
 				local dz = hrp.Position.Z - z
-				local distSq = dx * dx + dz * dz  -- Squared distance (no sqrt!)
+				local distSq = dx * dx + dz * dz
 				if distSq < nearestDistSq then
 					nearestDistSq = distSq
 					nearest = enemy
@@ -1165,16 +958,13 @@ function EnemyManager.findNearest(x, z, maxRange)
 		end
 	end
 
-	-- Return actual distance for API compatibility
 	return nearest, nearest and math.sqrt(nearestDistSq) or (maxRange or math.huge)
 end
 
 function EnemyManager.findWeakest(x, z, maxRange)
-	-- Cap range to MAX_SEARCH_RANGE to always use spatial grid
 	local effectiveRange = math.min(maxRange or MAX_SEARCH_RANGE, MAX_SEARCH_RANGE)
 	local effectiveRangeSq = effectiveRange * effectiveRange
 
-	-- Always use spatial grid for performance
 	local candidates = getEnemiesNearPoint(x, z, effectiveRange)
 	local weakest = nil
 	local lowestHp = math.huge
@@ -1185,7 +975,7 @@ function EnemyManager.findWeakest(x, z, maxRange)
 			if hrp then
 				local dx = hrp.Position.X - x
 				local dz = hrp.Position.Z - z
-				local distSq = dx * dx + dz * dz  -- Squared distance (no sqrt!)
+				local distSq = dx * dx + dz * dz
 				if distSq <= effectiveRangeSq and enemy.hp < lowestHp then
 					lowestHp = enemy.hp
 					weakest = enemy
@@ -1200,7 +990,7 @@ end
 function EnemyManager.findInRange(x, z, range)
 	local inRange = {}
 	local candidates = getEnemiesNearPoint(x, z, range)
-	local rangeSq = range * range  -- Pre-compute squared range
+	local rangeSq = range * range
 
 	for _, enemy in ipairs(candidates) do
 		if enemy.hp > 0 and enemy.character then
@@ -1208,7 +998,7 @@ function EnemyManager.findInRange(x, z, range)
 			if hrp then
 				local dx = hrp.Position.X - x
 				local dz = hrp.Position.Z - z
-				local distSq = dx * dx + dz * dz  -- Squared distance (no sqrt!)
+				local distSq = dx * dx + dz * dz
 				if distSq <= rangeSq then
 					table.insert(inRange, enemy)
 				end
@@ -1229,12 +1019,8 @@ function EnemyManager.clear()
 		end
 	end
 	enemies = {}
-	table.clear(enemyGrid)  -- Clear spatial grid
+	table.clear(enemyGrid)
 end
-
---============================================================================
--- INIT HEARTBEAT
---============================================================================
 
 function EnemyManager.startUpdateLoop()
 	RunService.Heartbeat:Connect(function(dt)

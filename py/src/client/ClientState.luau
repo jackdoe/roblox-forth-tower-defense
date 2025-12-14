@@ -35,9 +35,6 @@ ClientState.botPlacementMode = false
 ClientState.isPlacementValid = false
 ClientState.isBotPlacementValid = false
 
-ClientState.isMovingGolem = false
-ClientState.movingGolemId = nil
-
 ClientState.bytecodeVisible = false
 ClientState.bytecodeUserOverride = false
 

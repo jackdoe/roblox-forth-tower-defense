@@ -1,7 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local BotStats = require(script.Parent.BotStats)
-local Pathfinding = require(script.Parent.Pathfinding)
 
 local BotModel = {}
 
@@ -115,13 +114,6 @@ function BotModel.create(x, z)
 	chatText.Font = Enum.Font.GothamBold
 	chatText.TextTransparency = 1
 	chatText.Parent = bubble
-
-	local pathBlocker = Pathfinding.createPathBlocker(model, Vector3.new(x, GROUND_Y + 2.5, z), Pathfinding.BOT_BLOCKER_SIZE, "Bot")
-	pathBlocker.Anchored = false
-	local pathBlockerWeld = Instance.new("WeldConstraint")
-	pathBlockerWeld.Part0 = hrp
-	pathBlockerWeld.Part1 = pathBlocker
-	pathBlockerWeld.Parent = hrp
 
 	model.Parent = workspace
 

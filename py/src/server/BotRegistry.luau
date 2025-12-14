@@ -5,13 +5,10 @@ local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
 local BotStats = require(script.Parent.BotStats)
 local BotModel = require(script.Parent.BotModel)
-local Pathfinding = require(script.Parent.Pathfinding)
 
 local BotRegistry = {}
 
 local GROUND_Y = BotStats.GROUND_Y
-local BOT_RADIUS = BotStats.BOT_RADIUS
-local TURRET_RADIUS = BotStats.TURRET_RADIUS
 
 local bots = {}
 local deps = nil
@@ -27,77 +24,12 @@ local botSellEvent = nil
 local botRegisterViewerEvent = nil
 local botUnregisterViewerEvent = nil
 
-local function recomputeBotPath(bot, goalX, goalZ)
-	local character = bot.character
-	local hrp = character and character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return nil end
-
-	local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
-	local goalPos = Vector3.new(goalX, GROUND_Y, goalZ)
-
-	return Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
-end
-
-local function getBotObstacles()
-	local obstacles = {}
-	for id, bot in pairs(bots) do
-		if bot.character then
-			local hrp = bot.character:FindFirstChild("HumanoidRootPart")
-			if hrp then
-				table.insert(obstacles, {
-					id = id,
-					x = hrp.Position.X,
-					z = hrp.Position.Z,
-					radius = BOT_RADIUS * 2,
-				})
-			end
-		end
-	end
-	return obstacles
-end
-
-local function getTurretObstacles()
-	if not deps or not deps.GolemRegistry then return {} end
-	local golems = deps.GolemRegistry.getAll and deps.GolemRegistry.getAll() or {}
-	local obstacles = {}
-	for id, golem in pairs(golems) do
-		if golem.character then
-			local hrp = golem.character:FindFirstChild("HumanoidRootPart") or golem.character.PrimaryPart
-			if hrp then
-				table.insert(obstacles, {
-					id = "turret_" .. id,
-					x = hrp.Position.X,
-					z = hrp.Position.Z,
-					radius = TURRET_RADIUS + BOT_RADIUS,
-				})
-			end
-		end
-	end
-	return obstacles
-end
-
-local function getCoreObstacle()
-	if not WaveManager then return {} end
-	local corePos = WaveManager.getCorePosition and WaveManager.getCorePosition()
-	if not corePos then return {} end
-	return {{
-		id = "core",
-		x = corePos.x,
-		z = corePos.z,
-		radius = 8,
-	}}
-end
-
 function BotRegistry.init(dependencies, interpreterModule)
 	deps = dependencies
 	InterpreterModule = interpreterModule
 
 	local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 	GameAPI = require(PythonTD.Python.GameAPI)
-
-	Pathfinding.registerObstacleGetter("bots", getBotObstacles)
-	Pathfinding.registerObstacleGetter("turrets", getTurretObstacles)
-	Pathfinding.registerObstacleGetter("core", getCoreObstacle)
 
 	botStateEvent = Instance.new("RemoteEvent")
 	botStateEvent.Name = "BotState"
@@ -301,6 +233,23 @@ function BotRegistry.clearCommands(botId)
 	bot.isMoving = false
 end
 
+local function moveTowards(bot, hrp, targetX, targetZ, arrivalDist, statusName)
+	local dx = targetX - hrp.Position.X
+	local dz = targetZ - hrp.Position.Z
+	local dist = math.sqrt(dx * dx + dz * dz)
+
+	if dist <= arrivalDist then
+		bot.isMoving = false
+		return true
+	end
+
+	bot.moveTargetX = targetX
+	bot.moveTargetZ = targetZ
+	bot.isMoving = true
+	bot.status = statusName
+	return false
+end
+
 local function executeTask(bot, dt)
 	local task = bot.currentTask
 	if not task then return "DONE" end
@@ -321,79 +270,24 @@ local function executeTask(bot, dt)
 		end
 
 		local sPos = scrap.part.Position
-		bot.finalGoalX = sPos.X
-		bot.finalGoalZ = sPos.Z
-
-		local dx = sPos.X - hrp.Position.X
-		local dz = sPos.Z - hrp.Position.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
-
-		if dist <= (bot.pickupRange or 8) then
+		if moveTowards(bot, hrp, sPos.X, sPos.Z, bot.pickupRange or 8, "COLLECTING") then
 			BotRegistry.collectScrap(bot.id)
 			bot.status = "IDLE"
 			return "DONE"
-		else
-			bot.moveTargetX = sPos.X
-			bot.moveTargetZ = sPos.Z
-			bot.isMoving = true
-			bot.status = "COLLECTING"
-			return "RUNNING"
 		end
+		return "RUNNING"
 
 	elseif task.type == "COLLECT_AT" or task.type == "COLLECT_AREA" then
 		local targetX = task.args.x
 		local targetZ = task.args.z
 		if not targetX or not targetZ then return "FAILED" end
 
-		bot.finalGoalX = targetX
-		bot.finalGoalZ = targetZ
-
-		if not task.path then
-			local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
-			local goalPos = Vector3.new(targetX, GROUND_Y, targetZ)
-			task.path = Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
-			task.pathIndex = 1
-		end
-
-		local waypoint = task.path[task.pathIndex]
-		if not waypoint then
-			local collected = BotRegistry.collectScrap(bot.id)
+		if moveTowards(bot, hrp, targetX, targetZ, bot.pickupRange or 20, "COLLECTING") then
+			BotRegistry.collectScrap(bot.id)
 			bot.status = "IDLE"
-			bot.isMoving = false
 			return "DONE"
 		end
-
-		local dx = waypoint.x - hrp.Position.X
-		local dz = waypoint.z - hrp.Position.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
-
-		local finalDx = targetX - hrp.Position.X
-		local finalDz = targetZ - hrp.Position.Z
-		local finalDist = math.sqrt(finalDx * finalDx + finalDz * finalDz)
-		local pickupRange = bot.pickupRange or 20
-
-		if finalDist <= pickupRange then
-			local collected = BotRegistry.collectScrap(bot.id)
-			bot.status = "IDLE"
-			bot.isMoving = false
-			return "DONE"
-		elseif dist < 2 then
-			task.pathIndex = task.pathIndex + 1
-			waypoint = task.path[task.pathIndex]
-			if waypoint then
-				bot.moveTargetX = waypoint.x
-				bot.moveTargetZ = waypoint.z
-			end
-			bot.isMoving = true
-			bot.status = "COLLECTING"
-			return "RUNNING"
-		else
-			bot.moveTargetX = waypoint.x
-			bot.moveTargetZ = waypoint.z
-			bot.isMoving = true
-			bot.status = "COLLECTING"
-			return "RUNNING"
-		end
+		return "RUNNING"
 
 	elseif task.type == "SUPPLY_CORE" then
 		local coreX, coreZ = 150, 150
@@ -405,100 +299,22 @@ local function executeTask(bot, dt)
 			end
 		end
 
-		bot.finalGoalX = coreX
-		bot.finalGoalZ = coreZ
-
-		if not task.path then
-			local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
-			local goalPos = Vector3.new(coreX, GROUND_Y, coreZ)
-			task.path = Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
-			task.pathIndex = 1
-		end
-
-		local waypoint = task.path[task.pathIndex]
-		if not waypoint then
+		if moveTowards(bot, hrp, coreX, coreZ, bot.transferRange or 10, "DELIVERING") then
 			BotRegistry.depositToCore(bot.id)
 			bot.status = "IDLE"
-			bot.isMoving = false
 			return "DONE"
 		end
-
-		local dx = waypoint.x - hrp.Position.X
-		local dz = waypoint.z - hrp.Position.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
-
-		local coreDx = coreX - hrp.Position.X
-		local coreDz = coreZ - hrp.Position.Z
-		local coreDist = math.sqrt(coreDx * coreDx + coreDz * coreDz)
-
-		if coreDist <= (bot.transferRange or 10) then
-			BotRegistry.depositToCore(bot.id)
-			bot.status = "IDLE"
-			bot.isMoving = false
-			return "DONE"
-		elseif dist < 2 then
-			task.pathIndex = task.pathIndex + 1
-			waypoint = task.path[task.pathIndex]
-			if waypoint then
-				bot.moveTargetX = waypoint.x
-				bot.moveTargetZ = waypoint.z
-			end
-			bot.isMoving = true
-			bot.status = "DELIVERING"
-			return "RUNNING"
-		else
-			bot.moveTargetX = waypoint.x
-			bot.moveTargetZ = waypoint.z
-			bot.isMoving = true
-			bot.status = "DELIVERING"
-			return "RUNNING"
-		end
+		return "RUNNING"
 
 	elseif task.type == "MOVE" then
 		local targetX = task.args.x
 		local targetZ = task.args.z
 
-		bot.finalGoalX = targetX
-		bot.finalGoalZ = targetZ
-
-		if not task.path then
-			local startPos = Vector3.new(hrp.Position.X, GROUND_Y, hrp.Position.Z)
-			local goalPos = Vector3.new(targetX, GROUND_Y, targetZ)
-			task.path = Pathfinding.computePath(startPos, goalPos, BOT_RADIUS + 1, bot.id)
-			task.pathIndex = 1
-		end
-
-		local waypoint = task.path[task.pathIndex]
-		if not waypoint then
+		if moveTowards(bot, hrp, targetX, targetZ, 2, "MOVING") then
 			bot.status = "IDLE"
-			bot.isMoving = false
 			return "DONE"
 		end
-
-		local dx = waypoint.x - hrp.Position.X
-		local dz = waypoint.z - hrp.Position.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
-
-		if dist < 2 then
-			task.pathIndex = task.pathIndex + 1
-			if task.pathIndex > #task.path then
-				bot.status = "IDLE"
-				bot.isMoving = false
-				return "DONE"
-			end
-			waypoint = task.path[task.pathIndex]
-			bot.moveTargetX = waypoint.x
-			bot.moveTargetZ = waypoint.z
-			bot.isMoving = true
-			bot.status = "MOVING"
-			return "RUNNING"
-		else
-			bot.moveTargetX = waypoint.x
-			bot.moveTargetZ = waypoint.z
-			bot.isMoving = true
-			bot.status = "MOVING"
-			return "RUNNING"
-		end
+		return "RUNNING"
 
 	elseif task.type == "IDLE" then
 		local duration = task.args.duration or 1
@@ -540,10 +356,8 @@ local function executeTask(bot, dt)
 
 		if not targetX or not targetZ then return "FAILED" end
 
-		local freeX, freeZ = Pathfinding.findFreePosition(targetX, targetZ, bot.id)
-
 		if hrp then
-			bot.character:PivotTo(CFrame.new(freeX, GROUND_Y + 3, freeZ))
+			bot.character:PivotTo(CFrame.new(targetX, GROUND_Y + 3, targetZ))
 			bot.status = "IDLE"
 		end
 		return "DONE"
@@ -656,39 +470,14 @@ function BotRegistry.update(dt)
 				bot.moveTargetX = nil
 				bot.moveTargetZ = nil
 				bot.isMoving = false
-				bot.lastPos = nil
 			else
 				local speed = bot.speed or BotStats.BASE.speed
-				local moveAmount = math.min(speed * dt, dist)
 				local dirX = dx / dist
 				local dirZ = dz / dist
 
-				local proposedX = hrp.Position.X + dirX * moveAmount
-				local proposedZ = hrp.Position.Z + dirZ * moveAmount
-
-				local blocked = Pathfinding.isPositionBlocked(proposedX, proposedZ, id)
-
-				if not blocked then
-					newX = proposedX
-					newZ = proposedZ
-					bot.lastPos = {x = newX, z = newZ}
-				else
-					local lastRecompute = bot.lastPathRecompute or 0
-					if tick() - lastRecompute > Pathfinding.PATH_RECOMPUTE_COOLDOWN then
-						bot.lastPathRecompute = tick()
-						local goalX = bot.finalGoalX or bot.moveTargetX
-						local goalZ = bot.finalGoalZ or bot.moveTargetZ
-						local newPath = recomputeBotPath(bot, goalX, goalZ)
-						if newPath and #newPath > 0 then
-							if bot.currentTask then
-								bot.currentTask.path = newPath
-								bot.currentTask.pathIndex = 1
-							end
-							bot.moveTargetX = newPath[1].x
-							bot.moveTargetZ = newPath[1].z
-						end
-					end
-				end
+				local moveAmount = math.min(speed * dt, dist)
+				newX = hrp.Position.X + dirX * moveAmount
+				newZ = hrp.Position.Z + dirZ * moveAmount
 
 				facingAngle = math.atan2(-dirX, -dirZ)
 				character:SetAttribute("FacingAngle", facingAngle)
@@ -696,16 +485,19 @@ function BotRegistry.update(dt)
 		end
 
 		character:SetAttribute("IsMoving", bot.isMoving or false)
-		character:SetAttribute("EmoteType", bot.emoteType or "")
-		character:SetAttribute("EmoteEndTime", bot.emoteEndTime or 0)
-
-		if bot.emoteEndTime and tick() >= bot.emoteEndTime then
-			bot.emoteType = nil
-			bot.emoteEndTime = nil
-		end
 
 		hrp.CFrame = CFrame.new(newX, baseY, newZ)
 			* CFrame.Angles(0, facingAngle, 0)
+
+		if (bot.scrapInventory or 0) < (bot.maxCapacity or 3) then
+			local ScrapManager = deps.ScrapManager
+			if ScrapManager then
+				local scrap = ScrapManager.findNearest(newX, newZ, bot.pickupRange or 5)
+				if scrap and scrap.id and ScrapManager.collect(scrap.id) then
+					bot.scrapInventory = (bot.scrapInventory or 0) + 1
+				end
+			end
+		end
 
 		if not bot.currentTask and #bot.taskQueue > 0 then
 			bot.currentTask = table.remove(bot.taskQueue, 1)
@@ -880,51 +672,40 @@ function BotRegistry.collectScrap(botId)
 	if not ScrapManager then return 0 end
 
 	local x, z = hrp.Position.X, hrp.Position.Z
-	local pickupRange = bot.pickupRange or 8
-	local totalCollected = 0
+	local pickupRange = bot.pickupRange or 5
+	local piecesCollected = 0
 
-	while true do
-		local currentScrap = bot.scrapInventory or 0
-		local maxCapacity = bot.maxCapacity or 50
-		local space = maxCapacity - currentScrap
-
-		if space <= 0 then
-			break
-		end
-
+	while (bot.scrapInventory or 0) < (bot.maxCapacity or 3) do
 		local scrap = ScrapManager.findNearest(x, z, pickupRange)
-		if not scrap or not scrap.id then
+		if not scrap or not scrap.id then break end
+
+		if ScrapManager.collect(scrap.id) then
+			bot.scrapInventory = (bot.scrapInventory or 0) + 1
+			piecesCollected = piecesCollected + 1
+		else
 			break
 		end
-
-		local scrapAmount = scrap.amount or 1
-		local toCollect = math.min(scrapAmount, space)
-		bot.scrapInventory = (bot.scrapInventory or 0) + toCollect
-		totalCollected = totalCollected + toCollect
-		ScrapManager.remove(scrap.id)
 	end
 
-	if totalCollected > 0 then
-		print("BotRegistry: Bot collected " .. totalCollected .. " scrap, now carrying " .. (bot.scrapInventory or 0))
-	end
-
-	return totalCollected
+	return piecesCollected
 end
 
 function BotRegistry.depositToCore(botId)
 	local bot = bots[botId]
 	if not bot then return 0 end
 
-	local scrapToDeposit = bot.scrapInventory or 0
-	if scrapToDeposit <= 0 then return 0 end
+	local pieces = bot.scrapInventory or 0
+	if pieces <= 0 then return 0 end
+
+	local pieceValue = Config.SCRAP_PIECE_VALUE or 10
+	local scrapValue = pieces * pieceValue
 
 	if WaveManager then
-		WaveManager.addScrap(scrapToDeposit)
-		print("BotRegistry: Bot deposited " .. scrapToDeposit .. " scrap to core")
+		WaveManager.addScrap(scrapValue)
 	end
 	bot.scrapInventory = 0
 
-	return scrapToDeposit
+	return pieces
 end
 
 function BotRegistry.isStunned(botId)
@@ -940,11 +721,12 @@ function BotRegistry.kill(botId)
 	local ownerId = bot.ownerId
 	local spotId = bot.spotId
 
-	local cargo = bot.scrapInventory or 0
-	if cargo > 0 and deps.ScrapManager and bot.character then
+	local pieces = bot.scrapInventory or 0
+	if pieces > 0 and deps.ScrapManager and bot.character then
 		local hrp = bot.character:FindFirstChild("HumanoidRootPart")
 		if hrp then
-			deps.ScrapManager.spawn(hrp.Position, cargo)
+			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
+			deps.ScrapManager.spawn(hrp.Position, pieces * pieceValue)
 		end
 	end
 
@@ -1147,27 +929,6 @@ function BotRegistry.setChatBubble(botId, message)
 			end
 		end)
 	end
-	return true
-end
-
-function BotRegistry.playEmote(botId, emoteName)
-	local bot = bots[botId]
-	if not bot or not bot.character then return false end
-
-	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return false end
-
-	if emoteName == "dance" or emoteName == "spin" then
-		bot.emoteEndTime = tick() + 2
-		bot.emoteType = "spin"
-	elseif emoteName == "jump" or emoteName == "hop" then
-		bot.emoteEndTime = tick() + 0.5
-		bot.emoteType = "jump"
-	elseif emoteName == "shake" or emoteName == "shiver" then
-		bot.emoteEndTime = tick() + 1
-		bot.emoteType = "shake"
-	end
-
 	return true
 end
 
