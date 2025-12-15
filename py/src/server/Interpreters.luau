@@ -37,7 +37,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 	local character = nil
 	local entity = nil
 	local defaultProgram = nil
-	local cpuHz = 10
+	local cpuHz = 2
 	local maxBytecode = 128
 	local selfType = "Entity"
 	local name = interpType .. ".py"
@@ -288,70 +288,68 @@ function Interpreters.getByType(interpType)
 	return result
 end
 
+local CPU_BASE_COST = 100
+local CPU_COST_MULTIPLIER = 1.5
+local CPU_HZ_INCREMENT = 5
+
 function Interpreters.upgradeCPU(pid)
 	local data = interpreters[pid]
-	if not data or not data.entity then return false, "Not found" end
+	if not data then return false, "Not found" end
 
-	local entity = data.entity
-	local currentTier = entity.tier or 1
+	local interp = data.interpreter
+	local currentHz = interp.cpuHz or 2
+	local upgradeCount = math.floor((currentHz - 2) / CPU_HZ_INCREMENT)
+	local cost = math.floor(CPU_BASE_COST * (CPU_COST_MULTIPLIER ^ upgradeCount))
 
-	local tiers = data.type == "golem" and GolemStats.UpgradeTiers or BotStats.UpgradeTiers
-	local maxTier = data.type == "golem" and GolemStats.MAX_CPU_TIER or BotStats.MAX_CPU_TIER
-
-	if currentTier >= maxTier then return false, "Max tier" end
-
-	local nextTierData = tiers[currentTier + 1]
-	if not nextTierData then return false, "Invalid tier" end
-
-	local cost = nextTierData.upgradeCost
 	if deps.WaveManager then
 		local scrap = deps.WaveManager.getScrap()
 		if scrap < cost then return false, "Not enough scrap" end
 		deps.WaveManager.removeScrap(cost)
 	end
 
-	entity.tier = currentTier + 1
-	data.interpreter.cpuHz = nextTierData.cpuHz
+	interp.cpuHz = currentHz + CPU_HZ_INCREMENT
 
-	if data.type == "golem" then
-		GolemModel.applyVisualUpgrade(entity)
+	if data.entity then
+		data.entity.tier = (data.entity.tier or 1) + 1
+		if data.type == "golem" then
+			GolemModel.applyVisualUpgrade(data.entity)
+		end
 	end
 
 	data.gen = data.gen + 1
-	return true, {tier = entity.tier}
+	return true, {cpuHz = interp.cpuHz, cost = cost}
 end
+
+local RAM_BASE_COST = 75
+local RAM_COST_MULTIPLIER = 1.5
+local RAM_INCREMENT = 32
 
 function Interpreters.upgradeRAM(pid)
 	local data = interpreters[pid]
-	if not data or not data.entity then return false, "Not found" end
+	if not data then return false, "Not found" end
 
-	local entity = data.entity
-	local currentTier = entity.ramTier or 1
+	local interp = data.interpreter
+	local currentRam = interp.maxBytecode or 32
+	local upgradeCount = math.floor((currentRam - 32) / RAM_INCREMENT)
+	local cost = math.floor(RAM_BASE_COST * (RAM_COST_MULTIPLIER ^ upgradeCount))
 
-	local tiers = data.type == "golem" and GolemStats.RAMTiers or BotStats.RAMTiers
-	local maxTier = data.type == "golem" and GolemStats.MAX_RAM_TIER or BotStats.MAX_RAM_TIER
-
-	if currentTier >= maxTier then return false, "Max RAM" end
-
-	local nextTierData = tiers[currentTier + 1]
-	if not nextTierData then return false, "Invalid tier" end
-
-	local cost = nextTierData.upgradeCost
 	if deps.WaveManager then
 		local scrap = deps.WaveManager.getScrap()
 		if scrap < cost then return false, "Not enough scrap" end
 		deps.WaveManager.removeScrap(cost)
 	end
 
-	entity.ramTier = currentTier + 1
-	data.interpreter.maxBytecode = nextTierData.maxBytecode
+	interp.maxBytecode = currentRam + RAM_INCREMENT
 
-	if data.type == "golem" then
-		GolemModel.applyColorUpgrade(entity)
+	if data.entity then
+		data.entity.ramTier = (data.entity.ramTier or 1) + 1
+		if data.type == "golem" then
+			GolemModel.applyColorUpgrade(data.entity)
+		end
 	end
 
 	data.gen = data.gen + 1
-	return true, {ramTier = entity.ramTier, maxBytecode = nextTierData.maxBytecode}
+	return true, {maxBytecode = interp.maxBytecode, cost = cost}
 end
 
 function Interpreters.run(pid, ticks, freeSteps)
@@ -405,6 +403,7 @@ function Interpreters.getState(pid, fullState)
 	local runtimeState = interp.runtime and interp.runtime:getState()
 	if runtimeState and runtimeState.vm then
 		state.ip = runtimeState.vm.ip
+		state.stack = runtimeState.vm.stack
 	end
 
 	if fullState then
@@ -825,7 +824,7 @@ function Interpreters.startUpdateLoop()
 			if data.type == "golem" and data.entity then
 				local interp = data.interpreter
 				if not interp.paused and (interp.status == "READY" or interp.status == "RUNNING") then
-					interp:run(interp.cpuHz or 10)
+					interp:run(interp.cpuHz or 2)
 				end
 				updateGolem(data, dt)
 				GolemModel.updateBillboard(data.entity)
@@ -834,7 +833,7 @@ function Interpreters.startUpdateLoop()
 				local interp = data.interpreter
 				if not data.entity.waitingForTask then
 					if not interp.paused and (interp.status == "READY" or interp.status == "RUNNING") then
-						interp:run(interp.cpuHz or 10)
+						interp:run(interp.cpuHz or 2)
 					end
 				end
 				updateBot(data, dt)

@@ -165,12 +165,6 @@ ide = MainIDE.create(screenGui, {
 			botSellEvent:FireServer(pid)
 		end
 	end,
-})
-
-hud = HUD.create(screenGui, {
-	onReady = function()
-		playerReadyEvent:FireServer()
-	end,
 	onBuildBot = function()
 		if ClientState.placementMode then PlacementSystem.exitTurretMode() end
 		if ClientState.botPlacementMode then
@@ -189,6 +183,12 @@ hud = HUD.create(screenGui, {
 	end,
 })
 
+hud = HUD.create(screenGui, {
+	onReady = function()
+		playerReadyEvent:FireServer()
+	end,
+})
+
 Overlays.create(screenGui)
 
 interpreterSyncEvent.OnClientEvent:Connect(function(payload)
@@ -197,6 +197,7 @@ interpreterSyncEvent.OnClientEvent:Connect(function(payload)
 	ClientState.nextTurretCost = ClientState.calculateTurretCost()
 	ClientState.nextBotCost = ClientState.calculateBotCost()
 	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
+	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextTurretCost)
 end)
 
 stateUpdateEvent.OnClientEvent:Connect(function(state)

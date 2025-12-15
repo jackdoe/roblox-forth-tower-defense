@@ -542,9 +542,9 @@ function GolemModel.updateBillboard(golem)
 
 	local statusLabel = bg:FindFirstChild("StatusLabel")
 	if statusLabel then
-		if interp.error and interp.error ~= "" then
-			local errorMsg = interp.error:sub(1, 25)
-			statusLabel.Text = "ERR: " .. errorMsg
+		local errorMsg = type(interp.error) == "table" and interp.error.message or interp.error
+		if errorMsg and errorMsg ~= "" then
+			statusLabel.Text = "ERR: " .. tostring(errorMsg):sub(1, 25)
 			statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
 		elseif interp.status == "RUNNING" then
 			statusLabel.Text = "RUNNING"

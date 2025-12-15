@@ -146,6 +146,11 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, pid)
 			interp.runtime:resume()
 		end
 	else
+		if data.entity then
+			data.entity.waitingForTask = false
+			data.entity.currentTask = nil
+			data.entity.taskQueue = {}
+		end
 		local loadSuccess, _, instructionCount = interp:load(source)
 		if loadSuccess then
 			instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
@@ -209,6 +214,12 @@ RemoteEvents.resetProgram.OnServerEvent:Connect(function(player, pid)
 	local interp, data = getInterpreterByPid(player, pid)
 	if not interp then return end
 
+	if data.entity then
+		data.entity.waitingForTask = false
+		data.entity.currentTask = nil
+		data.entity.taskQueue = {}
+	end
+
 	local defaultProgram
 	if data.type == "golem" then
 		defaultProgram = GolemStats.DEFAULT_PROGRAM
@@ -252,9 +263,22 @@ end)
 
 RemoteEvents.golemPlaceAt.OnServerEvent:Connect(function(player, x, z)
 	local count = 0
+	local MIN_TURRET_DISTANCE = 10
 	for _, data in pairs(Interpreters.getByType("golem")) do
 		if data.ownerId == player.UserId then
 			count = count + 1
+		end
+		if data.entity and data.entity.character then
+			local hrp = data.entity.character:FindFirstChild("HumanoidRootPart") or data.entity.character.PrimaryPart
+			if hrp then
+				local dx = hrp.Position.X - x
+				local dz = hrp.Position.Z - z
+				local dist = math.sqrt(dx * dx + dz * dz)
+				if dist < MIN_TURRET_DISTANCE then
+					RemoteEvents.golemPlaceAt:FireClient(player, false, "Too close to another turret")
+					return
+				end
+			end
 		end
 	end
 
@@ -297,7 +321,7 @@ end)
 
 RemoteEvents.golemUpgrade.OnServerEvent:Connect(function(player, pid, upgradeType)
 	local data = Interpreters.get(pid)
-	if not data or data.ownerId ~= player.UserId or data.type ~= "golem" then return end
+	if not data or data.ownerId ~= player.UserId then return end
 
 	local success, result
 	if upgradeType == "cpu" then
@@ -371,7 +395,7 @@ RunService.Heartbeat:Connect(function(dt)
 				end
 
 				if not interp.paused and (interp.status == "READY" or interp.status == "RUNNING") then
-					interp:run(Config.PLAYER_TICKS_PER_UPDATE or 1)
+					interp:run(interp.cpuHz or 2)
 				end
 
 				PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)

@@ -53,7 +53,8 @@ local OP_COLORS = {
 	HALT = "#F44747",
 }
 
-local BYTECODE_WIDTH = 200
+local BYTECODE_WIDTH = 160
+local STACK_WIDTH = 100
 local VARS_WIDTH = 160
 local OUTPUT_WIDTH = 160
 local IDE_HEIGHT_SCALE = 0.36
@@ -71,33 +72,65 @@ function MainIDE.create(parent, callbacks)
 	container.Name = "IDE_Main"
 	container.Size = UDim2.new(1, 0, IDE_HEIGHT_SCALE, 0)
 	container.Position = UDim2.new(0, 0, 1 - IDE_HEIGHT_SCALE, 0)
-	container.BackgroundColor3 = Color3.fromHex("#1e1e1e")
+	container.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	container.BorderSizePixel = 0
-	container.ClipsDescendants = true
+	container.ClipsDescendants = false
 	container.Parent = parent
 
 	local topBar = Instance.new("Frame")
-	topBar.Size = UDim2.new(1, 0, 0, 4)
-	topBar.BackgroundColor3 = COLORS.accent
+	topBar.Size = UDim2.new(1, 0, 0, 28)
+	topBar.Position = UDim2.new(0, 0, 0, -28)
+	topBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	topBar.BackgroundTransparency = 0
 	topBar.BorderSizePixel = 0
 	topBar.Parent = container
+	Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 6)
 
-	local collapseBtn = Instance.new("TextButton")
-	collapseBtn.Size = UDim2.new(0, 80, 0, 20)
-	collapseBtn.Position = UDim2.new(0.5, -40, 0, -20)
-	collapseBtn.BackgroundColor3 = Color3.fromHex("#1e1e1e")
-	collapseBtn.Text = "[TERMINAL]"
-	collapseBtn.TextColor3 = COLORS.text
-	collapseBtn.Font = Enum.Font.RobotoMono
-	collapseBtn.TextSize = 9
-	collapseBtn.Parent = container
-	Instance.new("UICorner", collapseBtn).CornerRadius = UDim.new(0, 4)
+	local topBarLayout = Instance.new("UIListLayout")
+	topBarLayout.FillDirection = Enum.FillDirection.Horizontal
+	topBarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	topBarLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	topBarLayout.Padding = UDim.new(0, 8)
+	topBarLayout.Parent = topBar
+
+	local botBuildBtn = Instance.new("TextButton")
+	botBuildBtn.Name = "BotBuildBtn"
+	botBuildBtn.Size = UDim2.new(0, 130, 0, 20)
+	botBuildBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	botBuildBtn.Text = "+ROBOT (B): 75"
+	botBuildBtn.TextColor3 = Color3.fromRGB(215, 135, 70)
+	botBuildBtn.Font = Enum.Font.RobotoMono
+	botBuildBtn.TextSize = 10
+	botBuildBtn.Parent = topBar
+	Instance.new("UICorner", botBuildBtn).CornerRadius = UDim.new(0, 4)
+
+	local turretBuildBtn = Instance.new("TextButton")
+	turretBuildBtn.Name = "TurretBuildBtn"
+	turretBuildBtn.Size = UDim2.new(0, 130, 0, 20)
+	turretBuildBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	turretBuildBtn.Text = "+TURRET (T): 100"
+	turretBuildBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
+	turretBuildBtn.Font = Enum.Font.RobotoMono
+	turretBuildBtn.TextSize = 10
+	turretBuildBtn.Parent = topBar
+	Instance.new("UICorner", turretBuildBtn).CornerRadius = UDim.new(0, 4)
+
+	local hideBtn = Instance.new("TextButton")
+	hideBtn.Name = "HideBtn"
+	hideBtn.Size = UDim2.new(0, 50, 0, 20)
+	hideBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	hideBtn.Text = "HIDE"
+	hideBtn.TextColor3 = COLORS.subtext
+	hideBtn.Font = Enum.Font.RobotoMono
+	hideBtn.TextSize = 10
+	hideBtn.Parent = topBar
+	Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 4)
 
 	local headerBar = Instance.new("Frame")
 	headerBar.Name = "HeaderBar"
 	headerBar.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
-	headerBar.Position = UDim2.new(0, 0, 0, 4)
-	headerBar.BackgroundColor3 = Color3.fromHex("#2d2d2d")
+	headerBar.Position = UDim2.new(0, 0, 0, 0)
+	headerBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	headerBar.BorderSizePixel = 0
 	headerBar.Parent = container
 
@@ -119,8 +152,8 @@ function MainIDE.create(parent, callbacks)
 
 	local contentArea = Instance.new("Frame")
 	contentArea.Name = "ContentArea"
-	contentArea.Size = UDim2.new(1, 0, 1, -(HEADER_HEIGHT + 4))
-	contentArea.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT + 4)
+	contentArea.Size = UDim2.new(1, 0, 1, -HEADER_HEIGHT)
+	contentArea.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
 	contentArea.BackgroundTransparency = 1
 	contentArea.Parent = container
 
@@ -128,7 +161,7 @@ function MainIDE.create(parent, callbacks)
 	colBytecode.Name = "Col_Bytecode"
 	colBytecode.Size = UDim2.new(0, BYTECODE_WIDTH, 1, 0)
 	colBytecode.Position = UDim2.new(0, 0, 0, 0)
-	colBytecode.BackgroundColor3 = Color3.fromHex("#1a1a1a")
+	colBytecode.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	colBytecode.BorderSizePixel = 0
 	colBytecode.Parent = contentArea
 
@@ -138,11 +171,11 @@ function MainIDE.create(parent, callbacks)
 	bcHeader.Parent = colBytecode
 
 	local computerLabel = Instance.new("TextLabel")
-	computerLabel.Size = UDim2.new(1, -6, 0, 12)
-	computerLabel.Position = UDim2.new(0, 4, 0, 1)
+	computerLabel.Size = UDim2.new(1, -4, 0, 12)
+	computerLabel.Position = UDim2.new(0, 2, 0, 1)
 	computerLabel.BackgroundTransparency = 1
 	computerLabel.Text = "[BYTECODE]"
-	computerLabel.TextColor3 = COLORS.subtext
+	computerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	computerLabel.Font = Enum.Font.RobotoMono
 	computerLabel.TextSize = 9
 	computerLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -150,8 +183,8 @@ function MainIDE.create(parent, callbacks)
 
 	local statsLabel = Instance.new("TextLabel")
 	statsLabel.Name = "StatsLabel"
-	statsLabel.Size = UDim2.new(1, -6, 0, 12)
-	statsLabel.Position = UDim2.new(0, 4, 0, 14)
+	statsLabel.Size = UDim2.new(1, -4, 0, 12)
+	statsLabel.Position = UDim2.new(0, 2, 0, 14)
 	statsLabel.BackgroundTransparency = 1
 	statsLabel.RichText = true
 	statsLabel.Text = '<font color="#4EC9B0">CPU:1hz</font> <font color="#DCDCAA">RAM:0/32</font>'
@@ -173,21 +206,53 @@ function MainIDE.create(parent, callbacks)
 	local bcLayout = Instance.new("UIListLayout")
 	bcLayout.Parent = bcList
 
+	local colStack = Instance.new("Frame")
+	colStack.Name = "Col_Stack"
+	colStack.Size = UDim2.new(0, STACK_WIDTH, 1, 0)
+	colStack.Position = UDim2.new(0, BYTECODE_WIDTH + 2, 0, 0)
+	colStack.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	colStack.BorderSizePixel = 0
+	colStack.Parent = contentArea
+
+	local stackHeader = Instance.new("TextLabel")
+	stackHeader.Size = UDim2.new(1, -4, 0, 16)
+	stackHeader.Position = UDim2.new(0, 2, 0, 0)
+	stackHeader.BackgroundTransparency = 1
+	stackHeader.Text = "[STACK]"
+	stackHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+	stackHeader.Font = Enum.Font.RobotoMono
+	stackHeader.TextSize = 9
+	stackHeader.TextXAlignment = Enum.TextXAlignment.Left
+	stackHeader.Parent = colStack
+
+	local stackList = Instance.new("ScrollingFrame")
+	stackList.Size = UDim2.new(1, 0, 1, -16)
+	stackList.Position = UDim2.new(0, 0, 0, 16)
+	stackList.BackgroundTransparency = 1
+	stackList.BorderSizePixel = 0
+	stackList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	stackList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	stackList.ScrollBarThickness = 2
+	stackList.Parent = colStack
+
+	local stackLayout = Instance.new("UIListLayout")
+	stackLayout.Parent = stackList
+
 	local colOutput = Instance.new("Frame")
 	colOutput.Name = "Col_Output"
 	colOutput.Size = UDim2.new(0, OUTPUT_WIDTH, 1, 0)
 	colOutput.AnchorPoint = Vector2.new(1, 0)
 	colOutput.Position = UDim2.new(1, 0, 0, 0)
-	colOutput.BackgroundColor3 = Color3.fromHex("#1a1a1a")
+	colOutput.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	colOutput.BorderSizePixel = 0
 	colOutput.Parent = contentArea
 
 	local outHeader = Instance.new("TextLabel")
-	outHeader.Size = UDim2.new(1, -6, 0, 16)
-	outHeader.Position = UDim2.new(0, 6, 0, 0)
+	outHeader.Size = UDim2.new(1, -4, 0, 16)
+	outHeader.Position = UDim2.new(0, 2, 0, 0)
 	outHeader.BackgroundTransparency = 1
 	outHeader.Text = "[OUTPUT]"
-	outHeader.TextColor3 = COLORS.subtext
+	outHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	outHeader.Font = Enum.Font.RobotoMono
 	outHeader.TextSize = 9
 	outHeader.TextXAlignment = Enum.TextXAlignment.Left
@@ -211,16 +276,16 @@ function MainIDE.create(parent, callbacks)
 	colVars.Size = UDim2.new(0, VARS_WIDTH, 1, 0)
 	colVars.AnchorPoint = Vector2.new(1, 0)
 	colVars.Position = UDim2.new(1, -OUTPUT_WIDTH - 2, 0, 0)
-	colVars.BackgroundColor3 = Color3.fromHex("#252526")
+	colVars.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	colVars.BorderSizePixel = 0
 	colVars.Parent = contentArea
 
 	local varHeader = Instance.new("TextLabel")
-	varHeader.Size = UDim2.new(1, -6, 0, 16)
-	varHeader.Position = UDim2.new(0, 6, 0, 0)
+	varHeader.Size = UDim2.new(1, -4, 0, 16)
+	varHeader.Position = UDim2.new(0, 2, 0, 0)
 	varHeader.BackgroundTransparency = 1
 	varHeader.Text = "[VARIABLES]"
-	varHeader.TextColor3 = COLORS.subtext
+	varHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	varHeader.Font = Enum.Font.RobotoMono
 	varHeader.TextSize = 9
 	varHeader.TextXAlignment = Enum.TextXAlignment.Left
@@ -242,9 +307,9 @@ function MainIDE.create(parent, callbacks)
 
 	local colEditor = Instance.new("Frame")
 	colEditor.Name = "Col_Editor"
-	colEditor.Size = UDim2.new(1, -(BYTECODE_WIDTH + VARS_WIDTH + OUTPUT_WIDTH + 6), 1, 0)
-	colEditor.Position = UDim2.new(0, BYTECODE_WIDTH + 2, 0, 0)
-	colEditor.BackgroundColor3 = Color3.fromHex("#1e1e1e")
+	colEditor.Size = UDim2.new(1, -(BYTECODE_WIDTH + STACK_WIDTH + VARS_WIDTH + OUTPUT_WIDTH + 8), 1, 0)
+	colEditor.Position = UDim2.new(0, BYTECODE_WIDTH + STACK_WIDTH + 4, 0, 0)
+	colEditor.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	colEditor.BorderSizePixel = 0
 	colEditor.Parent = contentArea
 
@@ -252,7 +317,7 @@ function MainIDE.create(parent, callbacks)
 	toolbar.Name = "Toolbar"
 	toolbar.Size = UDim2.new(1, 0, 0, TOOLBAR_HEIGHT)
 	toolbar.Position = UDim2.new(0, 0, 0, 0)
-	toolbar.BackgroundColor3 = Color3.fromHex("#252526")
+	toolbar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	toolbar.BorderSizePixel = 0
 	toolbar.Parent = colEditor
 
@@ -318,7 +383,7 @@ function MainIDE.create(parent, callbacks)
 	errorBar.Name = "ErrorBar"
 	errorBar.Size = UDim2.new(1, 0, 0, ERROR_HEIGHT)
 	errorBar.Position = UDim2.new(0, 0, 1, -ERROR_HEIGHT)
-	errorBar.BackgroundColor3 = Color3.fromHex("#1a1a1a")
+	errorBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	errorBar.BorderSizePixel = 0
 	errorBar.Parent = colEditor
 
@@ -444,9 +509,8 @@ function MainIDE.create(parent, callbacks)
 			editor:setReadOnly(false)
 		end
 
-		local isGolem = (data.type == "golem")
-		buyCpuBtn.Visible = isGolem
-		buyRamBtn.Visible = isGolem
+		buyCpuBtn.Visible = true
+		buyRamBtn.Visible = true
 
 		clearList(varList)
 		local varNames = {}
@@ -457,8 +521,8 @@ function MainIDE.create(parent, callbacks)
 			local v = data.variables[k]
 			if v ~= "__NIL__" then
 				local l = Instance.new("TextLabel")
-				l.Size = UDim2.new(1, -6, 0, 14)
-				l.Position = UDim2.new(0, 3, 0, 0)
+				l.Size = UDim2.new(1, -4, 0, 14)
+				l.Position = UDim2.new(0, 2, 0, 0)
 				l.BackgroundTransparency = 1
 				l.RichText = true
 				l.Text = string.format('<font color="#9CDCFE">%s</font>=<font color="#CE9178">%s</font>', k, formatValue(v, 12))
@@ -469,13 +533,41 @@ function MainIDE.create(parent, callbacks)
 			end
 		end
 
+		clearList(stackList)
+		local stack = data.stack or {}
+		if #stack > 0 then
+			for i = #stack, 1, -1 do
+				local l = Instance.new("TextLabel")
+				l.Size = UDim2.new(1, -4, 0, 14)
+				l.Position = UDim2.new(0, 2, 0, 0)
+				l.BackgroundTransparency = 1
+				l.RichText = true
+				l.Text = string.format('<font color="#606080">[%d]</font> <font color="#B5CEA8">%s</font>', i - 1, formatValue(stack[i], 8))
+				l.Font = Enum.Font.RobotoMono
+				l.TextSize = 9
+				l.TextXAlignment = Enum.TextXAlignment.Left
+				l.Parent = stackList
+			end
+		else
+			local l = Instance.new("TextLabel")
+			l.Size = UDim2.new(1, -4, 0, 14)
+			l.Position = UDim2.new(0, 2, 0, 0)
+			l.BackgroundTransparency = 1
+			l.Text = "(empty)"
+			l.TextColor3 = Color3.fromRGB(96, 96, 128)
+			l.Font = Enum.Font.RobotoMono
+			l.TextSize = 9
+			l.TextXAlignment = Enum.TextXAlignment.Left
+			l.Parent = stackList
+		end
+
 		clearList(bcList)
 		local execLine = nil
 		if data.bytecode then
 			for i, instr in ipairs(data.bytecode) do
 				local l = Instance.new("TextLabel")
-				l.Size = UDim2.new(1, -4, 0, 14)
-				l.Position = UDim2.new(0, 2, 0, 0)
+				l.Size = UDim2.new(1, -2, 0, 14)
+				l.Position = UDim2.new(0, 1, 0, 0)
 				l.RichText = true
 				local opColor = OP_COLORS[instr.op] or "#cccccc"
 				local prefix = (data.ip == i) and ">" or " "
@@ -508,8 +600,8 @@ function MainIDE.create(parent, callbacks)
 			for line in string.gmatch(data.output .. "\n", "([^\n]*)\n") do
 				if line ~= "" then
 					local l = Instance.new("TextLabel")
-					l.Size = UDim2.new(1, -6, 0, 12)
-					l.Position = UDim2.new(0, 3, 0, 0)
+					l.Size = UDim2.new(1, -4, 0, 12)
+					l.Position = UDim2.new(0, 2, 0, 0)
 					l.BackgroundTransparency = 1
 					l.Text = line
 					l.TextColor3 = COLORS.success
@@ -765,19 +857,34 @@ function MainIDE.create(parent, callbacks)
 		if callbacks.onBuyRam and currentTabId then callbacks.onBuyRam(currentTabId) end
 	end)
 
-	local collapsed = false
-	collapseBtn.MouseButton1Click:Connect(function()
-		collapsed = not collapsed
-		if collapsed then
-			TweenService:Create(container, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-				Position = UDim2.new(0, 0, 1, -30)
+	local hidden = false
+	hideBtn.MouseButton1Click:Connect(function()
+		hidden = not hidden
+		if hidden then
+			hideBtn.Text = "SHOW"
+			TweenService:Create(container, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+				Position = UDim2.new(0, 0, 1, 0)
 			}):Play()
 		else
-			TweenService:Create(container, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+			hideBtn.Text = "HIDE"
+			TweenService:Create(container, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
 				Position = UDim2.new(0, 0, 1 - IDE_HEIGHT_SCALE, 0)
 			}):Play()
 		end
 	end)
+
+	botBuildBtn.MouseButton1Click:Connect(function()
+		if callbacks.onBuildBot then callbacks.onBuildBot() end
+	end)
+
+	turretBuildBtn.MouseButton1Click:Connect(function()
+		if callbacks.onBuildTurret then callbacks.onBuildTurret() end
+	end)
+
+	function ide:updateEconomy(botCost, turretCost)
+		botBuildBtn.Text = string.format("+ROBOT (B): %d", botCost or 75)
+		turretBuildBtn.Text = string.format("+TURRET (T): %d", turretCost or 100)
+	end
 
 	ide.frame = container
 	ide.container = container
