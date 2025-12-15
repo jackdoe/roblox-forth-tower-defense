@@ -377,29 +377,31 @@ RemoteEvents.botSell.OnServerEvent:Connect(function(player, pid)
 	Interpreters.sendFullSync(player)
 end)
 
-local tickAccum = 0
+local syncAccum = 0
 
 RunService.Heartbeat:Connect(function(dt)
-	tickAccum = tickAccum + dt
-
 	WaveManager.update(dt)
 
-	if tickAccum >= Config.PLAYER_TICK_RATE then
-		tickAccum = 0
+	for userId, interp in pairs(PlayerManager.getAll()) do
+		local player = Players:GetPlayerByUserId(userId)
+		if player then
+			if player.Character then
+				interp.character = player.Character
+			end
+
+			interp:update(dt)
+
+			PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
+		end
+	end
+
+	syncAccum = syncAccum + dt
+	if syncAccum >= Config.PLAYER_TICK_RATE then
+		syncAccum = 0
 
 		for userId, interp in pairs(PlayerManager.getAll()) do
 			local player = Players:GetPlayerByUserId(userId)
 			if player then
-				if player.Character then
-					interp.character = player.Character
-				end
-
-				if not interp.paused and (interp.status == "READY" or interp.status == "RUNNING") then
-					interp:run(interp.cpuHz or 2)
-				end
-
-				PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
-
 				local gameState = PlayerManager.buildGameState(userId, interp)
 				RemoteEvents.stateUpdate:FireClient(player, gameState)
 			end

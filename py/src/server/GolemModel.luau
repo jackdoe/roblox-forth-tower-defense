@@ -162,34 +162,55 @@ function GolemModel.create(x, z)
 	return model
 end
 
-function GolemModel.applyColorUpgrade(golem)
+local UPGRADE_COLORS = {
+	Color3.fromRGB(200, 200, 210),
+	Color3.fromRGB(180, 140, 100),
+	Color3.fromRGB(120, 180, 120),
+	Color3.fromRGB(100, 140, 200),
+	Color3.fromRGB(180, 100, 180),
+	Color3.fromRGB(255, 180, 80),
+	Color3.fromRGB(255, 215, 0),
+}
+
+local ACCENT_COLORS = {
+	Color3.fromRGB(0, 255, 255),
+	Color3.fromRGB(255, 150, 0),
+	Color3.fromRGB(0, 255, 100),
+	Color3.fromRGB(100, 150, 255),
+	Color3.fromRGB(255, 100, 255),
+	Color3.fromRGB(255, 200, 50),
+	Color3.fromRGB(255, 255, 100),
+}
+
+function GolemModel.applyColorUpgrade(golem, maxBytecode)
 	local character = golem.character
 	if not character then return end
 
-	local ramTier = golem.ramTier or 1
-	local ramData = RAMTiers[ramTier]
-	if not ramData then return end
+	local upgradeLevel = math.floor((maxBytecode - 32) / 32) + 1
+	local colorIndex = math.min(upgradeLevel, #UPGRADE_COLORS)
+	local baseColor = UPGRADE_COLORS[colorIndex]
+	local accentColor = ACCENT_COLORS[colorIndex]
 
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
 			if part.Color.R > 0.3 or part.Name == "Head" or part.Name:find("Armor") or part.Name == "Barrel" then
-				part.Color = ramData.color
+				part.Color = baseColor
 			end
 			if part.Material == Enum.Material.Neon then
-				part.Color = ramData.accentColor
+				part.Color = accentColor
 			end
 		end
 	end
 end
 
-function GolemModel.applyVisualUpgrade(golem)
+function GolemModel.applyVisualUpgrade(golem, cpuHz)
 	local character = golem.character
 	if not character then return end
 
-	local cpuTier = golem.tier or 1
-	local ramTier = golem.ramTier or 1
-	local ramData = RAMTiers[ramTier]
-	if not ramData then return end
+	local upgradeLevel = math.floor((cpuHz - 2) / 5) + 1
+	local colorIndex = math.min(upgradeLevel, #UPGRADE_COLORS)
+	local baseColor = UPGRADE_COLORS[colorIndex]
+	local accentColor = ACCENT_COLORS[colorIndex]
 
 	local head = character:FindFirstChild("Head")
 	local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
@@ -204,10 +225,10 @@ function GolemModel.applyVisualUpgrade(golem)
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and not part:GetAttribute("UpgradePart") then
 			if part.Color.R > 0.3 or part.Name == "Head" or part.Name:find("Armor") or part.Name == "Barrel" then
-				part.Color = ramData.color
+				part.Color = baseColor
 			end
 			if part.Material == Enum.Material.Neon then
-				part.Color = ramData.accentColor
+				part.Color = accentColor
 			end
 		end
 	end
@@ -222,7 +243,7 @@ function GolemModel.applyVisualUpgrade(golem)
 		weld.Parent = part
 	end
 
-	if cpuTier >= 2 then
+	if upgradeLevel >= 2 then
 		local leftCannon = Instance.new("Part")
 		leftCannon.Name = "LeftAutocannon"
 		leftCannon.Shape = Enum.PartType.Cylinder
@@ -249,7 +270,7 @@ function GolemModel.applyVisualUpgrade(golem)
 			muzzle.Shape = Enum.PartType.Cylinder
 			muzzle.Size = Vector3.new(0.3, 0.8, 0.8)
 			muzzle.Material = Enum.Material.Neon
-			muzzle.Color = ramData.accentColor
+			muzzle.Color = accentColor
 			muzzle.CFrame = head.CFrame * CFrame.new(xOff, 0.2, -5.7) * CFrame.Angles(0, math.rad(90), 0)
 			muzzle.Parent = character
 			weldToHead(muzzle)
@@ -277,7 +298,7 @@ function GolemModel.applyVisualUpgrade(golem)
 			upperLeg.Name = "SpiderUpperLeg_" .. i
 			upperLeg.Size = Vector3.new(0.3, 2.0, 0.3)
 			upperLeg.Material = Enum.Material.DiamondPlate
-			upperLeg.Color = ramData.color
+			upperLeg.Color = baseColor
 			local legCFrame = hip.CFrame * CFrame.Angles(0, legData.rot, math.rad(30)) * CFrame.new(0, -1, 0)
 			upperLeg.CFrame = legCFrame
 			upperLeg.Parent = character
@@ -288,7 +309,7 @@ function GolemModel.applyVisualUpgrade(golem)
 			knee.Shape = Enum.PartType.Ball
 			knee.Size = Vector3.new(0.4, 0.4, 0.4)
 			knee.Material = Enum.Material.Neon
-			knee.Color = ramData.accentColor
+			knee.Color = accentColor
 			knee.CFrame = legCFrame * CFrame.new(0, -1.1, 0)
 			knee.Parent = character
 			weldToHead(knee)
@@ -317,13 +338,13 @@ function GolemModel.applyVisualUpgrade(golem)
 		stripe.Name = "CautionStripe"
 		stripe.Size = Vector3.new(2.6, 0.15, 0.15)
 		stripe.Material = Enum.Material.Neon
-		stripe.Color = ramData.accentColor
+		stripe.Color = accentColor
 		stripe.CFrame = head.CFrame * CFrame.new(0, 1.3, 0)
 		stripe.Parent = character
 		weldToHead(stripe)
 	end
 
-	if cpuTier >= 3 then
+	if upgradeLevel >= 3 then
 		local gatlingBase = Instance.new("Part")
 		gatlingBase.Name = "GatlingHousing"
 		gatlingBase.Shape = Enum.PartType.Cylinder
@@ -356,7 +377,7 @@ function GolemModel.applyVisualUpgrade(golem)
 			muzzleRing.Shape = Enum.PartType.Cylinder
 			muzzleRing.Size = Vector3.new(0.2, 0.7, 0.7)
 			muzzleRing.Material = Enum.Material.Neon
-			muzzleRing.Color = ramData.accentColor
+			muzzleRing.Color = accentColor
 			muzzleRing.CFrame = head.CFrame * CFrame.new(offset.x, offset.y, -7.6) * CFrame.Angles(0, math.rad(90), 0)
 			muzzleRing.Parent = character
 			weldToHead(muzzleRing)
@@ -367,7 +388,7 @@ function GolemModel.applyVisualUpgrade(golem)
 			tankArmor.Name = "TankArmor_" .. side
 			tankArmor.Size = Vector3.new(1.2, 2.5, 3.5)
 			tankArmor.Material = Enum.Material.DiamondPlate
-			tankArmor.Color = ramData.color
+			tankArmor.Color = baseColor
 			tankArmor.CFrame = head.CFrame * CFrame.new(side * 2.2, 0.2, 0) * CFrame.Angles(0, side * math.rad(90), 0)
 			tankArmor.Parent = character
 			weldToHead(tankArmor)
@@ -376,7 +397,7 @@ function GolemModel.applyVisualUpgrade(golem)
 			hazardStripe.Name = "HazardStripe_" .. side
 			hazardStripe.Size = Vector3.new(0.1, 0.4, 3.2)
 			hazardStripe.Material = Enum.Material.Neon
-			hazardStripe.Color = ramData.accentColor
+			hazardStripe.Color = accentColor
 			hazardStripe.CFrame = head.CFrame * CFrame.new(side * 2.85, 0.8, 0)
 			hazardStripe.Parent = character
 			weldToHead(hazardStripe)
@@ -396,7 +417,7 @@ function GolemModel.applyVisualUpgrade(golem)
 		smallDish.Shape = Enum.PartType.Cylinder
 		smallDish.Size = Vector3.new(0.1, 1.0, 1.0)
 		smallDish.Material = Enum.Material.Neon
-		smallDish.Color = ramData.accentColor
+		smallDish.Color = accentColor
 		smallDish.CFrame = radarBox.CFrame * CFrame.new(0, 0.5, 0) * CFrame.Angles(0, 0, math.rad(90))
 		smallDish.Parent = character
 		weldToHead(smallDish)
@@ -417,7 +438,7 @@ function GolemModel.applyVisualUpgrade(golem)
 		beacon.Shape = Enum.PartType.Cylinder
 		beacon.Size = Vector3.new(0.4, 0.5, 0.5)
 		beacon.Material = Enum.Material.Neon
-		beacon.Color = ramData.accentColor
+		beacon.Color = accentColor
 		beacon.Transparency = 0.2
 		beacon.CFrame = radarBox.CFrame * CFrame.new(0.6, 0.5, 0) * CFrame.Angles(0, 0, math.rad(90))
 		beacon.Parent = character

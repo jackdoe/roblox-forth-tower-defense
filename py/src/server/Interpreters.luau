@@ -30,6 +30,9 @@ function Interpreters.init(dependencies)
 	syncEvent.Parent = PythonTD
 end
 
+local BASE_CPU_HZ = 1
+local BASE_RAM = 32
+
 function Interpreters.create(interpType, ownerId, x, z)
 	local pid = tostring(nextPid)
 	nextPid = nextPid + 1
@@ -37,8 +40,6 @@ function Interpreters.create(interpType, ownerId, x, z)
 	local character = nil
 	local entity = nil
 	local defaultProgram = nil
-	local cpuHz = 2
-	local maxBytecode = 128
 	local selfType = "Entity"
 	local name = interpType .. ".py"
 
@@ -47,13 +48,9 @@ function Interpreters.create(interpType, ownerId, x, z)
 
 		character = GolemModel.create(x, z)
 		selfType = "Turret"
-		cpuHz = GolemStats.UpgradeTiers[1].cpuHz
-		maxBytecode = GolemStats.RAMTiers[1].maxBytecode
 		defaultProgram = GolemStats.DEFAULT_PROGRAM
 
 		entity = {
-			tier = 1,
-			ramTier = 1,
 			character = character,
 			facingAngle = 0,
 			targetAngle = 0,
@@ -67,16 +64,12 @@ function Interpreters.create(interpType, ownerId, x, z)
 
 		character = BotModel.create(x, z)
 		selfType = "Bot"
-		cpuHz = BotStats.UpgradeTiers[1].cpuHz
-		maxBytecode = BotStats.RAMTiers[1].maxBytecode
 		defaultProgram = BotStats.DEFAULT_PROGRAM
 
 		entity = {
-			tier = 1,
-			ramTier = 1,
 			character = character,
 			scrapInventory = 0,
-			maxCapacity = BotStats.UpgradeTiers[1].maxCapacity,
+			maxCapacity = BotStats.BASE.maxCapacity,
 			isMoving = false,
 			facingAngle = 0,
 			name = name,
@@ -88,8 +81,8 @@ function Interpreters.create(interpType, ownerId, x, z)
 	local interp = InterpreterModule.new(nil, interpType ~= "player", deps)
 	interp.character = character
 	interp.selfType = selfType
-	interp.cpuHz = cpuHz
-	interp.maxBytecode = maxBytecode
+	interp.cpuHz = BASE_CPU_HZ
+	interp.maxBytecode = BASE_RAM
 
 	if interpType == "golem" then
 		interp.isGolem = true
@@ -163,8 +156,8 @@ function Interpreters.createPlayer(ownerId, character, playerId)
 	local interp = InterpreterModule.new(nil, false, deps)
 	interp.character = character
 	interp.selfType = "Player"
-	interp.cpuHz = 2
-	interp.maxBytecode = 128
+	interp.cpuHz = BASE_CPU_HZ
+	interp.maxBytecode = BASE_RAM
 	interp.isPlayer = true
 	interp.playerId = playerId
 
@@ -297,8 +290,8 @@ function Interpreters.upgradeCPU(pid)
 	if not data then return false, "Not found" end
 
 	local interp = data.interpreter
-	local currentHz = interp.cpuHz or 2
-	local upgradeCount = math.floor((currentHz - 2) / CPU_HZ_INCREMENT)
+	local currentHz = interp.cpuHz or BASE_CPU_HZ
+	local upgradeCount = math.floor((currentHz - BASE_CPU_HZ) / CPU_HZ_INCREMENT)
 	local cost = math.floor(CPU_BASE_COST * (CPU_COST_MULTIPLIER ^ upgradeCount))
 
 	if deps.WaveManager then
@@ -309,11 +302,8 @@ function Interpreters.upgradeCPU(pid)
 
 	interp.cpuHz = currentHz + CPU_HZ_INCREMENT
 
-	if data.entity then
-		data.entity.tier = (data.entity.tier or 1) + 1
-		if data.type == "golem" then
-			GolemModel.applyVisualUpgrade(data.entity)
-		end
+	if data.entity and data.type == "golem" then
+		GolemModel.applyVisualUpgrade(data.entity, interp.cpuHz)
 	end
 
 	data.gen = data.gen + 1
@@ -329,8 +319,8 @@ function Interpreters.upgradeRAM(pid)
 	if not data then return false, "Not found" end
 
 	local interp = data.interpreter
-	local currentRam = interp.maxBytecode or 32
-	local upgradeCount = math.floor((currentRam - 32) / RAM_INCREMENT)
+	local currentRam = interp.maxBytecode or BASE_RAM
+	local upgradeCount = math.floor((currentRam - BASE_RAM) / RAM_INCREMENT)
 	local cost = math.floor(RAM_BASE_COST * (RAM_COST_MULTIPLIER ^ upgradeCount))
 
 	if deps.WaveManager then
@@ -341,11 +331,8 @@ function Interpreters.upgradeRAM(pid)
 
 	interp.maxBytecode = currentRam + RAM_INCREMENT
 
-	if data.entity then
-		data.entity.ramTier = (data.entity.ramTier or 1) + 1
-		if data.type == "golem" then
-			GolemModel.applyColorUpgrade(data.entity)
-		end
+	if data.entity and data.type == "golem" then
+		GolemModel.applyColorUpgrade(data.entity, interp.maxBytecode)
 	end
 
 	data.gen = data.gen + 1
@@ -414,11 +401,7 @@ function Interpreters.getState(pid, fullState)
 
 	if data.entity then
 		local e = data.entity
-		if data.type == "golem" then
-			state.tier = e.tier
-			state.ramTier = e.ramTier
-		elseif data.type == "bot" then
-			state.tier = e.tier
+		if data.type == "bot" then
 			state.scrapInventory = e.scrapInventory
 			state.maxCapacity = e.maxCapacity
 		end
@@ -823,18 +806,14 @@ function Interpreters.startUpdateLoop()
 		for pid, data in pairs(interpreters) do
 			if data.type == "golem" and data.entity then
 				local interp = data.interpreter
-				if not interp.paused and (interp.status == "READY" or interp.status == "RUNNING") then
-					interp:run(interp.cpuHz or 2)
-				end
+				interp:update(dt)
 				updateGolem(data, dt)
 				GolemModel.updateBillboard(data.entity)
 
 			elseif data.type == "bot" and data.entity then
 				local interp = data.interpreter
 				if not data.entity.waitingForTask then
-					if not interp.paused and (interp.status == "READY" or interp.status == "RUNNING") then
-						interp:run(interp.cpuHz or 2)
-					end
+					interp:update(dt)
 				end
 				updateBot(data, dt)
 				BotModel.updateBillboard(data.entity)

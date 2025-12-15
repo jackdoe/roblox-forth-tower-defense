@@ -28,6 +28,7 @@ function Interpreter.new(player, isMonster, deps)
 	self.cpuHz = 2
 	self.maxBytecode = 128
 	self.selfType = nil
+	self.tickAccumulator = 0
 
 	self.gameEnv = {}
 	self.deps = deps
@@ -52,6 +53,7 @@ function Interpreter:load(source)
 	self.lastProgram = source
 	self.error = nil
 	self.output = {}
+	self.tickAccumulator = 0
 
 	local success = self.runtime:compile(source, self.maxBytecode, self.selfType)
 
@@ -116,6 +118,26 @@ function Interpreter:run(maxTicks, maxFreeSteps)
 	return self.status
 end
 
+function Interpreter:update(dt)
+	if self.status == "ERROR" or self.status == "DONE" then
+		return self.status
+	end
+
+	if self.paused or self.blocked then
+		return self.status
+	end
+
+	self.tickAccumulator = self.tickAccumulator + dt * self.cpuHz
+	local ticksToRun = math.floor(self.tickAccumulator)
+	self.tickAccumulator = self.tickAccumulator - ticksToRun
+
+	if ticksToRun > 0 then
+		self:run(ticksToRun)
+	end
+
+	return self.status
+end
+
 function Interpreter:stepOnce()
 	if self.status == "ERROR" or self.status == "DONE" then
 		return false
@@ -150,6 +172,7 @@ function Interpreter:reset()
 	self.error = nil
 	self.output = {}
 	self.paused = false
+	self.tickAccumulator = 0
 
 	if self.lastProgram and #self.lastProgram > 0 then
 		self:load(self.lastProgram)
