@@ -31,7 +31,7 @@ function Interpreters.init(dependencies)
 end
 
 function Interpreters.create(interpType, ownerId, x, z)
-	local pid = nextPid
+	local pid = tostring(nextPid)
 	nextPid = nextPid + 1
 
 	local character = nil
@@ -157,7 +157,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 end
 
 function Interpreters.createPlayer(ownerId, character, playerId)
-	local pid = nextPid
+	local pid = tostring(nextPid)
 	nextPid = nextPid + 1
 
 	local interp = InterpreterModule.new(nil, false, deps)
