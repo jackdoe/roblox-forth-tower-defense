@@ -24,7 +24,7 @@ return {
 	compile = Compiler.compile,
 	Op = Compiler.Op,
 
-	createGolemEnvironment = GameAPI.createGolemEnvironment,
+	createGundamEnvironment = GameAPI.createGundamEnvironment,
 	createBotEnvironment = GameAPI.createBotEnvironment,
 	createPlayerEnvironment = GameAPI.createPlayerEnvironment,
 }

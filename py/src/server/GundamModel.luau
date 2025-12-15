@@ -1,16 +1,16 @@
 local TweenService = game:GetService("TweenService")
-local GolemStats = require(script.Parent.GolemStats)
+local GundamStats = require(script.Parent.GundamStats)
 local ProjectileEffects = require(script.Parent.ProjectileEffects)
 
-local GolemModel = {}
+local GundamModel = {}
 
-local GROUND_Y = GolemStats.GROUND_Y
-local UpgradeTiers = GolemStats.UpgradeTiers
-local RAMTiers = GolemStats.RAMTiers
+local GROUND_Y = GundamStats.GROUND_Y
+local UpgradeTiers = GundamStats.UpgradeTiers
+local RAMTiers = GundamStats.RAMTiers
 
-function GolemModel.create(x, z, ownerColor)
+function GundamModel.create(x, z, ownerColor)
 	local model = Instance.new("Model")
-	model.Name = "HeavyBunkerTurret"
+	model.Name = "Gundam"
 
 	local function weldTo(part0, part1)
 		local w = Instance.new("WeldConstraint")
@@ -186,8 +186,8 @@ local ACCENT_COLORS = {
 	Color3.fromRGB(255, 255, 100),
 }
 
-function GolemModel.applyColorUpgrade(golem, maxBytecode)
-	local character = golem.character
+function GundamModel.applyColorUpgrade(gundam, maxBytecode)
+	local character = gundam.character
 	if not character then return end
 
 	local upgradeLevel = math.floor((maxBytecode - 32) / 32) + 1
@@ -210,8 +210,8 @@ function GolemModel.applyColorUpgrade(golem, maxBytecode)
 	end
 end
 
-function GolemModel.applyVisualUpgrade(golem, cpuHz)
-	local character = golem.character
+function GundamModel.applyVisualUpgrade(gundam, cpuHz)
+	local character = gundam.character
 	if not character then return end
 
 	local upgradeLevel = math.floor((cpuHz - 1) / 2 + 0.5) + 1
@@ -456,13 +456,13 @@ function GolemModel.applyVisualUpgrade(golem, cpuHz)
 	end
 end
 
-function GolemModel.createBillboard(golem)
-	local character = golem.character
+function GundamModel.createBillboard(gundam)
+	local character = gundam.character
 	local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
 	if not hrp then return end
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "GolemBillboard"
+	billboard.Name = "GundamBillboard"
 	billboard.Size = UDim2.new(0, 120, 0, 60)
 	billboard.StudsOffset = Vector3.new(0, 5, 0)
 	billboard.AlwaysOnTop = true
@@ -485,7 +485,7 @@ function GolemModel.createBillboard(golem)
 	idLabel.Size = UDim2.new(0.5, 0, 0.5, 0)
 	idLabel.Position = UDim2.new(0, 4, 0, 2)
 	idLabel.BackgroundTransparency = 1
-	idLabel.Text = golem.name or "T_?.py"
+	idLabel.Text = gundam.name or "G_?.py"
 	idLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	idLabel.Font = Enum.Font.GothamBold
 	idLabel.TextSize = 12
@@ -545,23 +545,23 @@ function GolemModel.createBillboard(golem)
 	powerLabel.TextSize = 9
 	powerLabel.Parent = bg
 
-	golem.billboard = billboard
+	gundam.billboard = billboard
 end
 
-function GolemModel.updateBillboard(golem)
-	local billboard = golem.billboard
+function GundamModel.updateBillboard(gundam)
+	local billboard = gundam.billboard
 	if not billboard then return end
 
-	local interp = golem.interpreter
+	local interp = gundam.interpreter
 	local bg = billboard:FindFirstChild("Background")
 	if not bg then return end
 
-	local tier = golem.tier or 1
+	local tier = gundam.tier or 1
 	local tierData = UpgradeTiers[tier]
 
 	local idLabel = bg:FindFirstChild("IdLabel")
 	if idLabel then
-		idLabel.Text = golem.name or "T_?.py"
+		idLabel.Text = gundam.name or "G_?.py"
 		if tier == 3 then
 			idLabel.TextColor3 = Color3.fromRGB(255, 150, 220)
 		elseif tier == 2 then
@@ -633,16 +633,16 @@ function GolemModel.updateBillboard(golem)
 	end
 end
 
-function GolemModel.applyPowerScale(golem, power)
-	local character = golem.character
+function GundamModel.applyPowerScale(gundam, power)
+	local character = gundam.character
 	if not character then return end
 
 	local scale = 1 + (power - 1) * 0.1
 	character:ScaleTo(scale)
 end
 
-function GolemModel.createMuzzleFlash(golem, targetPos, ammoStats)
-	local character = golem.character
+function GundamModel.createMuzzleFlash(gundam, targetPos, ammoStats)
+	local character = gundam.character
 	local barrel = character:FindFirstChild("Barrel")
 	local tip = character:FindFirstChild("Tip")
 	local origin = tip and tip.Position or (barrel and barrel.Position) or character.PrimaryPart.Position
@@ -650,4 +650,4 @@ function GolemModel.createMuzzleFlash(golem, targetPos, ammoStats)
 	ProjectileEffects.shot(origin, targetPos, ammoStats or {})
 end
 
-return GolemModel
+return GundamModel

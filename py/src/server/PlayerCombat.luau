@@ -8,46 +8,44 @@ local EnemyManager = nil
 local Config = nil
 local WaveManager = nil
 
--- Ammo stats for player (2x scrap cost compared to turret ammoCost)
--- Turret costs: BULLET=1, ROCKET=4, LASER=2, ICE=2, GRENADE=5
 local AmmoStats = {
-	[1] = { -- BULLET
+	[1] = {
 		damage = 15,
 		fireRate = 0.3,
-		scrapCost = 2,  -- 2x turret cost (1*2)
+		scrapCost = 2,
 		color = Color3.fromRGB(255, 255, 150),
 		name = "Bullet",
 	},
-	[2] = { -- ROCKET
+	[2] = {
 		damage = 40,
 		fireRate = 1.0,
-		scrapCost = 8,  -- 2x turret cost (4*2)
+		scrapCost = 8,
 		splashRadius = 8,
 		color = Color3.fromRGB(255, 100, 50),
 		name = "Rocket",
 	},
-	[3] = { -- LASER
+	[3] = {
 		damage = 25,
 		fireRate = 0.5,
-		scrapCost = 4,  -- 2x turret cost (2*2)
+		scrapCost = 4,
 		color = Color3.fromRGB(255, 50, 50),
 		name = "Laser",
 	},
-	[4] = { -- ICE
+	[4] = {
 		damage = 10,
 		fireRate = 0.4,
-		scrapCost = 4,  -- 2x turret cost (2*2)
+		scrapCost = 4,
 		slowAmount = 0.5,
 		slowDuration = 3,
 		color = Color3.fromRGB(100, 200, 255),
 		name = "Ice",
 	},
-	[5] = { -- GRENADE
+	[5] = {
 		damage = 60,
 		fireRate = 1.5,
-		scrapCost = 10,  -- 2x turret cost (5*2)
+		scrapCost = 10,
 		splashRadius = 12,
-		isGrenade = true,  -- Special flag for arc trajectory
+		isGrenade = true,
 		color = Color3.fromRGB(100, 255, 100),
 		name = "Grenade",
 	},

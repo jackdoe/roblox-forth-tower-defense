@@ -45,8 +45,8 @@ local function makeDeps(registries)
 		ScrapManager = registries.ScrapManager,
 		WaveManager = registries.WaveManager,
 		PlayerCombat = registries.PlayerCombat,
-		GolemStats = registries.GolemStats,
-		GolemModel = registries.GolemModel,
+		GundamStats = registries.GundamStats,
+		GundamModel = registries.GundamModel,
 	}
 
 	function deps.getCoreOffset()
@@ -172,14 +172,14 @@ local function createEnv(className, instance, registries, getPosOverride)
 		setmetatable(env, {
 			__index = function(_, key)
 				if type(key) ~= "string" then return nil end
-				local tPid = key:match("^T(%d+)$")
+				local gPid = key:match("^G(%d+)$")
 				local bPid = key:match("^B(%d+)$")
-				local pid = tPid or bPid
+				local pid = gPid or bPid
 				if pid then
 					local data = Interpreters.get(pid)
 					if data and data.entity then
-						if tPid and data.type == "golem" then
-							return Classes.buildProxy("Turret", data.entity, deps)
+						if gPid and data.type == "gundam" then
+							return Classes.buildProxy("Gundam", data.entity, deps)
 						elseif bPid and data.type == "bot" then
 							return Classes.buildProxy("Bot", data.entity, deps)
 						end
@@ -193,10 +193,10 @@ local function createEnv(className, instance, registries, getPosOverride)
 	return env
 end
 
-function GameAPI.createGolemEnvironment(golem, registries)
+function GameAPI.createGundamEnvironment(gundam, registries)
 	local deps = makeDeps(registries)
-	return createEnv("Turret", golem, registries, function()
-		return deps.getCharacterPos(golem.character)
+	return createEnv("Gundam", gundam, registries, function()
+		return deps.getCharacterPos(gundam.character)
 	end)
 end
 

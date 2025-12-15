@@ -137,7 +137,7 @@ function HUD.create(parent, callbacks)
 		end
 	end
 
-	function hud.updateEconomy(scrap, turretCost, botCost)
+	function hud.updateEconomy(scrap, gundamCost, botCost)
 		scrapText.Text = "SCRAP: " .. (scrap or 0)
 	end
 

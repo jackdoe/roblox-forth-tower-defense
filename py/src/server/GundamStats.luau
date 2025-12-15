@@ -2,19 +2,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
 
-local GolemStats = {}
+local GundamStats = {}
 
-GolemStats.GROUND_Y = Config.PLATFORM_Y
+GundamStats.GROUND_Y = Config.PLATFORM_Y
 
-GolemStats.BASE = {
-	name = "Golem",
-	modelName = "Turret",
+GundamStats.BASE = {
+	name = "Gundam",
+	modelName = "Gundam",
 	maxAmmo = 300,
 	range = 40,
 	cost = 100,
 }
 
-GolemStats.UpgradeTiers = {
+GundamStats.UpgradeTiers = {
 	[1] = {
 		name = "2 Hz",
 		cpuHz = 2,
@@ -52,9 +52,9 @@ GolemStats.UpgradeTiers = {
 	},
 }
 
-GolemStats.MAX_CPU_TIER = 3
+GundamStats.MAX_CPU_TIER = 3
 
-GolemStats.RAMTiers = {
+GundamStats.RAMTiers = {
 	[1] = {
 		name = "32B",
 		maxBytecode = 32,
@@ -78,9 +78,9 @@ GolemStats.RAMTiers = {
 	},
 }
 
-GolemStats.MAX_RAM_TIER = 3
+GundamStats.MAX_RAM_TIER = 3
 
-GolemStats.AmmoStats = {
+GundamStats.AmmoStats = {
 	[1] = {
 		name = "BULLET",
 		damage = 15,
@@ -123,7 +123,7 @@ GolemStats.AmmoStats = {
 	},
 }
 
-GolemStats.AMMO_NAMES = {
+GundamStats.AMMO_NAMES = {
 	[1] = "BULLET",
 	[2] = "ROCKET",
 	[3] = "LASER",
@@ -131,13 +131,13 @@ GolemStats.AMMO_NAMES = {
 	[5] = "GRENADE",
 }
 
-GolemStats.TIER_AMMO_UNLOCKS = {
+GundamStats.TIER_AMMO_UNLOCKS = {
 	[1] = {1},
 	[2] = {1, 2},
 	[3] = {1, 2, 4, 5},
 }
 
-GolemStats.DEFAULT_PROGRAM = [[
+GundamStats.DEFAULT_PROGRAM = [[
 while True:
     enemies = self.scan()
     if len(enemies) > 0:
@@ -145,8 +145,8 @@ while True:
         self.fire(BULLET)
 ]]
 
-GolemStats.TIER_PROGRAMS = {
-	[1] = GolemStats.DEFAULT_PROGRAM,
+GundamStats.TIER_PROGRAMS = {
+	[1] = GundamStats.DEFAULT_PROGRAM,
 
 	[2] = [[
 while True:
@@ -165,12 +165,12 @@ while True:
 ]],
 }
 
-GolemStats.MAX_TURRETS = 10
-GolemStats.TURRET_BASE_COST = 100
-GolemStats.TURRET_COST_MULTIPLIER = 1.5
+GundamStats.MAX_GUNDAMS = 10
+GundamStats.GUNDAM_BASE_COST = 100
+GundamStats.GUNDAM_COST_MULTIPLIER = 1.5
 
-function GolemStats.isAmmoUnlocked(tier, ammoType)
-	local unlocks = GolemStats.TIER_AMMO_UNLOCKS[tier]
+function GundamStats.isAmmoUnlocked(tier, ammoType)
+	local unlocks = GundamStats.TIER_AMMO_UNLOCKS[tier]
 	if not unlocks then return ammoType == 1 end
 	for _, aType in ipairs(unlocks) do
 		if aType == ammoType then return true end
@@ -178,28 +178,28 @@ function GolemStats.isAmmoUnlocked(tier, ammoType)
 	return false
 end
 
-function GolemStats.getUnlockedAmmo(tier)
-	return GolemStats.TIER_AMMO_UNLOCKS[tier] or {1}
+function GundamStats.getUnlockedAmmo(tier)
+	return GundamStats.TIER_AMMO_UNLOCKS[tier] or {1}
 end
 
-function GolemStats.getCpuHz(tier)
-	local tierData = GolemStats.UpgradeTiers[tier or 1]
+function GundamStats.getCpuHz(tier)
+	local tierData = GundamStats.UpgradeTiers[tier or 1]
 	return tierData and tierData.cpuHz or 1
 end
 
-function GolemStats.getTickRate(tier)
-	local tierData = GolemStats.UpgradeTiers[tier or 1]
+function GundamStats.getTickRate(tier)
+	local tierData = GundamStats.UpgradeTiers[tier or 1]
 	return tierData and tierData.tickRate or 1.0
 end
 
-function GolemStats.getMaxBytecode(ramTier)
-	local tierData = GolemStats.RAMTiers[ramTier or 1]
+function GundamStats.getMaxBytecode(ramTier)
+	local tierData = GundamStats.RAMTiers[ramTier or 1]
 	return tierData and tierData.maxBytecode or 32
 end
 
-function GolemStats.getRAMUpgradeCost(ramTier)
-	local nextTier = GolemStats.RAMTiers[(ramTier or 1) + 1]
+function GundamStats.getRAMUpgradeCost(ramTier)
+	local nextTier = GundamStats.RAMTiers[(ramTier or 1) + 1]
 	return nextTier and nextTier.upgradeCost or nil
 end
 
-return GolemStats
+return GundamStats

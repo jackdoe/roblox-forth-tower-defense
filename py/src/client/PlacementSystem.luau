@@ -10,12 +10,12 @@ local PlacementSystem = {}
 local GROUND_Y = Config.PLATFORM_Y
 local BOT_COST = 75
 
-local ghostTurret = nil
+local ghostGundam = nil
 local ghostBot = nil
 
-local function createGhostTurret()
+local function createGhostGundam()
 	local model = Instance.new("Model")
-	model.Name = "GhostTurret"
+	model.Name = "GhostGundam"
 
 	local base = Instance.new("Part")
 	base.Name = "Base"
@@ -49,14 +49,14 @@ local function createGhostBot()
 	return model
 end
 
-function PlacementSystem.updateGhostTurret(x, z)
-	if not ghostTurret then return false end
+function PlacementSystem.updateGhostGundam(x, z)
+	if not ghostGundam then return false end
 
-	local hasScrap = ClientState.currentScrap >= ClientState.nextTurretCost
+	local hasScrap = ClientState.currentScrap >= ClientState.nextGundamCost
 
 	local color = hasScrap and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
 
-	local base = ghostTurret:FindFirstChild("Base")
+	local base = ghostGundam:FindFirstChild("Base")
 	if base then
 		base.Position = Vector3.new(x, GROUND_Y + 2.5, z)
 		base.Color = color
@@ -81,35 +81,35 @@ function PlacementSystem.updateGhostBot(x, z)
 	return hasScrap
 end
 
-function PlacementSystem.enterTurretMode(showNotification)
-	if ClientState.placementMode then return end
+function PlacementSystem.enterGundamMode(showNotification)
+	if ClientState.gundamPlacementMode then return end
 
-	if ClientState.currentTurretCount >= ClientState.MAX_TURRETS then
+	if ClientState.currentGundamCount >= ClientState.MAX_GUNDAMS then
 		if showNotification then
-			showNotification("TURRET LIMIT REACHED", "Max " .. ClientState.MAX_TURRETS .. " turrets!", "Sell a turret to build more", 4)
+			showNotification("GUNDAM LIMIT REACHED", "Max " .. ClientState.MAX_GUNDAMS .. " gundams!", "Sell a gundam to build more", 4)
 		end
 		return
 	end
 
-	if ClientState.currentScrap < ClientState.nextTurretCost then
+	if ClientState.currentScrap < ClientState.nextGundamCost then
 		return
 	end
 
-	ClientState.placementMode = true
-	ghostTurret = createGhostTurret()
-	ghostTurret.Parent = workspace
+	ClientState.gundamPlacementMode = true
+	ghostGundam = createGhostGundam()
+	ghostGundam.Parent = workspace
 end
 
-function PlacementSystem.exitTurretMode()
-	if not ClientState.placementMode then return end
-	ClientState.placementMode = false
+function PlacementSystem.exitGundamMode()
+	if not ClientState.gundamPlacementMode then return end
+	ClientState.gundamPlacementMode = false
 
-	if ghostTurret then
-		ghostTurret:Destroy()
-		ghostTurret = nil
+	if ghostGundam then
+		ghostGundam:Destroy()
+		ghostGundam = nil
 	end
 
-	ClientState.isPlacementValid = false
+	ClientState.isGundamPlacementValid = false
 end
 
 function PlacementSystem.enterBotMode(showNotification)
@@ -143,8 +143,8 @@ function PlacementSystem.exitBotMode()
 	ClientState.isBotPlacementValid = false
 end
 
-function PlacementSystem.tryPlaceTurret(mouse, golemPlaceAtEvent)
-	if not ClientState.isPlacementValid then
+function PlacementSystem.tryPlaceGundam(mouse, gundamPlaceAtEvent)
+	if not ClientState.isGundamPlacementValid then
 		return false
 	end
 
@@ -152,7 +152,7 @@ function PlacementSystem.tryPlaceTurret(mouse, golemPlaceAtEvent)
 	local x = math.floor(hitPos.X + 0.5)
 	local z = math.floor(hitPos.Z + 0.5)
 
-	golemPlaceAtEvent:FireServer(x, z)
+	gundamPlaceAtEvent:FireServer(x, z)
 
 	local sfx = Instance.new("Sound", workspace)
 	sfx.SoundId = "rbxassetid://9125699809"
@@ -161,7 +161,7 @@ function PlacementSystem.tryPlaceTurret(mouse, golemPlaceAtEvent)
 	sfx:Destroy()
 
 	if not UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-		PlacementSystem.exitTurretMode()
+		PlacementSystem.exitGundamMode()
 	end
 
 	return true

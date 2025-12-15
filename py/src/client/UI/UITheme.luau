@@ -24,7 +24,7 @@ UITheme.THEMES = {
 		varName = Color3.fromRGB(156, 220, 254),
 		varValue = Color3.fromRGB(206, 145, 120),
 	},
-	golem = {
+	gundam = {
 		frameBg = Color3.fromRGB(35, 35, 40),
 		headerBg = Color3.fromRGB(50, 50, 55),
 		codeBg = Color3.fromRGB(30, 30, 35),

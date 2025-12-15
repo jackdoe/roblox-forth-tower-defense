@@ -17,7 +17,7 @@ local Interpreters = require(script.Parent.Interpreters)
 local RemoteEvents = require(script.Parent.RemoteEvents)
 local PlayerManager = require(script.Parent.PlayerManager)
 local UnitSpawning = require(script.Parent.UnitSpawning)
-local GolemStats = require(script.Parent.GolemStats)
+local GundamStats = require(script.Parent.GundamStats)
 local BotStats = require(script.Parent.BotStats)
 
 local MAX_PROGRAM_LENGTH = 5000
@@ -67,7 +67,7 @@ local mapConfig = {
 	core = PathMap.getCoreWorldPos(),
 	playerSpawn = PathMap.getPlayerSpawn(),
 	spawnGates = PathMap.getSpawnGates(),
-	initialGolems = {},
+	initialGundams = {},
 	initialBots = {},
 }
 mapConfig.core.hp = Config.CORE_HP
@@ -161,7 +161,7 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, pid)
 					Interpreters.sendFullSync(player)
 					return
 				end
-			elseif data.type == "golem" and data.entity then
+			elseif data.type == "gundam" and data.entity then
 				local maxBytecode = interp.maxBytecode or 128
 				if instructionCount > maxBytecode then
 					interp.error = { message = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions)", line = nil }
@@ -221,8 +221,8 @@ RemoteEvents.resetProgram.OnServerEvent:Connect(function(player, pid)
 	end
 
 	local defaultProgram
-	if data.type == "golem" then
-		defaultProgram = GolemStats.DEFAULT_PROGRAM
+	if data.type == "gundam" then
+		defaultProgram = GundamStats.DEFAULT_PROGRAM
 	elseif data.type == "bot" then
 		defaultProgram = BotStats.DEFAULT_PROGRAM
 	else
@@ -261,10 +261,10 @@ RemoteEvents.playerFire.OnServerEvent:Connect(function(player, ammoType)
 	RemoteEvents.stateUpdate:FireClient(player, interp:getState())
 end)
 
-RemoteEvents.golemPlaceAt.OnServerEvent:Connect(function(player, x, z)
+RemoteEvents.gundamPlaceAt.OnServerEvent:Connect(function(player, x, z)
 	local count = 0
-	local MIN_TURRET_DISTANCE = 10
-	for _, data in pairs(Interpreters.getByType("golem")) do
+	local MIN_GUNDAM_DISTANCE = 10
+	for _, data in pairs(Interpreters.getByType("gundam")) do
 		if data.ownerId == player.UserId then
 			count = count + 1
 		end
@@ -274,44 +274,44 @@ RemoteEvents.golemPlaceAt.OnServerEvent:Connect(function(player, x, z)
 				local dx = hrp.Position.X - x
 				local dz = hrp.Position.Z - z
 				local dist = math.sqrt(dx * dx + dz * dz)
-				if dist < MIN_TURRET_DISTANCE then
-					RemoteEvents.golemPlaceAt:FireClient(player, false, "Too close to another turret")
+				if dist < MIN_GUNDAM_DISTANCE then
+					RemoteEvents.gundamPlaceAt:FireClient(player, false, "Too close to another gundam")
 					return
 				end
 			end
 		end
 	end
 
-	local maxTurrets = Config.MAX_TURRETS or 10
-	if count >= maxTurrets then
-		RemoteEvents.golemPlaceAt:FireClient(player, false, "Max turrets reached")
+	local maxGundams = Config.MAX_GUNDAMS or 10
+	if count >= maxGundams then
+		RemoteEvents.gundamPlaceAt:FireClient(player, false, "Max gundams reached")
 		return
 	end
 
-	local cost = math.floor(GolemStats.TURRET_BASE_COST * (GolemStats.TURRET_COST_MULTIPLIER ^ count))
+	local cost = math.floor(GundamStats.GUNDAM_BASE_COST * (GundamStats.GUNDAM_COST_MULTIPLIER ^ count))
 	local scrap = WaveManager.getScrap()
 	if scrap < cost then
-		RemoteEvents.golemPlaceAt:FireClient(player, false, "Not enough scrap")
+		RemoteEvents.gundamPlaceAt:FireClient(player, false, "Not enough scrap")
 		return
 	end
 
 	WaveManager.removeScrap(cost)
-	local pid = Interpreters.create("golem", player.UserId, x, z)
+	local pid = Interpreters.create("gundam", player.UserId, x, z)
 	if pid then
-		RemoteEvents.golemPlaceAt:FireClient(player, true, {pid = pid})
+		RemoteEvents.gundamPlaceAt:FireClient(player, true, {pid = pid})
 		Interpreters.sendFullSync(player)
 	else
 		WaveManager.addScrap(cost)
-		RemoteEvents.golemPlaceAt:FireClient(player, false, "Failed to create turret")
+		RemoteEvents.gundamPlaceAt:FireClient(player, false, "Failed to create gundam")
 	end
 end)
 
-RemoteEvents.golemSell.OnServerEvent:Connect(function(player, pid)
+RemoteEvents.gundamSell.OnServerEvent:Connect(function(player, pid)
 	local data = Interpreters.get(pid)
-	if not data or data.ownerId ~= player.UserId or data.type ~= "golem" then return end
+	if not data or data.ownerId ~= player.UserId or data.type ~= "gundam" then return end
 
 	local tier = data.entity and data.entity.tier or 1
-	local baseCost = GolemStats.BASE.cost
+	local baseCost = GundamStats.BASE.cost
 	local refund = math.floor(baseCost * 0.5 * tier)
 
 	Interpreters.destroy(pid)
@@ -319,7 +319,7 @@ RemoteEvents.golemSell.OnServerEvent:Connect(function(player, pid)
 	Interpreters.sendFullSync(player)
 end)
 
-RemoteEvents.golemUpgrade.OnServerEvent:Connect(function(player, pid, upgradeType)
+RemoteEvents.gundamUpgrade.OnServerEvent:Connect(function(player, pid, upgradeType)
 	local data = Interpreters.get(pid)
 	if not data or data.ownerId ~= player.UserId then return end
 
@@ -330,7 +330,7 @@ RemoteEvents.golemUpgrade.OnServerEvent:Connect(function(player, pid, upgradeTyp
 		success, result = Interpreters.upgradeRAM(pid)
 	end
 
-	RemoteEvents.golemUpgrade:FireClient(player, success, result)
+	RemoteEvents.gundamUpgrade:FireClient(player, success, result)
 	Interpreters.sendFullSync(player)
 end)
 

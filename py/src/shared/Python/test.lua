@@ -933,7 +933,7 @@ test("Complex game loop simulation", function()
             collect = function(s) return true end,
             supply = function(t) return true end
         },
-        T1 = {id = "turret1"},
+        G1 = {id = "gundam1"},
         len = function(t) return #t end
     }
 
@@ -1133,8 +1133,8 @@ test("AttributeError for invalid Bot attribute", function()
     expectCompileError("x = self.invalid_attr", "AttributeError.*Bot.*invalid_attr", "Bot")
 end)
 
-test("AttributeError for invalid Turret attribute", function()
-    expectCompileError("x = self.invalid_method()", "AttributeError.*Turret.*invalid_method", "Turret")
+test("AttributeError for invalid Gundam attribute", function()
+    expectCompileError("x = self.invalid_method()", "AttributeError.*Gundam.*invalid_method", "Gundam")
 end)
 
 test("No error for valid Bot attributes", function()
@@ -1145,8 +1145,8 @@ test("No error for valid Bot methods", function()
     expectCompileSuccess("self.forward(10)\nself.collect()\nself.deposit()", "Bot")
 end)
 
-test("No error for valid Turret methods", function()
-    expectCompileSuccess("self.fire(BULLET)\nself.scan()\nself.set_range(50)", "Turret")
+test("No error for valid Gundam methods", function()
+    expectCompileSuccess("self.fire(BULLET)\nself.scan()\nself.set_range(50)", "Gundam")
 end)
 
 test("Attribute suggestion for typos (prefix match)", function()
@@ -1160,16 +1160,16 @@ test("Pattern B1-B4 recognized as Bot type", function()
     expectCompileSuccess("x = B1.pos\ny = B2.cargo\nz = B3.collect()", nil, {})
 end)
 
-test("Pattern T1-T30 recognized as Turret type", function()
-    expectCompileSuccess("x = T1.pos\nT5.fire(BULLET)\nT10.scan()", nil, {})
+test("Pattern G1-G30 recognized as Gundam type", function()
+    expectCompileSuccess("x = G1.pos\nG5.fire(BULLET)\nG10.scan()", nil, {})
 end)
 
 test("Invalid attribute on pattern-matched Bot", function()
     expectCompileError("x = B1.nonexistent", "AttributeError.*Bot.*nonexistent")
 end)
 
-test("Invalid attribute on pattern-matched Turret", function()
-    expectCompileError("T1.nonexistent_method()", "AttributeError.*Turret.*nonexistent_method")
+test("Invalid attribute on pattern-matched Gundam", function()
+    expectCompileError("G1.nonexistent_method()", "AttributeError.*Gundam.*nonexistent_method")
 end)
 
 test("Enemy type from scan result", function()
@@ -1179,7 +1179,7 @@ for e in enemies:
     x = e.hp
     y = e.pos
     z = e.is_boss
-]], "Turret")
+]], "Gundam")
 end)
 
 test("Augmented assignment requires defined variable", function()

@@ -51,7 +51,7 @@ local function buildHelpData()
 		builtins = {},
 		methods = {
 			Bot = {},
-			Turret = {},
+			Gundam = {},
 			Player = {},
 			Enemy = {},
 		},
@@ -73,7 +73,7 @@ local function buildHelpData()
 		end
 	end
 
-	for className, classDef in pairs({Bot = Classes.Bot, Turret = Classes.Turret, Player = Classes.Player, Enemy = Classes.Enemy}) do
+	for className, classDef in pairs({Bot = Classes.Bot, Gundam = Classes.Gundam, Player = Classes.Player, Enemy = Classes.Enemy}) do
 		if classDef and classDef.members then
 			for memberName, member in pairs(classDef.members) do
 				if member.kind == "method" then
@@ -229,8 +229,8 @@ function EditorPanel.create(parent, selfType)
 				return "self", attr:lower()
 			elseif obj:match("^B%d$") then
 				return "Bot", attr:lower()
-			elseif obj:match("^T%d+$") then
-				return "Turret", attr:lower()
+			elseif obj:match("^G%d+$") then
+				return "Gundam", attr:lower()
 			end
 		end
 		local lastWord = text:match("([%w_]+)$")
@@ -267,7 +267,7 @@ function EditorPanel.create(parent, selfType)
 		if context == "self" then
 			local methods = HELP_DATA.methods[currentSelfType] or {}
 			matches = filterMatches(methods, prefix)
-		elseif context == "Bot" or context == "Turret" or context == "Player" or context == "Enemy" then
+		elseif context == "Bot" or context == "Gundam" or context == "Player" or context == "Enemy" then
 			local methods = HELP_DATA.methods[context] or {}
 			matches = filterMatches(methods, prefix)
 		elseif context == "global" then
@@ -295,7 +295,7 @@ function EditorPanel.create(parent, selfType)
 			helpConns[i] = btn.MouseButton1Click:Connect(function()
 				local currentText = textBox.Text
 				local insertWord = match.word
-				if context == "self" or context == "Bot" or context == "Turret" or context == "Player" or context == "Enemy" then
+				if context == "self" or context == "Bot" or context == "Gundam" or context == "Player" or context == "Enemy" then
 					local newText = currentText:gsub("([%w_]+%.)([%w_]*)$", "%1" .. insertWord)
 					textBox.Text = newText
 				else

@@ -189,7 +189,7 @@ function PathMap.getWorldSize()
 	return width * CELL_SIZE, height * CELL_SIZE
 end
 
-function PathMap.isRestrictedForTurret(x, z, margin)
+function PathMap.isRestrictedForGundam(x, z, margin)
 	margin = margin or 8
 	local worldW, worldH = PathMap.getWorldSize()
 

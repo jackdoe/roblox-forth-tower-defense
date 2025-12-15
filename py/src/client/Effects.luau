@@ -282,9 +282,7 @@ end
 -- UPGRADE EFFECTS
 --============================================================================
 
--- Turret upgrade effect - dramatic transformation visuals
--- Industrial Military Theme: Orange for Tier 2 (Arachnid), Yellow for Tier 3 (Dreadnought)
-function Effects.turretUpgrade(position, tier, color)
+function Effects.gundamUpgrade(position, tier, color)
 	if not position then return end
 
 	tier = tier or 2
@@ -352,7 +350,7 @@ function Effects.turretUpgrade(position, tier, color)
 				spark.Color = color
 				spark.Transparency = 0
 
-				-- Random starting position around the turret
+				-- Random starting position around the gundam
 				local angle = math.random() * math.pi * 2
 				local radius = math.random() * 3
 				local startPos = position + Vector3.new(

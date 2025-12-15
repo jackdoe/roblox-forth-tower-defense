@@ -6,9 +6,9 @@ local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local InterpreterModule = require(PythonTD.Interpreter)
 local Python = require(PythonTD.Python)
 
-local GolemModel = require(script.Parent.GolemModel)
+local GundamModel = require(script.Parent.GundamModel)
 local BotModel = require(script.Parent.BotModel)
-local GolemStats = require(script.Parent.GolemStats)
+local GundamStats = require(script.Parent.GundamStats)
 local BotStats = require(script.Parent.BotStats)
 
 local Interpreters = {}
@@ -67,12 +67,12 @@ function Interpreters.create(interpType, ownerId, x, z)
 
 	local ownerColor = getPlayerColor(ownerId)
 
-	if interpType == "golem" then
-		name = "T" .. pid .. ".py"
+	if interpType == "gundam" then
+		name = "G" .. pid .. ".py"
 
-		character = GolemModel.create(x, z, ownerColor)
-		selfType = "Turret"
-		defaultProgram = GolemStats.DEFAULT_PROGRAM
+		character = GundamModel.create(x, z, ownerColor)
+		selfType = "Gundam"
+		defaultProgram = GundamStats.DEFAULT_PROGRAM
 
 		entity = {
 			character = character,
@@ -81,7 +81,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 			name = name,
 		}
 
-		character:SetAttribute("GolemId", pid)
+		character:SetAttribute("GundamId", pid)
 
 	elseif interpType == "bot" then
 		name = "B" .. pid .. ".py"
@@ -109,15 +109,15 @@ function Interpreters.create(interpType, ownerId, x, z)
 	interp.maxBytecode = BASE_RAM
 	interp.power = 1
 
-	if interpType == "golem" then
-		interp.isGolem = true
-		interp.ammo = GolemStats.BASE.maxAmmo
-		interp.maxAmmo = GolemStats.BASE.maxAmmo
-		interp.range = GolemStats.BASE.range
-		interp.dynamicRange = GolemStats.BASE.range
+	if interpType == "gundam" then
+		interp.isGundam = true
+		interp.ammo = GundamStats.BASE.maxAmmo
+		interp.maxAmmo = GundamStats.BASE.maxAmmo
+		interp.range = GundamStats.BASE.range
+		interp.dynamicRange = GundamStats.BASE.range
 		interp.lastFireTime = 0
 		interp.target = nil
-		GolemModel.createBillboard(entity)
+		GundamModel.createBillboard(entity)
 	elseif interpType == "bot" then
 		interp.isBot = true
 		BotModel.createBillboard(entity)
@@ -128,12 +128,12 @@ function Interpreters.create(interpType, ownerId, x, z)
 		EnemyManager = deps.EnemyManager,
 		WaveManager = deps.WaveManager,
 		ScrapManager = deps.ScrapManager,
-		GolemStats = GolemStats,
-		GolemModel = GolemModel,
+		GundamStats = GundamStats,
+		GundamModel = GundamModel,
 		Interpreters = Interpreters,
 	}
-	if interpType == "golem" then
-		gameEnv = Python.createGolemEnvironment(entity, registries)
+	if interpType == "gundam" then
+		gameEnv = Python.createGundamEnvironment(entity, registries)
 	elseif interpType == "bot" then
 		gameEnv = Python.createBotEnvironment(entity, registries)
 	end
@@ -166,7 +166,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 	if deps.EntityRegistry then
 		deps.EntityRegistry.register({
 			id = pid,
-			isGolem = interpType == "golem",
+			isGundam = interpType == "gundam",
 			isBot = interpType == "bot",
 			character = character,
 		})
@@ -338,8 +338,8 @@ function Interpreters.upgradeCPU(pid)
 
 	interp.cpuHz = currentHz + CPU_HZ_INCREMENT
 
-	if data.entity and data.type == "golem" then
-		GolemModel.applyVisualUpgrade(data.entity, interp.cpuHz)
+	if data.entity and data.type == "gundam" then
+		GundamModel.applyVisualUpgrade(data.entity, interp.cpuHz)
 	end
 
 	data.gen = data.gen + 1
@@ -367,8 +367,8 @@ function Interpreters.upgradeRAM(pid)
 
 	interp.maxBytecode = currentRam + RAM_INCREMENT
 
-	if data.entity and data.type == "golem" then
-		GolemModel.applyColorUpgrade(data.entity, interp.maxBytecode)
+	if data.entity and data.type == "gundam" then
+		GundamModel.applyColorUpgrade(data.entity, interp.maxBytecode)
 	end
 
 	data.gen = data.gen + 1
@@ -538,8 +538,8 @@ function Interpreters.upgradePower(pid)
 	interp.power = currentPower + POWER_INCREMENT
 	data.gen = data.gen + 1
 
-	if data.type == "golem" and data.entity then
-		GolemModel.applyPowerScale(data.entity, interp.power)
+	if data.type == "gundam" and data.entity then
+		GundamModel.applyPowerScale(data.entity, interp.power)
 	elseif data.type == "bot" and data.entity then
 		BotModel.applyPowerScale(data.entity, interp.power)
 	elseif data.type == "player" and interp.character then
@@ -788,7 +788,7 @@ local function executeBotTask(data, dt)
 	return "FAILED"
 end
 
-local function updateGolem(data, dt)
+local function updateGundam(data, dt)
 	local entity = data.entity
 	local interp = data.interpreter
 	local character = entity.character
@@ -906,11 +906,11 @@ end
 function Interpreters.startUpdateLoop()
 	RunService.Heartbeat:Connect(function(dt)
 		for pid, data in pairs(interpreters) do
-			if data.type == "golem" and data.entity then
+			if data.type == "gundam" and data.entity then
 				local interp = data.interpreter
 				interp:update(dt)
-				updateGolem(data, dt)
-				GolemModel.updateBillboard(data.entity)
+				updateGundam(data, dt)
+				GundamModel.updateBillboard(data.entity)
 
 			elseif data.type == "bot" and data.entity then
 				local interp = data.interpreter

@@ -1,21 +1,21 @@
 local ClientState = {}
 
 ClientState.currentScrap = 0
-ClientState.nextTurretCost = 100
+ClientState.nextGundamCost = 100
 ClientState.nextBotCost = 75
 
-ClientState.currentTurretCount = 0
+ClientState.currentGundamCount = 0
 ClientState.currentBotCount = 0
-ClientState.MAX_TURRETS = 10
+ClientState.MAX_GUNDAMS = 10
 ClientState.MAX_BOTS = 5
 
-ClientState.TURRET_BASE_COST = 100
-ClientState.TURRET_COST_MULTIPLIER = 1.5
+ClientState.GUNDAM_BASE_COST = 100
+ClientState.GUNDAM_COST_MULTIPLIER = 1.5
 ClientState.BOT_BASE_COST = 75
 ClientState.BOT_COST_MULTIPLIER = 1.3
 
-function ClientState.calculateTurretCost()
-	return math.floor(ClientState.TURRET_BASE_COST * (ClientState.TURRET_COST_MULTIPLIER ^ ClientState.currentTurretCount))
+function ClientState.calculateGundamCost()
+	return math.floor(ClientState.GUNDAM_BASE_COST * (ClientState.GUNDAM_COST_MULTIPLIER ^ ClientState.currentGundamCount))
 end
 
 function ClientState.calculateBotCost()
@@ -24,9 +24,9 @@ end
 
 ClientState.currentPhase = "LOBBY"
 
-ClientState.placementMode = false
+ClientState.gundamPlacementMode = false
 ClientState.botPlacementMode = false
-ClientState.isPlacementValid = false
+ClientState.isGundamPlacementValid = false
 ClientState.isBotPlacementValid = false
 
 return ClientState

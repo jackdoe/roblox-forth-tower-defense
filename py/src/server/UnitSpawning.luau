@@ -15,10 +15,10 @@ end
 function UnitSpawning.spawnForPlayer(player, waveNumber)
 	local userId = player.UserId
 
-	if arenaMap.initialGolems then
-		for i, pos in ipairs(arenaMap.initialGolems) do
+	if arenaMap.initialGundams then
+		for i, pos in ipairs(arenaMap.initialGundams) do
 			local unlockWave = pos.unlockWave or 1
-			local key = userId .. "_golem_" .. i
+			local key = userId .. "_gundam_" .. i
 			if unlockWave <= waveNumber and not spawnedUnits[key] then
 				local playerIndex = 0
 				for idx, p in ipairs(Players:GetPlayers()) do
@@ -30,7 +30,7 @@ function UnitSpawning.spawnForPlayer(player, waveNumber)
 				local offsetX = (playerIndex % 3) * 12 - 12
 				local offsetZ = math.floor(playerIndex / 3) * 12
 
-				local pid = Interpreters.create("golem", userId, pos.x + offsetX, pos.z + offsetZ)
+				local pid = Interpreters.create("gundam", userId, pos.x + offsetX, pos.z + offsetZ)
 				if pid then
 					spawnedUnits[key] = pid
 				end

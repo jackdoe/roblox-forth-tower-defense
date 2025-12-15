@@ -8,7 +8,7 @@ local T = {
 	STRING = "string",
 	LIST = "List",
 	ENEMY = "Enemy",
-	TURRET = "Turret",
+	GUNDAM = "Gundam",
 	BOT = "Bot",
 	PLAYER = "Player",
 	AMMO_TYPE = "AmmoType",
@@ -78,28 +78,28 @@ Classes.Enemy = {
 	},
 }
 
-Classes.Turret = {
-	name = "Turret",
+Classes.Gundam = {
+	name = "Gundam",
 	members = {
-		pos = prop(T.VECTOR, function(deps, turret)
-			if turret.character then
-				local x, z = deps.getCharacterPos(turret.character)
+		pos = prop(T.VECTOR, function(deps, gundam)
+			if gundam.character then
+				local x, z = deps.getCharacterPos(gundam.character)
 				local coreX, coreZ = deps.getCoreOffset()
 				return { math.floor(x - coreX), math.floor(z - coreZ) }
 			end
 			return { 0, 0 }
 		end),
 
-		ammo = method({}, T.NUMBER, function(deps, turret)
-			return turret.interpreter and turret.interpreter.ammo or 0
+		ammo = method({}, T.NUMBER, function(deps, gundam)
+			return gundam.interpreter and gundam.interpreter.ammo or 0
 		end),
 
-		max_ammo = method({}, T.NUMBER, function(deps, turret)
-			return turret.interpreter and turret.interpreter.maxAmmo or 300
+		max_ammo = method({}, T.NUMBER, function(deps, gundam)
+			return gundam.interpreter and gundam.interpreter.maxAmmo or 300
 		end),
 
-		reload = method({ T.NUMBER }, T.NUMBER, function(deps, turret, amount)
-			local interp = turret.interpreter
+		reload = method({ T.NUMBER }, T.NUMBER, function(deps, gundam, amount)
+			local interp = gundam.interpreter
 			if not interp then return 0 end
 
 			local needed = (interp.maxAmmo or 300) - (interp.ammo or 0)
@@ -121,21 +121,21 @@ Classes.Turret = {
 			return toReload
 		end),
 
-		set_range = method({ T.NUMBER }, T.NIL, function(deps, turret, range)
-			if turret.interpreter then
-				turret.interpreter.dynamicRange = math.clamp(range or 40, 10, 60)
+		set_range = method({ T.NUMBER }, T.NIL, function(deps, gundam, range)
+			if gundam.interpreter then
+				gundam.interpreter.dynamicRange = math.clamp(range or 40, 10, 60)
 			end
 		end),
 
-		set_target = method({ T.ENEMY }, T.NIL, function(deps, turret, enemy)
-			if turret.interpreter and enemy and enemy.id then
-				turret.interpreter.target = enemy.id
+		set_target = method({ T.ENEMY }, T.NIL, function(deps, gundam, enemy)
+			if gundam.interpreter and enemy and enemy.id then
+				gundam.interpreter.target = enemy.id
 			end
 		end),
 
-		target = method({}, { "optional", T.ENEMY }, function(deps, turret)
-			if not turret.interpreter then return nil end
-			local targetId = turret.interpreter.target
+		target = method({}, { "optional", T.ENEMY }, function(deps, gundam)
+			if not gundam.interpreter then return nil end
+			local targetId = gundam.interpreter.target
 			if not targetId then return nil end
 
 			local EnemyManager = deps.EnemyManager
@@ -148,16 +148,16 @@ Classes.Turret = {
 			return nil
 		end),
 
-		fire = method({ T.AMMO_TYPE }, T.BOOL, function(deps, turret, ammoType)
+		fire = method({ T.AMMO_TYPE }, T.BOOL, function(deps, gundam, ammoType)
 			ammoType = ammoType or 1
-			local interp = turret.interpreter
+			local interp = gundam.interpreter
 			if not interp then return false end
 
-			local GolemStats = deps.GolemStats
-			local GolemModel = deps.GolemModel
-			if not GolemStats or not GolemModel then return false end
+			local GundamStats = deps.GundamStats
+			local GundamModel = deps.GundamModel
+			if not GundamStats or not GundamModel then return false end
 
-			local AmmoStats = GolemStats.AmmoStats
+			local AmmoStats = GundamStats.AmmoStats
 			local ammoStats = AmmoStats[ammoType] or AmmoStats[1]
 
 			if interp.ammo < ammoStats.ammoCost then return false end
@@ -178,7 +178,7 @@ Classes.Turret = {
 				return false
 			end
 
-			local character = turret.character
+			local character = gundam.character
 			local myHrp = character and (character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart)
 			local enemyHrp = enemy.character and enemy.character:FindFirstChild("HumanoidRootPart")
 			if not myHrp or not enemyHrp then return false end
@@ -208,14 +208,14 @@ Classes.Turret = {
 							local eDist = (eHrp.Position - enemyHrp.Position).Magnitude
 							if eDist <= ammoStats.splashRadius then
 								local falloff = 1 - (eDist / ammoStats.splashRadius) * 0.5
-								EnemyManager.damage(e.id, math.floor(finalDamage * falloff), turret.id)
+								EnemyManager.damage(e.id, math.floor(finalDamage * falloff), gundam.id)
 							end
 						end
 					end
 				end
 			else
 				if finalDamage > 0 then
-					EnemyManager.damage(interp.target, finalDamage, turret.id)
+					EnemyManager.damage(interp.target, finalDamage, gundam.id)
 				end
 			end
 
@@ -227,15 +227,15 @@ Classes.Turret = {
 				EnemyManager.applyBurning(interp.target, 3, 5)
 			end
 
-			GolemModel.createMuzzleFlash(turret, enemyHrp.Position, ammoStats)
+			GundamModel.createMuzzleFlash(gundam, enemyHrp.Position, ammoStats)
 
 			return true
 		end),
 
-		scan = method({}, { T.LIST, T.ENEMY }, function(deps, turret)
-			if not turret.character then return {} end
-			local x, z = deps.getCharacterPos(turret.character)
-			local range = turret.interpreter and turret.interpreter.dynamicRange or 40
+		scan = method({}, { T.LIST, T.ENEMY }, function(deps, gundam)
+			if not gundam.character then return {} end
+			local x, z = deps.getCharacterPos(gundam.character)
+			local range = gundam.interpreter and gundam.interpreter.dynamicRange or 40
 
 			local EnemyManager = deps.EnemyManager
 			if EnemyManager and EnemyManager.findInRange then
@@ -249,9 +249,9 @@ Classes.Turret = {
 			return {}
 		end),
 
-		danger = method({}, T.NUMBER, function(deps, turret)
-			if not turret.character then return 9999 end
-			local x, z = deps.getCharacterPos(turret.character)
+		danger = method({}, T.NUMBER, function(deps, gundam)
+			if not gundam.character then return 9999 end
+			local x, z = deps.getCharacterPos(gundam.character)
 			local EnemyManager = deps.EnemyManager
 			if EnemyManager and EnemyManager.findNearest then
 				local enemy, dist = EnemyManager.findNearest(x, z, 100)
@@ -648,8 +648,8 @@ Classes.Builtins = {
 }
 
 Classes.EnvPatterns = {
-	["^T%d+$"] = "Turret",
-	["^B%d$"] = "Bot",
+	["^G%d+$"] = "Gundam",
+	["^B%d+$"] = "Bot",
 }
 
 function Classes.getMethodInfo(className, methodName)

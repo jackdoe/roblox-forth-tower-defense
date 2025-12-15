@@ -387,7 +387,7 @@ function EnemyManager.updateHpBar(enemy)
 	end
 end
 
-function EnemyManager.damage(enemyId, amount, sourceGolemId)
+function EnemyManager.damage(enemyId, amount, sourceGundamId)
 	local enemy = enemies[enemyId]
 	if not enemy then return false end
 
@@ -416,7 +416,7 @@ function EnemyManager.damage(enemyId, amount, sourceGolemId)
 	end
 
 	if enemy.hp <= 0 then
-		EnemyManager.kill(enemyId, sourceGolemId)
+		EnemyManager.kill(enemyId, sourceGundamId)
 		return true
 	end
 
@@ -725,7 +725,7 @@ function EnemyManager.updateStatusEffects(enemy)
 	end
 end
 
-function EnemyManager.kill(enemyId, killerGolemId)
+function EnemyManager.kill(enemyId, killerGundamId)
 	local enemy = enemies[enemyId]
 	if not enemy then return end
 

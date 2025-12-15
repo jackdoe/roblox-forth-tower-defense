@@ -104,16 +104,16 @@ function MainIDE.create(parent, callbacks)
 	botBuildBtn.Parent = topBar
 	Instance.new("UICorner", botBuildBtn).CornerRadius = UDim.new(0, 4)
 
-	local turretBuildBtn = Instance.new("TextButton")
-	turretBuildBtn.Name = "TurretBuildBtn"
-	turretBuildBtn.Size = UDim2.new(0, 130, 0, 20)
-	turretBuildBtn.BackgroundColor3 = Color3.fromHex("#333333")
-	turretBuildBtn.Text = "+TURRET (T): 100"
-	turretBuildBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
-	turretBuildBtn.Font = Enum.Font.RobotoMono
-	turretBuildBtn.TextSize = 10
-	turretBuildBtn.Parent = topBar
-	Instance.new("UICorner", turretBuildBtn).CornerRadius = UDim.new(0, 4)
+	local gundamBuildBtn = Instance.new("TextButton")
+	gundamBuildBtn.Name = "GundamBuildBtn"
+	gundamBuildBtn.Size = UDim2.new(0, 130, 0, 20)
+	gundamBuildBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	gundamBuildBtn.Text = "+GUNDAM (G): 100"
+	gundamBuildBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
+	gundamBuildBtn.Font = Enum.Font.RobotoMono
+	gundamBuildBtn.TextSize = 10
+	gundamBuildBtn.Parent = topBar
+	Instance.new("UICorner", gundamBuildBtn).CornerRadius = UDim.new(0, 4)
 
 	local hideBtn = Instance.new("TextButton")
 	hideBtn.Name = "HideBtn"
@@ -474,8 +474,8 @@ function MainIDE.create(parent, callbacks)
 		for pid, data in pairs(interpreters) do
 			if data.name and data.type then
 				local varName = data.name:gsub("%.py$", "")
-				if data.type == "golem" then
-					names[varName] = "Turret"
+				if data.type == "gundam" then
+					names[varName] = "Gundam"
 				elseif data.type == "bot" then
 					names[varName] = "Bot"
 				elseif data.type == "player" then
@@ -776,7 +776,7 @@ function MainIDE.create(parent, callbacks)
 		currentTabId = pid
 		local data = interpreters[pid]
 		if data then
-			local selfTypeMap = {player = "Player", golem = "Turret", bot = "Bot"}
+			local selfTypeMap = {player = "Player", gundam = "Gundam", bot = "Bot"}
 			editor:setSelfType(selfTypeMap[data.type] or "Player")
 
 			local source = data.localSource or data.source or ""
@@ -896,7 +896,7 @@ function MainIDE.create(parent, callbacks)
 	function ide:getCounts()
 		local g, b = 0, 0
 		for _, d in pairs(interpreters) do
-			if d.type == "golem" then g = g + 1 elseif d.type == "bot" then b = b + 1 end
+			if d.type == "gundam" then g = g + 1 elseif d.type == "bot" then b = b + 1 end
 		end
 		return g, b
 	end
@@ -972,17 +972,17 @@ function MainIDE.create(parent, callbacks)
 		if callbacks.onBuildBot then callbacks.onBuildBot() end
 	end)
 
-	turretBuildBtn.MouseButton1Click:Connect(function()
-		if callbacks.onBuildTurret then callbacks.onBuildTurret() end
+	gundamBuildBtn.MouseButton1Click:Connect(function()
+		if callbacks.onBuildGundam then callbacks.onBuildGundam() end
 	end)
 
 	powerBtn.MouseButton1Click:Connect(function()
 		if callbacks.onBuyPower and currentTabId then callbacks.onBuyPower(currentTabId) end
 	end)
 
-	function ide:updateEconomy(botCost, turretCost)
+	function ide:updateEconomy(botCost, gundamCost)
 		botBuildBtn.Text = string.format("+ROBOT (B): %d", botCost or 75)
-		turretBuildBtn.Text = string.format("+TURRET (T): %d", turretCost or 100)
+		gundamBuildBtn.Text = string.format("+GUNDAM (G): %d", gundamCost or 100)
 	end
 
 	ide.frame = container

@@ -1,16 +1,16 @@
 local ProgramLibrary = {}
 
 ProgramLibrary.categories = {
-	"Turret",
+	"Gundam",
 	"Bot",
 	"Player",
 }
 
 ProgramLibrary.programs = {
 	{
-		name = "Basic Turret",
-		targetType = "golem",
-		category = "Turret",
+		name = "Basic Gundam",
+		targetType = "gundam",
+		category = "Gundam",
 		code = [[
 while True:
     enemies = self.scan()
@@ -21,8 +21,8 @@ while True:
 	},
 	{
 		name = "Focus Weak",
-		targetType = "golem",
-		category = "Turret",
+		targetType = "gundam",
+		category = "Gundam",
 		code = [[
 while True:
     enemies = self.scan()
@@ -33,8 +33,8 @@ while True:
 	},
 	{
 		name = "Ice Support",
-		targetType = "golem",
-		category = "Turret",
+		targetType = "gundam",
+		category = "Gundam",
 		code = [[
 while True:
     enemies = self.scan()
@@ -45,8 +45,8 @@ while True:
 	},
 	{
 		name = "Rocket Barrage",
-		targetType = "golem",
-		category = "Turret",
+		targetType = "gundam",
+		category = "Gundam",
 		code = [[
 while True:
     enemies = self.scan()
@@ -57,8 +57,8 @@ while True:
 	},
 	{
 		name = "Sniper",
-		targetType = "golem",
-		category = "Turret",
+		targetType = "gundam",
+		category = "Gundam",
 		code = [[
 while True:
     self.set_range(60)

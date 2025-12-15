@@ -27,7 +27,7 @@ local selectionRingModel = nil
 local RING_SIZE = {
 	player = 6,
 	bot = 6,
-	golem = 10,
+	gundam = 10,
 }
 
 local function createSelectionRing(ringType)
@@ -86,7 +86,7 @@ local function updateSelectionRing()
 	local targetId = selectionRingTarget.id
 	for _, obj in ipairs(workspace:GetDescendants()) do
 		if not obj:IsA("Model") then continue end
-		local objId = targetType == "golem" and obj:GetAttribute("GolemId") or obj:GetAttribute("BotId")
+		local objId = targetType == "gundam" and obj:GetAttribute("GundamId") or obj:GetAttribute("BotId")
 		if objId ~= targetId then continue end
 		selectionRingModel = obj
 		local hrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
@@ -107,13 +107,13 @@ local interpreterSyncEvent = PythonTD:WaitForChild("InterpreterSync")
 
 local playerReadyEvent = PythonTD:WaitForChild("PlayerReady")
 local waveStateEvent = PythonTD:WaitForChild("WaveState")
-local golemPlaceAtEvent = PythonTD:WaitForChild("GolemPlaceAt")
-local golemSellEvent = PythonTD:WaitForChild("GolemSell")
+local gundamPlaceAtEvent = PythonTD:WaitForChild("GundamPlaceAt")
+local gundamSellEvent = PythonTD:WaitForChild("GundamSell")
 local enterBuildModeEvent = PythonTD:WaitForChild("EnterBuildMode")
 local playerTeleportEvent = PythonTD:WaitForChild("PlayerTeleport")
 local playerMoveCompleteEvent = PythonTD:WaitForChild("PlayerMoveComplete")
 
-local golemUpgradeEvent = PythonTD:WaitForChild("GolemUpgrade")
+local gundamUpgradeEvent = PythonTD:WaitForChild("GundamUpgrade")
 
 local requestStateEvent = PythonTD:WaitForChild("RequestState")
 
@@ -143,14 +143,14 @@ ide = MainIDE.create(screenGui, {
 		resetProgramEvent:FireServer(pid)
 	end,
 	onBuyCpu = function(pid)
-		golemUpgradeEvent:FireServer(pid, "cpu")
+		gundamUpgradeEvent:FireServer(pid, "cpu")
 	end,
 	onBuyRam = function(pid)
-		golemUpgradeEvent:FireServer(pid, "ram")
+		gundamUpgradeEvent:FireServer(pid, "ram")
 	end,
 	onTabOpen = function(pid)
 		local interpType = ide:getInterpreterType(pid)
-		if interpType == "golem" or interpType == "bot" or interpType == "player" then
+		if interpType == "gundam" or interpType == "bot" or interpType == "player" then
 			createSelectionRing(interpType)
 			selectionRingTarget = { id = pid, type = interpType }
 		else
@@ -160,26 +160,26 @@ ide = MainIDE.create(screenGui, {
 	onTabClose = function(pid)
 		destroySelectionRing()
 		local interpType = ide:getInterpreterType(pid)
-		if interpType == "golem" then
-			golemSellEvent:FireServer(pid)
+		if interpType == "gundam" then
+			gundamSellEvent:FireServer(pid)
 		elseif interpType == "bot" then
 			botSellEvent:FireServer(pid)
 		end
 	end,
 	onBuildBot = function()
-		if ClientState.placementMode then PlacementSystem.exitTurretMode() end
+		if ClientState.gundamPlacementMode then PlacementSystem.exitGundamMode() end
 		if ClientState.botPlacementMode then
 			PlacementSystem.exitBotMode()
 		else
 			PlacementSystem.enterBotMode(Overlays.showNotification)
 		end
 	end,
-	onBuildTurret = function()
+	onBuildGundam = function()
 		if ClientState.botPlacementMode then PlacementSystem.exitBotMode() end
-		if ClientState.placementMode then
-			PlacementSystem.exitTurretMode()
+		if ClientState.gundamPlacementMode then
+			PlacementSystem.exitGundamMode()
 		else
-			PlacementSystem.enterTurretMode(Overlays.showNotification)
+			PlacementSystem.enterGundamMode(Overlays.showNotification)
 		end
 	end,
 	onBuyPower = function(pid)
@@ -196,14 +196,14 @@ hud = HUD.create(screenGui, {
 Overlays.create(screenGui)
 
 local function updateAllEconomy()
-	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
-	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextTurretCost)
+	hud.updateEconomy(ClientState.currentScrap, ClientState.nextGundamCost, ClientState.nextBotCost)
+	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextGundamCost)
 end
 
 interpreterSyncEvent.OnClientEvent:Connect(function(payload)
 	ide:sync(payload)
-	ClientState.currentTurretCount, ClientState.currentBotCount = ide:getCounts()
-	ClientState.nextTurretCost = ClientState.calculateTurretCost()
+	ClientState.currentGundamCount, ClientState.currentBotCount = ide:getCounts()
+	ClientState.nextGundamCost = ClientState.calculateGundamCost()
 	ClientState.nextBotCost = ClientState.calculateBotCost()
 	updateAllEconomy()
 end)
@@ -220,7 +220,7 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 	end
 end)
 
-golemPlaceAtEvent.OnClientEvent:Connect(function(success, result)
+gundamPlaceAtEvent.OnClientEvent:Connect(function(success, result)
 	if not success then
 		Overlays.showNotification("BUILD FAILED", tostring(result), "", 3)
 	elseif result and result.pid then
@@ -273,7 +273,7 @@ playerTeleportEvent.OnClientEvent:Connect(function(x, z)
 	end)
 end)
 
-golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
+gundamUpgradeEvent.OnClientEvent:Connect(function(success, result)
 	if success then
 		local upgradeSound = Instance.new("Sound")
 		upgradeSound.SoundId = "rbxassetid://71764947817417"
@@ -288,9 +288,9 @@ golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
 		local interpType = ide:getInterpreterType(currentPid)
 		local targetPos = nil
 
-		if currentPid and interpType == "golem" then
+		if currentPid and interpType == "gundam" then
 			for _, model in ipairs(workspace:GetDescendants()) do
-				if model:IsA("Model") and model:GetAttribute("GolemId") == currentPid then
+				if model:IsA("Model") and model:GetAttribute("GundamId") == currentPid then
 					local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
 					if hrp then targetPos = hrp.Position end
 					break
@@ -313,7 +313,7 @@ golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
 		end
 
 		if targetPos then
-			Effects.turretUpgrade(targetPos, 2)
+			Effects.gundamUpgrade(targetPos, 2)
 		end
 	else
 		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3)
@@ -336,7 +336,7 @@ buyPowerEvent.OnClientEvent:Connect(function(success, result)
 end)
 
 enterBuildModeEvent.OnClientEvent:Connect(function()
-	PlacementSystem.enterTurretMode(Overlays.showNotification)
+	PlacementSystem.enterGundamMode(Overlays.showNotification)
 end)
 
 local mouse = player:GetMouse()
@@ -350,8 +350,8 @@ RunService.RenderStepped:Connect(function(dt)
 	local x = math.floor(mouseTarget.Position.X + 0.5)
 	local z = math.floor(mouseTarget.Position.Z + 0.5)
 
-	if ClientState.placementMode then
-		ClientState.isPlacementValid = PlacementSystem.updateGhostTurret(x, z)
+	if ClientState.gundamPlacementMode then
+		ClientState.isGundamPlacementValid = PlacementSystem.updateGhostGundam(x, z)
 	end
 
 	if ClientState.botPlacementMode then
@@ -397,14 +397,14 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 mouse.Button2Down:Connect(function()
-	if ClientState.placementMode then PlacementSystem.exitTurretMode() end
+	if ClientState.gundamPlacementMode then PlacementSystem.exitGundamMode() end
 	if ClientState.botPlacementMode then PlacementSystem.exitBotMode() end
 end)
 
 mouse.Button1Down:Connect(function()
-	if ClientState.placementMode then
-		if ClientState.isPlacementValid then
-			PlacementSystem.tryPlaceTurret(mouse, golemPlaceAtEvent)
+	if ClientState.gundamPlacementMode then
+		if ClientState.isGundamPlacementValid then
+			PlacementSystem.tryPlaceGundam(mouse, gundamPlaceAtEvent)
 		else
 			PlacementSystem.playErrorSound()
 		end
@@ -424,23 +424,23 @@ end)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 
-	if input.KeyCode == Enum.KeyCode.T then
+	if input.KeyCode == Enum.KeyCode.G then
 		if ClientState.botPlacementMode then PlacementSystem.exitBotMode() end
-		if ClientState.placementMode then
-			PlacementSystem.exitTurretMode()
+		if ClientState.gundamPlacementMode then
+			PlacementSystem.exitGundamMode()
 		else
-			PlacementSystem.enterTurretMode(Overlays.showNotification)
+			PlacementSystem.enterGundamMode(Overlays.showNotification)
 		end
 	elseif input.KeyCode == Enum.KeyCode.B then
-		if ClientState.placementMode then PlacementSystem.exitTurretMode() end
+		if ClientState.gundamPlacementMode then PlacementSystem.exitGundamMode() end
 		if ClientState.botPlacementMode then
 			PlacementSystem.exitBotMode()
 		else
 			PlacementSystem.enterBotMode(Overlays.showNotification)
 		end
 	elseif input.KeyCode == Enum.KeyCode.Escape then
-		if ClientState.placementMode then
-			PlacementSystem.exitTurretMode()
+		if ClientState.gundamPlacementMode then
+			PlacementSystem.exitGundamMode()
 		elseif ClientState.botPlacementMode then
 			PlacementSystem.exitBotMode()
 		end
