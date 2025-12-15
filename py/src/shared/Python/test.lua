@@ -1090,8 +1090,8 @@ local function expectCompileError(source, pattern, selfType, envTypes)
         error("Expected compile error but compilation succeeded")
     end
     if pattern and compiled and compiled.error then
-        if not string.find(compiled.error, pattern) then
-            error("Expected error pattern '" .. pattern .. "' but got: " .. compiled.error)
+        if not string.find(compiled.error.message, pattern) then
+            error("Expected error pattern '" .. pattern .. "' but got: " .. compiled.error.message)
         end
     end
     return compiled
@@ -1100,7 +1100,7 @@ end
 local function expectCompileSuccess(source, selfType, envTypes)
     local compiled = Compiler.compile(source, nil, selfType, envTypes)
     if not compiled or not compiled.code then
-        error("Expected compile success but got error: " .. tostring(compiled and compiled.error))
+        error("Expected compile success but got error: " .. tostring(compiled and compiled.error and compiled.error.message))
     end
     return compiled
 end
@@ -1152,8 +1152,8 @@ end)
 test("Attribute suggestion for typos (prefix match)", function()
     local compiled = Compiler.compile("self.forw()", nil, "Bot")
     assertTrue(compiled.error ~= nil, "Should have error")
-    assertTrue(string.find(compiled.error, "did you mean") ~= nil, "Should suggest correction")
-    assertTrue(string.find(compiled.error, "forward") ~= nil, "Should suggest 'forward'")
+    assertTrue(string.find(compiled.error.message, "did you mean") ~= nil, "Should suggest correction")
+    assertTrue(string.find(compiled.error.message, "forward") ~= nil, "Should suggest 'forward'")
 end)
 
 test("Pattern B1-B4 recognized as Bot type", function()

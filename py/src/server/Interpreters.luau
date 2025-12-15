@@ -379,17 +379,21 @@ function Interpreters.getState(pid, fullState)
 
 	local interp = data.interpreter
 
+	local dynamicState = interp:getDynamicState()
+
 	local state = {
 		pid = data.pid,
 		type = data.type,
 		name = data.name,
+		selfType = interp.selfType,
 
 		status = interp.status,
 		error = interp.error,
 		paused = interp.paused,
 
 		ip = nil,
-		variables = interp:getDynamicState().variables,
+		variables = dynamicState.variables,
+		output = dynamicState.output,
 
 		ammo = interp.ammo,
 		maxAmmo = interp.maxAmmo,

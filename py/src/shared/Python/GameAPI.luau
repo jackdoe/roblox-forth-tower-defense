@@ -75,7 +75,6 @@ local function addUtilities(env, interp)
 	env.print = function(...)
 		local parts = {}
 		for _, v in ipairs({...}) do parts[#parts + 1] = pyToString(v) end
-		if type(interp.output) ~= "table" then interp.output = {} end
 		interp.output[#interp.output + 1] = table.concat(parts, " ")
 		while #interp.output > 50 do table.remove(interp.output, 1) end
 	end

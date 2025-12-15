@@ -91,6 +91,7 @@ local function updateSelectionRing()
 end
 
 local runProgramEvent = PythonTD:WaitForChild("RunProgram")
+local pauseProgramEvent = PythonTD:WaitForChild("PauseProgram")
 local stepProgramEvent = PythonTD:WaitForChild("StepProgram")
 local resetProgramEvent = PythonTD:WaitForChild("ResetProgram")
 local stateUpdateEvent = PythonTD:WaitForChild("StateUpdate")
@@ -124,11 +125,20 @@ ide = MainIDE.create(screenGui, {
 	onRun = function(pid)
 		runProgramEvent:FireServer(ide:getText(), pid)
 	end,
+	onPause = function(pid)
+		pauseProgramEvent:FireServer(pid)
+	end,
 	onStep = function(pid)
 		stepProgramEvent:FireServer(ide:getText(), pid)
 	end,
 	onReset = function(pid)
 		resetProgramEvent:FireServer(pid)
+	end,
+	onBuyCpu = function(pid)
+		golemUpgradeEvent:FireServer(pid, "cpu")
+	end,
+	onBuyRam = function(pid)
+		golemUpgradeEvent:FireServer(pid, "ram")
 	end,
 	onTabOpen = function(pid)
 		local interpType = ide:getInterpreterType(pid)

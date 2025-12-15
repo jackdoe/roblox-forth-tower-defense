@@ -46,7 +46,7 @@ function Runtime:compile(source, maxBytecode, selfType, envTypes)
 
 	if result.error then
 		self.error = result.error
-		return false, self.error
+		return false, self.error.message
 	end
 
 	self.compiled = result
@@ -67,8 +67,8 @@ function Runtime:start()
 	-- Load bytecode into VM
 	local success = self.vm:load(self.compiled)
 	if not success then
-		self.error = self.vm.error or "Failed to load bytecode"
-		return false, self.error
+		self.error = self.vm.error or { message = "Failed to load bytecode", line = nil }
+		return false, self.error.message
 	end
 
 	self.running = true

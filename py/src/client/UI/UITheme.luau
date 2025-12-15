@@ -10,6 +10,9 @@ UITheme.COLORS = {
 	text = Color3.fromRGB(240, 245, 255),
 	subtext = Color3.fromRGB(120, 130, 150),
 	glass = Color3.fromRGB(255, 255, 255),
+	disabledBg = Color3.fromRGB(15, 15, 20),
+	errorDot = Color3.fromRGB(255, 80, 80),
+	execDot = Color3.fromRGB(255, 255, 100),
 }
 
 UITheme.THEMES = {

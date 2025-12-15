@@ -62,7 +62,7 @@ end
 -- Load compiled bytecode
 function VM:load(compiled)
 	if not compiled or not compiled.code then
-		self.error = "No bytecode to load"
+		self.error = { message = "No bytecode to load", line = nil }
 		return false
 	end
 
@@ -209,8 +209,8 @@ function VM:step()
 	end)
 
 	if not success then
-		self.error = "Line " .. instrLine .. ": " .. cleanError(err)
-		print("RUNTIME:", self.error)
+		self.error = { message = cleanError(err), line = instrLine }
+		print("RUNTIME: Line " .. instrLine .. ": " .. self.error.message)
 		self.running = false
 		return false
 	end

@@ -607,8 +607,9 @@ function Compiler.compile(source, maxBytecode, selfType, envTypes)
 
 	if not success then
 		local err = cleanError(ast)
+		local line = tonumber(err:match("[Ll]ine (%d+)"))
 		print("[Compile Error] " .. err)
-		return { error = err }
+		return { error = { message = err, line = line } }
 	end
 
 	local ok, c = pcall(function()
@@ -618,7 +619,7 @@ function Compiler.compile(source, maxBytecode, selfType, envTypes)
 	if not ok then
 		local err = cleanError(c)
 		print("[Compiler Init Error] " .. err)
-		return { error = err }
+		return { error = { message = err, line = nil } }
 	end
 
 	local compileOk, compileErr = pcall(function()
@@ -637,19 +638,21 @@ function Compiler.compile(source, maxBytecode, selfType, envTypes)
 
 	if not compileOk then
 		local err = cleanError(compileErr)
+		local line = tonumber(err:match("[Ll]ine (%d+)"))
 		print("[Compile Error] " .. err)
-		return { error = err }
+		return { error = { message = err, line = line } }
 	end
 
 	if #c.errors > 0 then
 		local err = table.concat(c.errors, "\n")
+		local line = tonumber(err:match("[Ll]ine (%d+)"))
 		print("[Compile Error] " .. err)
-		return { error = err }
+		return { error = { message = err, line = line } }
 	end
 
 	local instructionCount = #c.code
 	if maxBytecode and instructionCount > maxBytecode then
-		return { error = "Program too large: " .. instructionCount .. "/" .. maxBytecode .. " bytes" }
+		return { error = { message = "Program too large: " .. instructionCount .. "/" .. maxBytecode .. " bytes", line = nil } }
 	end
 
 	return {

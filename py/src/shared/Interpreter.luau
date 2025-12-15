@@ -20,7 +20,7 @@ function Interpreter.new(player, isMonster, deps)
 
 	self.status = "IDLE"
 	self.error = nil
-	self.output = ""
+	self.output = {}
 	self.paused = false
 	self.blocked = false
 
@@ -50,21 +50,21 @@ function Interpreter:load(source)
 	self.source = source
 	self.lastProgram = source
 	self.error = nil
-	self.output = ""
+	self.output = {}
 
-	local success, err = self.runtime:compile(source, self.maxBytecode, self.selfType)
+	local success = self.runtime:compile(source, self.maxBytecode, self.selfType)
 
 	if not success then
-		self.error = err
+		self.error = self.runtime.error
 		self.status = "ERROR"
 		return false
 	end
 
 	self.runtime:setEnvironment(self.gameEnv)
 
-	local startSuccess, startErr = self.runtime:start()
+	local startSuccess = self.runtime:start()
 	if not startSuccess then
-		self.error = startErr or "Failed to start"
+		self.error = self.runtime.error or { message = "Failed to start", line = nil }
 		self.status = "ERROR"
 		return false
 	end
@@ -90,10 +90,6 @@ function Interpreter:step()
 		self.error = state.error
 		self.status = "ERROR"
 		return false, 0
-	end
-
-	if #state.output > 0 then
-		self.output = table.concat(state.output, "\n")
 	end
 
 	if running then
@@ -136,10 +132,6 @@ function Interpreter:stepOnce()
 			self.status = "ERROR"
 			return false
 		end
-
-		if #state.output > 0 then
-			self.output = table.concat(state.output, "\n")
-		end
 	end
 
 	if running then
@@ -155,7 +147,7 @@ function Interpreter:reset()
 	self.runtime:stop()
 	self.status = "READY"
 	self.error = nil
-	self.output = ""
+	self.output = {}
 	self.paused = false
 
 	if self.lastProgram and #self.lastProgram > 0 then
@@ -184,11 +176,20 @@ function Interpreter:getState()
 	return state
 end
 
+local MAX_OUTPUT_LINES = 20
+local MAX_LINE_LENGTH = 60
+
 function Interpreter:getDynamicState()
-	local output = self.output
-	if #output > 80 then
-		output = "..." .. output:sub(-77)
+	local lines = {}
+	local startIdx = math.max(1, #self.output - MAX_OUTPUT_LINES + 1)
+	for i = startIdx, #self.output do
+		local line = self.output[i]
+		if #line > MAX_LINE_LENGTH then
+			line = line:sub(1, MAX_LINE_LENGTH - 3) .. "..."
+		end
+		lines[#lines + 1] = line
 	end
+	local output = table.concat(lines, "\n")
 
 	local NIL_MARKER = "__NIL__"
 	local variables = {}
