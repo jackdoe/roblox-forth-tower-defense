@@ -237,6 +237,7 @@ RemoteEvents.playerFire.OnServerEvent:Connect(function(player, ammoType)
 
 	local interp = PlayerManager.get(player.UserId)
 	if not interp then return end
+	if interp.paused then return end
 
 	if player.Character then
 		interp.character = player.Character

@@ -271,13 +271,13 @@ function MainIDE.create(parent, callbacks)
 
 	local lineHighlight = Instance.new("Frame")
 	lineHighlight.Name = "Highlight"
-	lineHighlight.Size = UDim2.new(1, 0, 0, 13)
-	lineHighlight.BackgroundColor3 = Color3.fromRGB(255, 255, 100)
-	lineHighlight.BackgroundTransparency = 0.85
+	lineHighlight.Size = UDim2.new(0, 28, 0, 13)
+	lineHighlight.BackgroundColor3 = Color3.fromRGB(100, 100, 60)
+	lineHighlight.BackgroundTransparency = 0.3
 	lineHighlight.BorderSizePixel = 0
 	lineHighlight.Visible = false
 	lineHighlight.ZIndex = 0
-	lineHighlight.Parent = textBox
+	lineHighlight.Parent = codeArea
 
 	local outputFrame = Instance.new("Frame")
 	outputFrame.Name = "Output"
@@ -421,13 +421,8 @@ function MainIDE.create(parent, callbacks)
 		end
 	end
 
-	local function renderTab(tab)
-		if not tab then return end
-		textBox.Text = tab.source or ""
-		renderVariables(tab.variables)
-		renderBytecode(tab.bytecode, tab.ip)
-
-		if tab.bytecode and tab.ip and tab.bytecode[tab.ip] then
+	local function updateHighlight(tab)
+		if tab and tab.bytecode and tab.ip and tab.bytecode[tab.ip] then
 			local line = tab.bytecode[tab.ip].line
 			if line and line > 0 then
 				lineHighlight.Visible = true
@@ -438,6 +433,21 @@ function MainIDE.create(parent, callbacks)
 		else
 			lineHighlight.Visible = false
 		end
+	end
+
+	local function renderTab(tab)
+		if not tab then return end
+		textBox.Text = tab.source or ""
+		renderVariables(tab.variables)
+		renderBytecode(tab.bytecode, tab.ip)
+		updateHighlight(tab)
+	end
+
+	local function updateTabDisplay(tab)
+		if not tab then return end
+		renderVariables(tab.variables)
+		renderBytecode(tab.bytecode, tab.ip)
+		updateHighlight(tab)
 	end
 
 	local function updateTabButton(id, active)
@@ -464,9 +474,10 @@ function MainIDE.create(parent, callbacks)
 		local interp = interpreters[id]
 		local canClose = interp and interp.type ~= "player"
 
+		local tabWidth = math.max(50, #name * 7 + (canClose and 24 or 8))
 		local btn = Instance.new("TextButton")
-		btn.Name = id
-		btn.Size = UDim2.new(0, 100, 1, 0)
+		btn.Name = tostring(id)
+		btn.Size = UDim2.new(0, tabWidth, 1, 0)
 		btn.BackgroundColor3 = Color3.fromHex("#2d2d2d")
 		btn.BorderSizePixel = 0
 		btn.Text = " " .. name
@@ -478,8 +489,8 @@ function MainIDE.create(parent, callbacks)
 
 		if canClose then
 			local close = Instance.new("TextButton")
-			close.Size = UDim2.new(0, 18, 1, 0)
-			close.Position = UDim2.new(1, -18, 0, 0)
+			close.Size = UDim2.new(0, 16, 1, 0)
+			close.Position = UDim2.new(1, -16, 0, 0)
 			close.BackgroundTransparency = 1
 			close.Text = "×"
 			close.TextColor3 = COLORS.subtext
@@ -560,6 +571,7 @@ function MainIDE.create(parent, callbacks)
 		local tab = tabs[id]
 		if not tab then return end
 
+		local shouldSetText = state.source and (tab.source == "" or tab.source == nil)
 		if state.source then
 			tab.source = state.source
 		end
@@ -576,7 +588,10 @@ function MainIDE.create(parent, callbacks)
 		end
 
 		if currentTabId == id then
-			renderTab(tab)
+			if shouldSetText then
+				textBox.Text = tab.source or ""
+			end
+			updateTabDisplay(tab)
 		end
 	end
 
@@ -612,7 +627,7 @@ function MainIDE.create(parent, callbacks)
 
 		local function addFile(pid, name, color)
 			local btn = Instance.new("TextButton")
-			btn.Name = pid
+			btn.Name = tostring(pid)
 			btn.Size = UDim2.new(1, 0, 0, 20)
 			btn.BackgroundTransparency = 1
 			btn.Text = ""
@@ -621,21 +636,22 @@ function MainIDE.create(parent, callbacks)
 			order = order + 1
 
 			local icon = Instance.new("Frame")
-			icon.Size = UDim2.new(0, 3, 0.7, 0)
-			icon.Position = UDim2.new(0, 2, 0.15, 0)
+			icon.Size = UDim2.new(0, 3, 0, 14)
+			icon.Position = UDim2.new(0, 4, 0.5, -7)
 			icon.BackgroundColor3 = color
 			icon.BorderSizePixel = 0
 			icon.Parent = btn
 
 			local lbl = Instance.new("TextLabel")
-			lbl.Size = UDim2.new(1, -12, 1, 0)
-			lbl.Position = UDim2.new(0, 10, 0, 0)
+			lbl.Size = UDim2.new(1, -14, 1, 0)
+			lbl.Position = UDim2.new(0, 14, 0, 0)
 			lbl.BackgroundTransparency = 1
 			lbl.Text = name
-			lbl.TextColor3 = COLORS.text
+			lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
 			lbl.TextXAlignment = Enum.TextXAlignment.Left
 			lbl.Font = Enum.Font.Code
 			lbl.TextSize = 11
+			lbl.Active = false
 			lbl.Parent = btn
 
 			btn.MouseButton1Click:Connect(function()

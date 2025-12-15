@@ -256,21 +256,31 @@ RunService.RenderStepped:Connect(function(dt)
 		local hrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
 		if not hrp then continue end
 		if not botAnimStates[botId] then
-			botAnimStates[botId] = { animSpeed = 0, walkCycle = 0 }
+			botAnimStates[botId] = { animSpeed = 0, walkCycle = 0, lastX = hrp.Position.X, lastZ = hrp.Position.Z, facingAngle = 0 }
 		end
 		local animState = botAnimStates[botId]
-		local isMoving = obj:GetAttribute("IsMoving") or false
 		local baseY = obj:GetAttribute("BaseY") or 2.5
-		local facingAngle = obj:GetAttribute("FacingAngle") or 0
+
+		local dx = hrp.Position.X - animState.lastX
+		local dz = hrp.Position.Z - animState.lastZ
+		local dist = math.sqrt(dx * dx + dz * dz)
+		local isMoving = dist > 0.01
+
+		if isMoving then
+			animState.facingAngle = math.atan2(-dx, -dz)
+		end
+
+		animState.lastX = hrp.Position.X
+		animState.lastZ = hrp.Position.Z
+
 		local targetSpeed = isMoving and 12 or 0
 		animState.animSpeed = animState.animSpeed + (targetSpeed - animState.animSpeed) * 5 * dt
 		animState.walkCycle = animState.walkCycle + animState.animSpeed * dt
 		local bounce = math.abs(math.sin(animState.walkCycle)) * 0.25
 		local tilt = math.sin(animState.walkCycle * 0.5) * 0.12
 		local lean = isMoving and -0.08 or 0
-		local serverPos = hrp.Position
-		hrp.CFrame = CFrame.new(serverPos.X, baseY + bounce, serverPos.Z)
-			* CFrame.Angles(0, facingAngle, 0)
+		hrp.CFrame = CFrame.new(hrp.Position.X, baseY + bounce, hrp.Position.Z)
+			* CFrame.Angles(0, animState.facingAngle, 0)
 			* CFrame.Angles(lean, 0, -tilt)
 	end
 end)
