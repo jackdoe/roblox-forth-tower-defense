@@ -29,13 +29,13 @@ local function createSelectionRing()
 	local ring = Instance.new("Part")
 	ring.Name = "SelectionRing"
 	ring.Shape = Enum.PartType.Cylinder
-	ring.Size = Vector3.new(0.08, 12, 12)
-	ring.Material = Enum.Material.Neon
-	ring.Color = Color3.fromRGB(120, 200, 220)
+	ring.Size = Vector3.new(0.03, 6, 6)
+	ring.Material = Enum.Material.SmoothPlastic
+	ring.Color = Color3.fromRGB(80, 140, 180)
 	ring.Anchored = true
 	ring.CanCollide = false
 	ring.CastShadow = false
-	ring.Transparency = 0.5
+	ring.Transparency = 0.7
 	ring.CFrame = CFrame.new(0, -1000, 0) * CFrame.Angles(0, 0, math.rad(90))
 	ring.Parent = workspace
 	selectionRing = ring
@@ -54,6 +54,20 @@ end
 
 local function updateSelectionRing()
 	if not selectionRingTarget or not selectionRing then return end
+
+	local targetType = selectionRingTarget.type
+
+	if targetType == "player" then
+		local char = player.Character
+		if char then
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				selectionRing.CFrame = CFrame.new(hrp.Position.X, Config.PLATFORM_Y + 0.5, hrp.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
+			end
+		end
+		return
+	end
+
 	if selectionRingModel and selectionRingModel.Parent then
 		local hrp = selectionRingModel:FindFirstChild("HumanoidRootPart") or selectionRingModel.PrimaryPart
 		if hrp then
@@ -61,8 +75,8 @@ local function updateSelectionRing()
 		end
 		return
 	end
+
 	local targetId = selectionRingTarget.id
-	local targetType = selectionRingTarget.type
 	for _, obj in ipairs(workspace:GetDescendants()) do
 		if not obj:IsA("Model") then continue end
 		local objId = targetType == "golem" and obj:GetAttribute("GolemId") or obj:GetAttribute("BotId")
@@ -118,7 +132,7 @@ ide = MainIDE.create(screenGui, {
 	end,
 	onTabOpen = function(pid)
 		local interpType = ide:getInterpreterType(pid)
-		if interpType == "golem" or interpType == "bot" then
+		if interpType == "golem" or interpType == "bot" or interpType == "player" then
 			createSelectionRing()
 			selectionRingTarget = { id = pid, type = interpType }
 		else

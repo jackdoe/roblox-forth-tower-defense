@@ -511,10 +511,6 @@ function MainIDE.create(parent, callbacks)
 		}
 		table.insert(tabOrder, id)
 
-		if callbacks.onTabOpen then
-			callbacks.onTabOpen(id)
-		end
-
 		ide:switchTab(id)
 	end
 
@@ -529,6 +525,9 @@ function MainIDE.create(parent, callbacks)
 			showEditor(true)
 			updateTabButton(id, true)
 			renderTab(tab)
+			if callbacks.onTabOpen then
+				callbacks.onTabOpen(id)
+			end
 		end
 	end
 
@@ -626,13 +625,12 @@ function MainIDE.create(parent, callbacks)
 		end
 
 		local function addFile(pid, name, color)
-			local btn = Instance.new("TextButton")
-			btn.Name = tostring(pid)
-			btn.Size = UDim2.new(1, 0, 0, 20)
-			btn.BackgroundTransparency = 1
-			btn.Text = ""
-			btn.LayoutOrder = order
-			btn.Parent = fileList
+			local container = Instance.new("Frame")
+			container.Name = tostring(pid)
+			container.Size = UDim2.new(1, 0, 0, 20)
+			container.BackgroundTransparency = 1
+			container.LayoutOrder = order
+			container.Parent = fileList
 			order = order + 1
 
 			local icon = Instance.new("Frame")
@@ -640,7 +638,7 @@ function MainIDE.create(parent, callbacks)
 			icon.Position = UDim2.new(0, 4, 0.5, -7)
 			icon.BackgroundColor3 = color
 			icon.BorderSizePixel = 0
-			icon.Parent = btn
+			icon.Parent = container
 
 			local lbl = Instance.new("TextLabel")
 			lbl.Size = UDim2.new(1, -14, 1, 0)
@@ -651,19 +649,25 @@ function MainIDE.create(parent, callbacks)
 			lbl.TextXAlignment = Enum.TextXAlignment.Left
 			lbl.Font = Enum.Font.Code
 			lbl.TextSize = 11
-			lbl.Active = false
-			lbl.Parent = btn
+			lbl.Parent = container
 
-			btn.MouseButton1Click:Connect(function()
+			local clickArea = Instance.new("TextButton")
+			clickArea.Size = UDim2.new(1, 0, 1, 0)
+			clickArea.BackgroundTransparency = 1
+			clickArea.Text = ""
+			clickArea.ZIndex = 10
+			clickArea.Parent = container
+
+			clickArea.MouseButton1Click:Connect(function()
 				ide:openTab(pid, name)
 			end)
 
-			btn.MouseEnter:Connect(function()
-				btn.BackgroundTransparency = 0.7
-				btn.BackgroundColor3 = Color3.fromHex("#3c3c3c")
+			clickArea.MouseEnter:Connect(function()
+				container.BackgroundTransparency = 0.7
+				container.BackgroundColor3 = Color3.fromHex("#3c3c3c")
 			end)
-			btn.MouseLeave:Connect(function()
-				btn.BackgroundTransparency = 1
+			clickArea.MouseLeave:Connect(function()
+				container.BackgroundTransparency = 1
 			end)
 		end
 
