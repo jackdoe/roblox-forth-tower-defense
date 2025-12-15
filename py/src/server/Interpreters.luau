@@ -107,6 +107,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 	interp.selfType = selfType
 	interp.cpuHz = BASE_CPU_HZ
 	interp.maxBytecode = BASE_RAM
+	interp.power = 1
 
 	if interpType == "golem" then
 		interp.isGolem = true
@@ -183,6 +184,7 @@ function Interpreters.createPlayer(ownerId, character, playerId)
 	interp.selfType = "Player"
 	interp.cpuHz = BASE_CPU_HZ
 	interp.maxBytecode = BASE_RAM
+	interp.power = 1
 	interp.isPlayer = true
 	interp.playerId = playerId
 
@@ -419,6 +421,7 @@ function Interpreters.getState(pid, fullState)
 		dynamicRange = interp.dynamicRange,
 		cpuHz = interp.cpuHz,
 		maxBytecode = interp.maxBytecode,
+		power = interp.power or 1,
 	}
 
 	local runtimeState = interp.runtime and interp.runtime:getState()
@@ -511,6 +514,50 @@ function Interpreters.updateName(pid, name)
 	if data then
 		data.name = name
 	end
+end
+
+local POWER_BASE_COST = 100
+local POWER_COST_MULTIPLIER = 2
+local POWER_INCREMENT = 1
+
+function Interpreters.upgradePower(pid)
+	local data = interpreters[pid]
+	if not data then return false, "Not found" end
+
+	local interp = data.interpreter
+	local currentPower = interp.power or 1
+	local upgradeCount = currentPower - 1
+	local cost = math.floor(POWER_BASE_COST * (POWER_COST_MULTIPLIER ^ upgradeCount))
+
+	if deps.WaveManager then
+		local scrap = deps.WaveManager.getScrap()
+		if scrap < cost then return false, "Not enough scrap" end
+		deps.WaveManager.removeScrap(cost)
+	end
+
+	interp.power = currentPower + POWER_INCREMENT
+	data.gen = data.gen + 1
+
+	if data.type == "golem" and data.entity then
+		GolemModel.applyPowerScale(data.entity, interp.power)
+	elseif data.type == "bot" and data.entity then
+		BotModel.applyPowerScale(data.entity, interp.power)
+	elseif data.type == "player" and interp.character then
+		local humanoid = interp.character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			local scale = 1 + (interp.power - 1) * 0.1
+			local bodyScale = humanoid:FindFirstChild("BodyHeightScale")
+			if bodyScale then bodyScale.Value = scale end
+			local bodyWidth = humanoid:FindFirstChild("BodyWidthScale")
+			if bodyWidth then bodyWidth.Value = scale end
+			local bodyDepth = humanoid:FindFirstChild("BodyDepthScale")
+			if bodyDepth then bodyDepth.Value = scale end
+			local headScale = humanoid:FindFirstChild("HeadScale")
+			if headScale then headScale.Value = scale end
+		end
+	end
+
+	return true, {power = interp.power, cost = cost}
 end
 
 local function collectScrap(entity)
@@ -683,8 +730,8 @@ local function executeBotTask(data, dt)
 			end
 
 			local botScrap = entity.scrapInventory or 0
-			local globalPower = deps.WaveManager and deps.WaveManager.getPower() or 1
-			EnemyManager.shock(enemyId, BotStats.SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z, botScrap, globalPower)
+			local unitPower = data.interpreter and data.interpreter.power or 1
+			EnemyManager.shock(enemyId, BotStats.SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z, botScrap, unitPower)
 			task.shockExecuted = true
 			task.stunEndTime = tick() + BotStats.SHOCK_STUN_TIME
 

@@ -377,8 +377,11 @@ RemoteEvents.botSell.OnServerEvent:Connect(function(player, pid)
 	Interpreters.sendFullSync(player)
 end)
 
-RemoteEvents.buyPower.OnServerEvent:Connect(function(player)
-	local success, result = WaveManager.buyPower()
+RemoteEvents.buyPower.OnServerEvent:Connect(function(player, pid)
+	local data = Interpreters.get(pid)
+	if not data or data.ownerId ~= player.UserId then return end
+
+	local success, result = Interpreters.upgradePower(pid)
 	RemoteEvents.buyPower:FireClient(player, success, result)
 	Interpreters.sendFullSync(player)
 end)

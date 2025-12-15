@@ -196,7 +196,8 @@ Classes.Turret = {
 			local baseRange = 40
 			local damageMult = baseRange / currentRange
 			local tierDamageMult = interp.tierDamageMultiplier or 1
-			local finalDamage = math.floor(ammoStats.damage * damageMult * tierDamageMult)
+			local unitPower = interp.power or 1
+			local finalDamage = math.floor(ammoStats.damage * damageMult * tierDamageMult * unitPower)
 
 			if ammoStats.splashRadius and ammoStats.splashRadius > 0 then
 				local enemies = EnemyManager.getAll and EnemyManager.getAll() or {}

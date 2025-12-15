@@ -633,6 +633,14 @@ function GolemModel.updateBillboard(golem)
 	end
 end
 
+function GolemModel.applyPowerScale(golem, power)
+	local character = golem.character
+	if not character then return end
+
+	local scale = 1 + (power - 1) * 0.1
+	character:ScaleTo(scale)
+end
+
 function GolemModel.createMuzzleFlash(golem, targetPos, ammoStats)
 	local character = golem.character
 	local barrel = character:FindFirstChild("Barrel")

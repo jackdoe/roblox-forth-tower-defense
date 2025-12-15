@@ -546,7 +546,6 @@ function MainIDE.create(parent, callbacks)
 	editorTextBox:GetPropertyChangedSignal("Text"):Connect(onTextChanged)
 
 	local ide = {}
-	local currentPowerLevel = 1
 
 	local function clearList(frame)
 		for _, c in ipairs(frame:GetChildren()) do
@@ -558,8 +557,9 @@ function MainIDE.create(parent, callbacks)
 		local cpu = data.cpuHz or 1
 		local ram = data.bytecode and #data.bytecode or 0
 		local maxRam = data.maxBytecode or 32
+		local pwr = data.power or 1
 		local ramColor = ram > maxRam and "#F44747" or "#DCDCAA"
-		statsLabel.Text = string.format('<font color="#4EC9B0">CPU:%dhz</font> <font color="%s">RAM:%d/%d</font> <font color="#FF6464">PWR:x%d</font>', cpu, ramColor, ram, maxRam, currentPowerLevel)
+		statsLabel.Text = string.format('<font color="#4EC9B0">CPU:%dhz</font> <font color="%s">RAM:%d/%d</font> <font color="#FF6464">PWR:x%d</font>', cpu, ramColor, ram, maxRam, pwr)
 	end
 
 	local function updateState(pid)
@@ -599,6 +599,10 @@ function MainIDE.create(parent, callbacks)
 
 		buyCpuBtn.Visible = true
 		buyRamBtn.Visible = true
+
+		local unitPower = data.power or 1
+		local powerCost = math.floor(100 * (2 ^ (unitPower - 1)))
+		powerBtn.Text = string.format("+PWR x%d: %d", unitPower + 1, powerCost)
 
 		clearList(varList)
 		local varNames = {}
@@ -973,17 +977,12 @@ function MainIDE.create(parent, callbacks)
 	end)
 
 	powerBtn.MouseButton1Click:Connect(function()
-		if callbacks.onBuyPower then callbacks.onBuyPower() end
+		if callbacks.onBuyPower and currentTabId then callbacks.onBuyPower(currentTabId) end
 	end)
 
-	function ide:updateEconomy(botCost, turretCost, powerCost, powerLevel)
+	function ide:updateEconomy(botCost, turretCost)
 		botBuildBtn.Text = string.format("+ROBOT (B): %d", botCost or 75)
 		turretBuildBtn.Text = string.format("+TURRET (T): %d", turretCost or 100)
-		powerBtn.Text = string.format("+POWER x%d: %d", (powerLevel or 1) + 1, powerCost or 100)
-		currentPowerLevel = powerLevel or 1
-		if currentTabId and interpreters[currentTabId] then
-			updateStats(interpreters[currentTabId])
-		end
 	end
 
 	ide.frame = container

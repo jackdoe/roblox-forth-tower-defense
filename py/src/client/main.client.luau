@@ -182,8 +182,8 @@ ide = MainIDE.create(screenGui, {
 			PlacementSystem.enterTurretMode(Overlays.showNotification)
 		end
 	end,
-	onBuyPower = function()
-		buyPowerEvent:FireServer()
+	onBuyPower = function(pid)
+		buyPowerEvent:FireServer(pid)
 	end,
 })
 
@@ -196,9 +196,8 @@ hud = HUD.create(screenGui, {
 Overlays.create(screenGui)
 
 local function updateAllEconomy()
-	ClientState.nextPowerCost = ClientState.calculatePowerCost()
 	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
-	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextTurretCost, ClientState.nextPowerCost, ClientState.currentPower)
+	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextTurretCost)
 end
 
 interpreterSyncEvent.OnClientEvent:Connect(function(payload)
@@ -216,9 +215,6 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
 		hud.updatePhase(state.phase or "LOBBY")
 		ClientState.currentScrap = state.scrap or 0
-		if state.power then
-			ClientState.currentPower = state.power
-		end
 		updateAllEconomy()
 		Overlays.updateGameState(state.phase, state.restartTimeRemaining)
 	end
@@ -247,9 +243,6 @@ end)
 waveStateEvent.OnClientEvent:Connect(function(state)
 	ClientState.currentPhase = state.phase or "LOBBY"
 	ClientState.currentScrap = state.scrap or 0
-	if state.power then
-		ClientState.currentPower = state.power
-	end
 	hud.updateWave(state.waveNumber, state.enemiesRemaining or 0, state.enemiesTotal or 0)
 	hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
 	hud.updatePhase(state.phase or "LOBBY")
@@ -322,6 +315,8 @@ golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
 		if targetPos then
 			Effects.turretUpgrade(targetPos, 2)
 		end
+	else
+		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3)
 	end
 end)
 
@@ -335,6 +330,8 @@ buyPowerEvent.OnClientEvent:Connect(function(success, result)
 		upgradeSound.Ended:Once(function()
 			upgradeSound:Destroy()
 		end)
+	else
+		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3)
 	end
 end)
 

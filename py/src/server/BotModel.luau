@@ -131,6 +131,19 @@ function BotModel.create(x, z, ownerColor)
 	return model
 end
 
+function BotModel.applyPowerScale(bot, power)
+	local character = bot.character
+	if not character then return end
+
+	local scale = 1 + (power - 1) * 0.1
+	local baseScale = character:GetAttribute("BaseScale") or 1
+	if not character:GetAttribute("BaseScale") then
+		character:SetAttribute("BaseScale", 1)
+	end
+
+	character:ScaleTo(scale)
+end
+
 function BotModel.createBillboard(bot)
 	local character = bot.character
 	local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
