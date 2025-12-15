@@ -121,6 +121,14 @@ GundamStats.AmmoStats = {
 		slowDuration = 3.0,
 		color = Color3.fromRGB(0, 255, 255),
 	},
+	[6] = {
+		name = "GRENADE",
+		damage = 60,
+		ammoCost = 5,
+		fireRate = 1.5,
+		splashRadius = 12,
+		color = Color3.fromRGB(100, 255, 100),
+	},
 }
 
 GundamStats.AMMO_NAMES = {
@@ -128,13 +136,14 @@ GundamStats.AMMO_NAMES = {
 	[2] = "ROCKET",
 	[3] = "LASER",
 	[4] = "ICE",
-	[5] = "GRENADE",
+	[5] = "FREEZE",
+	[6] = "GRENADE",
 }
 
 GundamStats.TIER_AMMO_UNLOCKS = {
 	[1] = {1},
 	[2] = {1, 2},
-	[3] = {1, 2, 4, 5},
+	[3] = {1, 2, 4, 5, 6},
 }
 
 GundamStats.DEFAULT_PROGRAM = [[

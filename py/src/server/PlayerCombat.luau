@@ -41,6 +41,15 @@ local AmmoStats = {
 		name = "Ice",
 	},
 	[5] = {
+		damage = 0,
+		fireRate = 0.2,
+		scrapCost = 2,
+		slowAmount = 0.3,
+		slowDuration = 3,
+		color = Color3.fromRGB(0, 255, 255),
+		name = "Freeze",
+	},
+	[6] = {
 		damage = 60,
 		fireRate = 1.5,
 		scrapCost = 10,
