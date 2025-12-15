@@ -8,7 +8,7 @@ local GROUND_Y = GolemStats.GROUND_Y
 local UpgradeTiers = GolemStats.UpgradeTiers
 local RAMTiers = GolemStats.RAMTiers
 
-function GolemModel.create(x, z)
+function GolemModel.create(x, z, ownerColor)
 	local model = Instance.new("Model")
 	model.Name = "HeavyBunkerTurret"
 
@@ -21,6 +21,7 @@ function GolemModel.create(x, z)
 
 	local armorColor = Color3.fromRGB(200, 200, 210)
 	local darkColor = Color3.fromRGB(50, 50, 55)
+	local accentColor = ownerColor or Color3.fromRGB(0, 255, 255)
 
 	local root = Instance.new("Part")
 	root.Name = "HumanoidRootPart"
@@ -63,7 +64,7 @@ function GolemModel.create(x, z)
 
 		local vent = Instance.new("Part")
 		vent.Size = Vector3.new(0.5, 1.5, 0.2)
-		vent.Color = darkColor
+		vent.Color = accentColor
 		vent.Material = Enum.Material.Neon
 		vent.Anchored = true
 		vent.CFrame = wedge.CFrame * CFrame.new(1.1, -0.5, 0.5)
@@ -158,6 +159,9 @@ function GolemModel.create(x, z)
 	weldTo(head, hole)
 
 	model.Parent = workspace
+	model:SetAttribute("OwnerColorR", accentColor.R)
+	model:SetAttribute("OwnerColorG", accentColor.G)
+	model:SetAttribute("OwnerColorB", accentColor.B)
 
 	return model
 end
@@ -189,7 +193,10 @@ function GolemModel.applyColorUpgrade(golem, maxBytecode)
 	local upgradeLevel = math.floor((maxBytecode - 32) / 32) + 1
 	local colorIndex = math.min(upgradeLevel, #UPGRADE_COLORS)
 	local baseColor = UPGRADE_COLORS[colorIndex]
-	local accentColor = ACCENT_COLORS[colorIndex]
+	local ownerR = character:GetAttribute("OwnerColorR")
+	local ownerG = character:GetAttribute("OwnerColorG")
+	local ownerB = character:GetAttribute("OwnerColorB")
+	local accentColor = ownerR and Color3.new(ownerR, ownerG, ownerB) or ACCENT_COLORS[colorIndex]
 
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -210,7 +217,10 @@ function GolemModel.applyVisualUpgrade(golem, cpuHz)
 	local upgradeLevel = math.floor((cpuHz - 1) / 2 + 0.5) + 1
 	local colorIndex = math.min(upgradeLevel, #UPGRADE_COLORS)
 	local baseColor = UPGRADE_COLORS[colorIndex]
-	local accentColor = ACCENT_COLORS[colorIndex]
+	local ownerR = character:GetAttribute("OwnerColorR")
+	local ownerG = character:GetAttribute("OwnerColorG")
+	local ownerB = character:GetAttribute("OwnerColorB")
+	local accentColor = ownerR and Color3.new(ownerR, ownerG, ownerB) or ACCENT_COLORS[colorIndex]
 
 	local head = character:FindFirstChild("Head")
 	local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart

@@ -172,7 +172,7 @@ function PlayerManager.buildGameState(userId, interp)
 
 	local allPlayers = {}
 	for _, entity in pairs(EntityRegistry.getAll()) do
-		if entity.isPlayer then
+		if entity.isPlayer and entity.playerId then
 			table.insert(allPlayers, {
 				id = entity.playerId,
 				name = entity.playerName or "Player",
@@ -180,7 +180,7 @@ function PlayerManager.buildGameState(userId, interp)
 			})
 		end
 	end
-	table.sort(allPlayers, function(a, b) return a.id < b.id end)
+	table.sort(allPlayers, function(a, b) return (a.id or 0) < (b.id or 0) end)
 	state.allPlayers = allPlayers
 	state.myPlayerId = interp.playerId
 

@@ -126,6 +126,62 @@ function MainIDE.create(parent, callbacks)
 	hideBtn.Parent = topBar
 	Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 4)
 
+	local fontScale = 1.0
+	local BASE_FONT_SIZES = {}
+	local textElements = {}
+	local editorRef = nil
+
+	local function registerText(element, baseSize)
+		table.insert(textElements, element)
+		BASE_FONT_SIZES[element] = baseSize or element.TextSize
+	end
+
+	local function applyFontScale()
+		for _, el in ipairs(textElements) do
+			local base = BASE_FONT_SIZES[el] or 10
+			el.TextSize = math.floor(base * fontScale)
+		end
+		if editorRef and editorRef.setFontScale then
+			editorRef:setFontScale(fontScale)
+		end
+	end
+
+	local function scaledSize(baseSize)
+		return math.floor(baseSize * fontScale)
+	end
+
+	local fontDownBtn = Instance.new("TextButton")
+	fontDownBtn.Name = "FontDownBtn"
+	fontDownBtn.Size = UDim2.new(0, 28, 0, 20)
+	fontDownBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	fontDownBtn.Text = "A-"
+	fontDownBtn.TextColor3 = COLORS.text
+	fontDownBtn.Font = Enum.Font.RobotoMono
+	fontDownBtn.TextSize = 10
+	fontDownBtn.Parent = topBar
+	Instance.new("UICorner", fontDownBtn).CornerRadius = UDim.new(0, 4)
+
+	local fontUpBtn = Instance.new("TextButton")
+	fontUpBtn.Name = "FontUpBtn"
+	fontUpBtn.Size = UDim2.new(0, 28, 0, 20)
+	fontUpBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	fontUpBtn.Text = "A+"
+	fontUpBtn.TextColor3 = COLORS.text
+	fontUpBtn.Font = Enum.Font.RobotoMono
+	fontUpBtn.TextSize = 10
+	fontUpBtn.Parent = topBar
+	Instance.new("UICorner", fontUpBtn).CornerRadius = UDim.new(0, 4)
+
+	fontDownBtn.MouseButton1Click:Connect(function()
+		fontScale = math.max(0.6, fontScale - 0.1)
+		applyFontScale()
+	end)
+
+	fontUpBtn.MouseButton1Click:Connect(function()
+		fontScale = math.min(2.0, fontScale + 0.1)
+		applyFontScale()
+	end)
+
 	local headerBar = Instance.new("Frame")
 	headerBar.Name = "HeaderBar"
 	headerBar.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
@@ -345,9 +401,21 @@ function MainIDE.create(parent, callbacks)
 	gdbBtn.Parent = toolbar
 	Instance.new("UICorner", gdbBtn).CornerRadius = UDim.new(0, 4)
 
+	local powerBtn = Instance.new("TextButton")
+	powerBtn.Name = "PowerBtn"
+	powerBtn.Size = UDim2.new(0, 100, 0, 18)
+	powerBtn.Position = UDim2.new(1, -230, 0.5, -9)
+	powerBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	powerBtn.Text = "+POWER: 100"
+	powerBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+	powerBtn.Font = Enum.Font.RobotoMono
+	powerBtn.TextSize = 10
+	powerBtn.Parent = toolbar
+	Instance.new("UICorner", powerBtn).CornerRadius = UDim.new(0, 4)
+
 	local buyCpuBtn = Instance.new("TextButton")
 	buyCpuBtn.Size = UDim2.new(0, 60, 0, 18)
-	buyCpuBtn.Position = UDim2.new(1, -130, 0.5, -9)
+	buyCpuBtn.Position = UDim2.new(1, -126, 0.5, -9)
 	buyCpuBtn.BackgroundColor3 = Color3.fromHex("#333333")
 	buyCpuBtn.Text = "+CPU"
 	buyCpuBtn.TextColor3 = COLORS.success
@@ -359,7 +427,7 @@ function MainIDE.create(parent, callbacks)
 
 	local buyRamBtn = Instance.new("TextButton")
 	buyRamBtn.Size = UDim2.new(0, 60, 0, 18)
-	buyRamBtn.Position = UDim2.new(1, -66, 0.5, -9)
+	buyRamBtn.Position = UDim2.new(1, -62, 0.5, -9)
 	buyRamBtn.BackgroundColor3 = Color3.fromHex("#333333")
 	buyRamBtn.Text = "+RAM"
 	buyRamBtn.TextColor3 = COLORS.warning
@@ -376,6 +444,7 @@ function MainIDE.create(parent, callbacks)
 	editorArea.Parent = colEditor
 
 	local editor = EditorPanel.create(editorArea)
+	editorRef = editor
 	local editorTextBox = editor:getTextBox()
 	local isProcessingSync = false
 
@@ -400,9 +469,27 @@ function MainIDE.create(parent, callbacks)
 	stdErrLabel.TextWrapped = true
 	stdErrLabel.Parent = errorBar
 
+	local function getAvailableNames()
+		local names = {}
+		for pid, data in pairs(interpreters) do
+			if data.name and data.type then
+				local varName = data.name:gsub("%.py$", "")
+				if data.type == "golem" then
+					names[varName] = "Turret"
+				elseif data.type == "bot" then
+					names[varName] = "Bot"
+				elseif data.type == "player" then
+					names[varName] = "Player"
+				end
+			end
+		end
+		return names
+	end
+
 	local function tryCompile(source, maxBytecode, selfType)
+		local availableNames = getAvailableNames()
 		local success, result = pcall(function()
-			return Python.compile(source, maxBytecode or 9999, selfType or "Entity", {})
+			return Python.compile(source, maxBytecode or 9999, selfType or "Entity", availableNames)
 		end)
 		if not success then
 			return false, { message = tostring(result), line = nil }
@@ -459,6 +546,7 @@ function MainIDE.create(parent, callbacks)
 	editorTextBox:GetPropertyChangedSignal("Text"):Connect(onTextChanged)
 
 	local ide = {}
+	local currentPowerLevel = 1
 
 	local function clearList(frame)
 		for _, c in ipairs(frame:GetChildren()) do
@@ -471,7 +559,7 @@ function MainIDE.create(parent, callbacks)
 		local ram = data.bytecode and #data.bytecode or 0
 		local maxRam = data.maxBytecode or 32
 		local ramColor = ram > maxRam and "#F44747" or "#DCDCAA"
-		statsLabel.Text = string.format('<font color="#4EC9B0">CPU:%dhz</font> <font color="%s">RAM:%d/%d</font>', cpu, ramColor, ram, maxRam)
+		statsLabel.Text = string.format('<font color="#4EC9B0">CPU:%dhz</font> <font color="%s">RAM:%d/%d</font> <font color="#FF6464">PWR:x%d</font>', cpu, ramColor, ram, maxRam, currentPowerLevel)
 	end
 
 	local function updateState(pid)
@@ -527,7 +615,7 @@ function MainIDE.create(parent, callbacks)
 				l.RichText = true
 				l.Text = string.format('<font color="#9CDCFE">%s</font>=<font color="#CE9178">%s</font>', k, formatValue(v, 12))
 				l.Font = Enum.Font.RobotoMono
-				l.TextSize = 9
+				l.TextSize = scaledSize(9)
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				l.Parent = varList
 			end
@@ -544,7 +632,7 @@ function MainIDE.create(parent, callbacks)
 				l.RichText = true
 				l.Text = string.format('<font color="#606080">[%d]</font> <font color="#B5CEA8">%s</font>', i - 1, formatValue(stack[i], 8))
 				l.Font = Enum.Font.RobotoMono
-				l.TextSize = 9
+				l.TextSize = scaledSize(9)
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				l.Parent = stackList
 			end
@@ -556,7 +644,7 @@ function MainIDE.create(parent, callbacks)
 			l.Text = "(empty)"
 			l.TextColor3 = Color3.fromRGB(96, 96, 128)
 			l.Font = Enum.Font.RobotoMono
-			l.TextSize = 9
+			l.TextSize = scaledSize(9)
 			l.TextXAlignment = Enum.TextXAlignment.Left
 			l.Parent = stackList
 		end
@@ -576,7 +664,7 @@ function MainIDE.create(parent, callbacks)
 				l.Text = string.format('%s<font color="#555">%02d</font> <font color="%s">%-12s</font> %s',
 					prefix, i, opColor, instr.op or "?", argStr)
 				l.Font = Enum.Font.RobotoMono
-				l.TextSize = 9
+				l.TextSize = scaledSize(9)
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				if data.ip == i then
 					l.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
@@ -606,7 +694,7 @@ function MainIDE.create(parent, callbacks)
 					l.Text = line
 					l.TextColor3 = COLORS.success
 					l.Font = Enum.Font.RobotoMono
-					l.TextSize = 9
+					l.TextSize = scaledSize(9)
 					l.TextXAlignment = Enum.TextXAlignment.Left
 					l.TextTruncate = Enum.TextTruncate.AtEnd
 					l.Parent = outList
@@ -684,6 +772,9 @@ function MainIDE.create(parent, callbacks)
 		currentTabId = pid
 		local data = interpreters[pid]
 		if data then
+			local selfTypeMap = {player = "Player", golem = "Turret", bot = "Bot"}
+			editor:setSelfType(selfTypeMap[data.type] or "Player")
+
 			local source = data.localSource or data.source or ""
 			isProcessingSync = true
 			editor:setText(source)
@@ -881,13 +972,35 @@ function MainIDE.create(parent, callbacks)
 		if callbacks.onBuildTurret then callbacks.onBuildTurret() end
 	end)
 
-	function ide:updateEconomy(botCost, turretCost)
+	powerBtn.MouseButton1Click:Connect(function()
+		if callbacks.onBuyPower then callbacks.onBuyPower() end
+	end)
+
+	function ide:updateEconomy(botCost, turretCost, powerCost, powerLevel)
 		botBuildBtn.Text = string.format("+ROBOT (B): %d", botCost or 75)
 		turretBuildBtn.Text = string.format("+TURRET (T): %d", turretCost or 100)
+		powerBtn.Text = string.format("+POWER x%d: %d", (powerLevel or 1) + 1, powerCost or 100)
+		currentPowerLevel = powerLevel or 1
+		if currentTabId and interpreters[currentTabId] then
+			updateStats(interpreters[currentTabId])
+		end
 	end
 
 	ide.frame = container
 	ide.container = container
+
+	local function scanForText(parent)
+		for _, child in ipairs(parent:GetChildren()) do
+			if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+				if child.TextSize > 0 and child ~= fontDownBtn and child ~= fontUpBtn then
+					registerText(child, child.TextSize)
+				end
+			end
+			scanForText(child)
+		end
+	end
+	scanForText(container)
+	scanForText(topBar)
 
 	return ide
 end

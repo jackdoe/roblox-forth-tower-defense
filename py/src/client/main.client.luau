@@ -119,6 +119,7 @@ local requestStateEvent = PythonTD:WaitForChild("RequestState")
 
 local botBuildEvent = PythonTD:WaitForChild("BotBuild")
 local botSellEvent = PythonTD:WaitForChild("BotSell")
+local buyPowerEvent = PythonTD:WaitForChild("BuyPower")
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PythonTDGui"
@@ -181,6 +182,9 @@ ide = MainIDE.create(screenGui, {
 			PlacementSystem.enterTurretMode(Overlays.showNotification)
 		end
 	end,
+	onBuyPower = function()
+		buyPowerEvent:FireServer()
+	end,
 })
 
 hud = HUD.create(screenGui, {
@@ -191,13 +195,18 @@ hud = HUD.create(screenGui, {
 
 Overlays.create(screenGui)
 
+local function updateAllEconomy()
+	ClientState.nextPowerCost = ClientState.calculatePowerCost()
+	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
+	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextTurretCost, ClientState.nextPowerCost, ClientState.currentPower)
+end
+
 interpreterSyncEvent.OnClientEvent:Connect(function(payload)
 	ide:sync(payload)
 	ClientState.currentTurretCount, ClientState.currentBotCount = ide:getCounts()
 	ClientState.nextTurretCost = ClientState.calculateTurretCost()
 	ClientState.nextBotCost = ClientState.calculateBotCost()
-	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
-	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextTurretCost)
+	updateAllEconomy()
 end)
 
 stateUpdateEvent.OnClientEvent:Connect(function(state)
@@ -207,7 +216,10 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
 		hud.updatePhase(state.phase or "LOBBY")
 		ClientState.currentScrap = state.scrap or 0
-		hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
+		if state.power then
+			ClientState.currentPower = state.power
+		end
+		updateAllEconomy()
 		Overlays.updateGameState(state.phase, state.restartTimeRemaining)
 	end
 end)
@@ -235,10 +247,13 @@ end)
 waveStateEvent.OnClientEvent:Connect(function(state)
 	ClientState.currentPhase = state.phase or "LOBBY"
 	ClientState.currentScrap = state.scrap or 0
+	if state.power then
+		ClientState.currentPower = state.power
+	end
 	hud.updateWave(state.waveNumber, state.enemiesRemaining or 0, state.enemiesTotal or 0)
 	hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
 	hud.updatePhase(state.phase or "LOBBY")
-	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
+	updateAllEconomy()
 	Overlays.updateGameState(state.phase, state.restartTimeRemaining)
 end)
 
@@ -307,6 +322,19 @@ golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
 		if targetPos then
 			Effects.turretUpgrade(targetPos, 2)
 		end
+	end
+end)
+
+buyPowerEvent.OnClientEvent:Connect(function(success, result)
+	if success then
+		local upgradeSound = Instance.new("Sound")
+		upgradeSound.SoundId = "rbxassetid://71764947817417"
+		upgradeSound.Volume = 0.5
+		upgradeSound.Parent = SoundService
+		upgradeSound:Play()
+		upgradeSound.Ended:Once(function()
+			upgradeSound:Destroy()
+		end)
 	end
 end)
 

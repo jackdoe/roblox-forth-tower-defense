@@ -523,21 +523,29 @@ function EnemyManager.applyBurning(enemyId, duration, damagePerTick)
 	end
 end
 
-function EnemyManager.shock(enemyId, baseDamage, sourceX, sourceZ)
+function EnemyManager.shock(enemyId, baseDamage, sourceX, sourceZ, botScrap, globalPower)
 	local enemy = enemies[enemyId]
 	if not enemy then return 0 end
 
 	baseDamage = baseDamage or 30
-	local totalDamage = baseDamage
+	botScrap = botScrap or 0
+	globalPower = globalPower or 1
+
+	local totalDamage = baseDamage * globalPower
+
+	if botScrap > 0 then
+		totalDamage = totalDamage * (1.5 ^ botScrap)
+	end
 
 	if enemy.oiled then
-		totalDamage = baseDamage * 2
+		totalDamage = totalDamage * 2
 		enemy.oiled = nil
 		enemy.oiledExpires = nil
 		EnemyManager.createShockExplosion(enemy)
 	end
 
 	if enemy.burning then
+		totalDamage = totalDamage * 1.5
 		enemy.burning = nil
 		enemy.burningExpires = nil
 		if enemy.character then
@@ -547,13 +555,17 @@ function EnemyManager.shock(enemyId, baseDamage, sourceX, sourceZ)
 				if fire then fire:Destroy() end
 			end
 		end
-		EnemyManager.chainLightning(enemyId, baseDamage * 0.5, sourceX, sourceZ)
+		EnemyManager.chainLightning(enemyId, totalDamage * 0.3, sourceX, sourceZ)
 	end
 
-	EnemyManager.damage(enemyId, totalDamage)
+	if enemy.slowAmount and enemy.slowAmount > 0 then
+		totalDamage = totalDamage * (1 + enemy.slowAmount)
+	end
+
+	EnemyManager.damage(enemyId, math.floor(totalDamage))
 	EnemyManager.createShockSparks(enemy)
 
-	return totalDamage
+	return math.floor(totalDamage)
 end
 
 function EnemyManager.checkShatterCombo(enemyId, rocketDamage)

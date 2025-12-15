@@ -17,7 +17,7 @@ while True:
 BotStats.BASE = {
 	name = "SupplyBot",
 	speed = 14,
-	maxCapacity = 3,
+	maxCapacity = 10,
 	pickupRange = 5,
 	transferRange = 8,
 	cost = 75,
@@ -28,7 +28,7 @@ BotStats.BASE = {
 BotStats.UpgradeTiers = {
 	[1] = {
 		name = "Mk. I",
-		maxCapacity = 3,
+		maxCapacity = 10,
 		speed = 14,
 		cpuHz = 2,
 		upgradeCost = 0,
@@ -36,7 +36,7 @@ BotStats.UpgradeTiers = {
 	},
 	[2] = {
 		name = "Mk. II",
-		maxCapacity = 8,
+		maxCapacity = 25,
 		speed = 18,
 		cpuHz = 15,
 		upgradeCost = 200,
@@ -44,7 +44,7 @@ BotStats.UpgradeTiers = {
 	},
 	[3] = {
 		name = "Mk. III",
-		maxCapacity = 15,
+		maxCapacity = 50,
 		speed = 24,
 		cpuHz = 25,
 		upgradeCost = 500,
@@ -52,7 +52,7 @@ BotStats.UpgradeTiers = {
 	},
 	[4] = {
 		name = "Mk. IV",
-		maxCapacity = 30,
+		maxCapacity = 999,
 		speed = 32,
 		cpuHz = 50,
 		upgradeCost = 1200,

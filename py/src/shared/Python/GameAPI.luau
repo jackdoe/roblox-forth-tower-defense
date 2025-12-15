@@ -167,6 +167,29 @@ local function createEnv(className, instance, registries, getPosOverride)
 	addUtilities(env, instance.interpreter or {})
 	addCore(env, deps)
 
+	local Interpreters = registries.Interpreters
+	if Interpreters then
+		setmetatable(env, {
+			__index = function(_, key)
+				if type(key) ~= "string" then return nil end
+				local tPid = key:match("^T(%d+)$")
+				local bPid = key:match("^B(%d+)$")
+				local pid = tPid or bPid
+				if pid then
+					local data = Interpreters.get(pid)
+					if data and data.entity then
+						if tPid and data.type == "golem" then
+							return Classes.buildProxy("Turret", data.entity, deps)
+						elseif bPid and data.type == "bot" then
+							return Classes.buildProxy("Bot", data.entity, deps)
+						end
+					end
+				end
+				return nil
+			end
+		})
+	end
+
 	return env
 end
 

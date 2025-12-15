@@ -23,6 +23,7 @@ local state = {
 	corePosition = nil,
 	coreModel = nil,
 	scrap = 0,
+	power = 1,
 	enemiesRemaining = 0,
 	enemiesSpawned = 0,
 	enemiesTotal = 0,
@@ -31,6 +32,8 @@ local state = {
 	restartTimeRemaining = 0,
 	waveStartTime = 0,
 }
+
+local POWER_COSTS = {100, 200, 400, 800, 1600, 3200}
 
 local coreHitEvent = nil
 local playerReadyEvent = nil
@@ -395,6 +398,24 @@ function WaveManager.getScrap()
 	return state.scrap
 end
 
+function WaveManager.getPower()
+	return state.power
+end
+
+function WaveManager.getPowerCost()
+	return POWER_COSTS[state.power] or (state.power * 1000)
+end
+
+function WaveManager.buyPower()
+	local cost = WaveManager.getPowerCost()
+	if state.scrap >= cost then
+		state.scrap = state.scrap - cost
+		state.power = state.power + 1
+		return true, state.power
+	end
+	return false, "Not enough scrap"
+end
+
 function WaveManager.removeCoreStockpile(amount)
 	local toTake = math.min(amount, state.scrap)
 	state.scrap = state.scrap - toTake
@@ -433,6 +454,7 @@ function WaveManager.restart()
 	state.enemiesSpawned = 0
 	state.enemiesTotal = 0
 	state.scrap = deps.Config.STARTING_SCRAP or 200
+	state.power = 1
 
 	WaveManager.resetCoreVisual()
 
@@ -485,6 +507,7 @@ function WaveManager.broadcastState()
 		enemiesRemaining = state.enemiesRemaining,
 		enemiesTotal = state.enemiesTotal,
 		scrap = state.scrap,
+		power = state.power,
 	}
 
 	for _, player in ipairs(Players:GetPlayers()) do

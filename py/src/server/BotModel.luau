@@ -7,9 +7,11 @@ local BotModel = {}
 local GROUND_Y = BotStats.GROUND_Y
 local COLORS = BotStats.COLORS
 
-function BotModel.create(x, z)
+function BotModel.create(x, z, ownerColor)
 	local model = Instance.new("Model")
 	model.Name = "ScrappyBot"
+
+	local accentColor = ownerColor or COLORS.NEON_CYAN
 
 	local function makePart(name, size, color, mat, parent, posOffset)
 		local p = Instance.new("Part")
@@ -51,11 +53,11 @@ function BotModel.create(x, z)
 
 	makePart("Faceplate", Vector3.new(2.0, 1.2, 0.1), COLORS.DARK_METAL, Enum.Material.Plastic, head, CFrame.new(0, 0, -0.8))
 
-	makePart("LeftEye", Vector3.new(0.5, 0.6, 0.1), COLORS.NEON_CYAN, Enum.Material.Neon, head, CFrame.new(-0.5, 0.1, -0.86))
-	makePart("RightEye", Vector3.new(0.5, 0.6, 0.1), COLORS.NEON_CYAN, Enum.Material.Neon, head, CFrame.new(0.5, 0.1, -0.86))
+	makePart("LeftEye", Vector3.new(0.5, 0.6, 0.1), accentColor, Enum.Material.Neon, head, CFrame.new(-0.5, 0.1, -0.86))
+	makePart("RightEye", Vector3.new(0.5, 0.6, 0.1), accentColor, Enum.Material.Neon, head, CFrame.new(0.5, 0.1, -0.86))
 
 	makePart("AntennaStem", Vector3.new(0.1, 0.8, 0.1), COLORS.DARK_METAL, Enum.Material.Plastic, head, CFrame.new(0.5, 1.0, 0))
-	makePart("AntennaBulb", Vector3.new(0.3, 0.3, 0.3), COLORS.GOLD_SCRAP, Enum.Material.Neon, head, CFrame.new(0.5, 1.5, 0))
+	makePart("AntennaBulb", Vector3.new(0.3, 0.3, 0.3), accentColor, Enum.Material.Neon, head, CFrame.new(0.5, 1.5, 0))
 
 	local leftShoulder = makePart("LeftShoulder", Vector3.new(0.5, 0.5, 0.5), COLORS.JOINT_GREY, Enum.Material.Plastic, torso, CFrame.new(-1.35, 0.5, 0))
 	local rightShoulder = makePart("RightShoulder", Vector3.new(0.5, 0.5, 0.5), COLORS.JOINT_GREY, Enum.Material.Plastic, torso, CFrame.new(1.35, 0.5, 0))
@@ -122,6 +124,9 @@ function BotModel.create(x, z)
 	model:SetAttribute("BaseY", GROUND_Y + 2.5)
 	model:SetAttribute("FacingAngle", 0)
 	model:SetAttribute("ChatExpiry", 0)
+	model:SetAttribute("OwnerColorR", accentColor.R)
+	model:SetAttribute("OwnerColorG", accentColor.G)
+	model:SetAttribute("OwnerColorB", accentColor.B)
 
 	return model
 end

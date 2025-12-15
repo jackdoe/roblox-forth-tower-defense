@@ -22,8 +22,30 @@ local tickCount = 0
 local KEYFRAME_INTERVAL = 100
 local nextPid = 1
 
+local PLAYER_COLORS = {
+	Color3.fromRGB(0, 255, 255),
+	Color3.fromRGB(255, 100, 100),
+	Color3.fromRGB(100, 255, 100),
+	Color3.fromRGB(255, 200, 50),
+	Color3.fromRGB(200, 100, 255),
+	Color3.fromRGB(255, 150, 200),
+	Color3.fromRGB(100, 200, 255),
+	Color3.fromRGB(255, 255, 100),
+}
+local playerColorIndex = {}
+local nextColorIndex = 1
+
+local function getPlayerColor(ownerId)
+	if not playerColorIndex[ownerId] then
+		playerColorIndex[ownerId] = nextColorIndex
+		nextColorIndex = (nextColorIndex % #PLAYER_COLORS) + 1
+	end
+	return PLAYER_COLORS[playerColorIndex[ownerId]]
+end
+
 function Interpreters.init(dependencies)
 	deps = dependencies
+	deps.Interpreters = Interpreters
 
 	syncEvent = Instance.new("RemoteEvent")
 	syncEvent.Name = "InterpreterSync"
@@ -43,10 +65,12 @@ function Interpreters.create(interpType, ownerId, x, z)
 	local selfType = "Entity"
 	local name = interpType .. ".py"
 
+	local ownerColor = getPlayerColor(ownerId)
+
 	if interpType == "golem" then
 		name = "T" .. pid .. ".py"
 
-		character = GolemModel.create(x, z)
+		character = GolemModel.create(x, z, ownerColor)
 		selfType = "Turret"
 		defaultProgram = GolemStats.DEFAULT_PROGRAM
 
@@ -62,7 +86,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 	elseif interpType == "bot" then
 		name = "B" .. pid .. ".py"
 
-		character = BotModel.create(x, z)
+		character = BotModel.create(x, z, ownerColor)
 		selfType = "Bot"
 		defaultProgram = BotStats.DEFAULT_PROGRAM
 
@@ -105,6 +129,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 		ScrapManager = deps.ScrapManager,
 		GolemStats = GolemStats,
 		GolemModel = GolemModel,
+		Interpreters = Interpreters,
 	}
 	if interpType == "golem" then
 		gameEnv = Python.createGolemEnvironment(entity, registries)
@@ -279,6 +304,15 @@ function Interpreters.getByType(interpType)
 		end
 	end
 	return result
+end
+
+function Interpreters.getByName(name)
+	for pid, data in pairs(interpreters) do
+		if data.name == name then
+			return data
+		end
+	end
+	return nil
 end
 
 local CPU_BASE_COST = 100
@@ -648,7 +682,9 @@ local function executeBotTask(data, dt)
 				return "RUNNING"
 			end
 
-			EnemyManager.shock(enemyId, BotStats.SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z)
+			local botScrap = entity.scrapInventory or 0
+			local globalPower = deps.WaveManager and deps.WaveManager.getPower() or 1
+			EnemyManager.shock(enemyId, BotStats.SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z, botScrap, globalPower)
 			task.shockExecuted = true
 			task.stunEndTime = tick() + BotStats.SHOCK_STUN_TIME
 

@@ -377,6 +377,12 @@ RemoteEvents.botSell.OnServerEvent:Connect(function(player, pid)
 	Interpreters.sendFullSync(player)
 end)
 
+RemoteEvents.buyPower.OnServerEvent:Connect(function(player)
+	local success, result = WaveManager.buyPower()
+	RemoteEvents.buyPower:FireClient(player, success, result)
+	Interpreters.sendFullSync(player)
+end)
+
 local syncAccum = 0
 
 RunService.Heartbeat:Connect(function(dt)

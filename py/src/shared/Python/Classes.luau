@@ -357,7 +357,7 @@ Classes.Bot = {
 		explode = method({}, T.BOOL, function(deps, bot)
 			local cargo = bot.scrapInventory or 0
 			if cargo < 10 then
-				error("RuntimeError: explode() requires at least 10 scrap (carrying " .. cargo .. ")")
+				error("explode() requires at least 10 scrap (carrying " .. cargo .. ")")
 			end
 			return queueTask(bot, "EXPLODE", {}, true)
 		end),

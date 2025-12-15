@@ -29,5 +29,6 @@ RemoteEvents.golemSell = create("GolemSell")
 RemoteEvents.golemUpgrade = create("GolemUpgrade")
 RemoteEvents.botBuild = create("BotBuild")
 RemoteEvents.botSell = create("BotSell")
+RemoteEvents.buyPower = create("BuyPower")
 
 return RemoteEvents
