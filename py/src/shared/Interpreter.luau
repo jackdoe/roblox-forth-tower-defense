@@ -21,6 +21,7 @@ function Interpreter.new(player, isMonster, deps)
 	self.status = "IDLE"
 	self.error = nil
 	self.output = {}
+	self.nextPrintId = 1
 	self.paused = false
 	self.blocked = false
 
@@ -183,11 +184,12 @@ function Interpreter:getDynamicState()
 	local lines = {}
 	local startIdx = math.max(1, #self.output - MAX_OUTPUT_LINES + 1)
 	for i = startIdx, #self.output do
-		local line = self.output[i]
-		if #line > MAX_LINE_LENGTH then
-			line = line:sub(1, MAX_LINE_LENGTH - 3) .. "..."
+		local entry = self.output[i]
+		local msg = entry.message or ""
+		if #msg > MAX_LINE_LENGTH then
+			msg = msg:sub(1, MAX_LINE_LENGTH - 3) .. "..."
 		end
-		lines[#lines + 1] = line
+		lines[#lines + 1] = string.format("0x%03x: %s", entry.id or 0, msg)
 	end
 	local output = table.concat(lines, "\n")
 

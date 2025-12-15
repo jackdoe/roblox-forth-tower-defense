@@ -8,15 +8,14 @@ local Python = require(PythonTD.Python)
 
 local MainIDE = {}
 local COLORS = UITheme.COLORS
-local THEMES = UITheme.THEMES
-local OP_COLORS = UITheme.OP_COLORS
 local formatValue = UITheme.formatValue
 
-local VARS_WIDTH = 220
-local BYTECODE_WIDTH = 240
+local BYTECODE_WIDTH = 200
+local VARS_WIDTH = 160
+local OUTPUT_WIDTH = 160
 local IDE_HEIGHT_SCALE = 0.45
-local HEADER_HEIGHT = 32
-local OUTPUT_HEIGHT = 120
+local HEADER_HEIGHT = 28
+local ERROR_HEIGHT = 36
 
 function MainIDE.create(parent, callbacks)
 	callbacks = callbacks or {}
@@ -50,161 +49,42 @@ function MainIDE.create(parent, callbacks)
 	collapseBtn.Parent = container
 	Instance.new("UICorner", collapseBtn).CornerRadius = UDim.new(0, 4)
 
-	local colVars = Instance.new("Frame")
-	colVars.Name = "Col_Vars"
-	colVars.Size = UDim2.new(0, VARS_WIDTH, 1, -4)
-	colVars.AnchorPoint = Vector2.new(1, 0)
-	colVars.Position = UDim2.new(1, 0, 0, 4)
-	colVars.BackgroundColor3 = Color3.fromHex("#252526")
-	colVars.BorderSizePixel = 0
-	colVars.Parent = container
-
-	local varHeader = Instance.new("TextLabel")
-	varHeader.Size = UDim2.new(1, -10, 0, HEADER_HEIGHT)
-	varHeader.Position = UDim2.new(0, 10, 0, 0)
-	varHeader.BackgroundTransparency = 1
-	varHeader.Text = "VARIABLES"
-	varHeader.TextColor3 = COLORS.subtext
-	varHeader.Font = Enum.Font.GothamBold
-	varHeader.TextSize = 10
-	varHeader.TextXAlignment = Enum.TextXAlignment.Left
-	varHeader.Parent = colVars
-
-	local varList = Instance.new("ScrollingFrame")
-	varList.Size = UDim2.new(1, 0, 1, -HEADER_HEIGHT)
-	varList.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
-	varList.BackgroundTransparency = 1
-	varList.BorderSizePixel = 0
-	varList.CanvasSize = UDim2.new(0, 0, 0, 0)
-	varList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	varList.ScrollBarThickness = 2
-	varList.Parent = colVars
-
-	local varLayout = Instance.new("UIListLayout")
-	varLayout.Padding = UDim.new(0, 2)
-	varLayout.Parent = varList
-
-	local colBytecode = Instance.new("Frame")
-	colBytecode.Name = "Col_Bytecode"
-	colBytecode.Size = UDim2.new(0, BYTECODE_WIDTH, 1, -4)
-	colBytecode.AnchorPoint = Vector2.new(1, 0)
-	colBytecode.Position = UDim2.new(1, -VARS_WIDTH - 2, 0, 4)
-	colBytecode.BackgroundColor3 = Color3.fromHex("#1e1e1e")
-	colBytecode.BorderSizePixel = 0
-	colBytecode.Parent = container
-
-	local bcHeader = Instance.new("Frame")
-	bcHeader.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT + 40)
-	bcHeader.BackgroundTransparency = 1
-	bcHeader.Parent = colBytecode
-
-	local bcTitle = Instance.new("TextLabel")
-	bcTitle.Size = UDim2.new(1, -10, 0, 20)
-	bcTitle.Position = UDim2.new(0, 10, 0, 0)
-	bcTitle.BackgroundTransparency = 1
-	bcTitle.Text = "BYTECODE (COMPUTER)"
-	bcTitle.TextColor3 = COLORS.subtext
-	bcTitle.Font = Enum.Font.GothamBold
-	bcTitle.TextSize = 9
-	bcTitle.TextXAlignment = Enum.TextXAlignment.Left
-	bcTitle.Parent = bcHeader
-
-	local cpuRamLabel = Instance.new("TextLabel")
-	cpuRamLabel.Name = "Stats"
-	cpuRamLabel.Size = UDim2.new(1, -10, 0, 15)
-	cpuRamLabel.Position = UDim2.new(0, 10, 0, 15)
-	cpuRamLabel.BackgroundTransparency = 1
-	cpuRamLabel.Text = "CPU: 10Hz | RAM: 0/32"
-	cpuRamLabel.TextColor3 = COLORS.accent
-	cpuRamLabel.Font = Enum.Font.Code
-	cpuRamLabel.TextSize = 9
-	cpuRamLabel.TextXAlignment = Enum.TextXAlignment.Left
-	cpuRamLabel.Parent = bcHeader
-
-	local buyContainer = Instance.new("Frame")
-	buyContainer.Size = UDim2.new(1, 0, 0, 25)
-	buyContainer.Position = UDim2.new(0, 0, 0, 35)
-	buyContainer.BackgroundTransparency = 1
-	buyContainer.Visible = false
-	buyContainer.Parent = bcHeader
-
-	local buyCpuBtn = Instance.new("TextButton")
-	buyCpuBtn.Size = UDim2.new(0, 70, 0, 20)
-	buyCpuBtn.Position = UDim2.new(0, 10, 0, 0)
-	buyCpuBtn.BackgroundColor3 = COLORS.panel
-	buyCpuBtn.Text = "BUY CPU"
-	buyCpuBtn.TextColor3 = COLORS.success
-	buyCpuBtn.Font = Enum.Font.GothamBold
-	buyCpuBtn.TextSize = 9
-	buyCpuBtn.Parent = buyContainer
-	Instance.new("UICorner", buyCpuBtn).CornerRadius = UDim.new(0, 4)
-
-	local buyRamBtn = Instance.new("TextButton")
-	buyRamBtn.Size = UDim2.new(0, 70, 0, 20)
-	buyRamBtn.Position = UDim2.new(0, 90, 0, 0)
-	buyRamBtn.BackgroundColor3 = COLORS.panel
-	buyRamBtn.Text = "BUY RAM"
-	buyRamBtn.TextColor3 = COLORS.warning
-	buyRamBtn.Font = Enum.Font.GothamBold
-	buyRamBtn.TextSize = 9
-	buyRamBtn.Parent = buyContainer
-	Instance.new("UICorner", buyRamBtn).CornerRadius = UDim.new(0, 4)
-
-	local bcList = Instance.new("ScrollingFrame")
-	bcList.Size = UDim2.new(1, 0, 1, -70)
-	bcList.Position = UDim2.new(0, 0, 0, 70)
-	bcList.BackgroundTransparency = 1
-	bcList.BorderSizePixel = 0
-	bcList.CanvasSize = UDim2.new(0, 0, 0, 0)
-	bcList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	bcList.ScrollBarThickness = 2
-	bcList.Parent = colBytecode
-
-	local bcLayout = Instance.new("UIListLayout")
-	bcLayout.Parent = bcList
-
-	local colEditor = Instance.new("Frame")
-	colEditor.Name = "Col_Editor"
-	colEditor.Size = UDim2.new(1, -(VARS_WIDTH + BYTECODE_WIDTH + 4), 1, -4)
-	colEditor.Position = UDim2.new(0, 0, 0, 4)
-	colEditor.BackgroundColor3 = Color3.fromHex("#1e1e1e")
-	colEditor.BorderSizePixel = 0
-	colEditor.Parent = container
-
-	local editHeader = Instance.new("Frame")
-	editHeader.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
-	editHeader.BackgroundColor3 = Color3.fromHex("#2d2d2d")
-	editHeader.BorderSizePixel = 0
-	editHeader.Parent = colEditor
+	local headerBar = Instance.new("Frame")
+	headerBar.Name = "HeaderBar"
+	headerBar.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
+	headerBar.Position = UDim2.new(0, 0, 0, 4)
+	headerBar.BackgroundColor3 = Color3.fromHex("#2d2d2d")
+	headerBar.BorderSizePixel = 0
+	headerBar.Parent = container
 
 	local controlsFrame = Instance.new("Frame")
 	controlsFrame.Size = UDim2.new(0, 200, 1, 0)
 	controlsFrame.AnchorPoint = Vector2.new(1, 0)
 	controlsFrame.Position = UDim2.new(1, 0, 0, 0)
 	controlsFrame.BackgroundTransparency = 1
-	controlsFrame.Parent = editHeader
+	controlsFrame.Parent = headerBar
 
 	local runBtn = Instance.new("TextButton")
 	runBtn.Name = "RunBtn"
-	runBtn.Size = UDim2.new(0, 100, 0, 22)
-	runBtn.Position = UDim2.new(1, -110, 0.5, -11)
+	runBtn.Size = UDim2.new(0, 90, 0, 20)
+	runBtn.Position = UDim2.new(1, -100, 0.5, -10)
 	runBtn.BackgroundColor3 = COLORS.success
 	runBtn.Text = "./script.py"
 	runBtn.TextColor3 = COLORS.bg
 	runBtn.Font = Enum.Font.Code
-	runBtn.TextSize = 11
+	runBtn.TextSize = 10
 	runBtn.Parent = controlsFrame
 	Instance.new("UICorner", runBtn).CornerRadius = UDim.new(0, 4)
 
 	local gdbBtn = Instance.new("TextButton")
 	gdbBtn.Name = "GdbBtn"
-	gdbBtn.Size = UDim2.new(0, 60, 0, 22)
-	gdbBtn.Position = UDim2.new(1, -180, 0.5, -11)
+	gdbBtn.Size = UDim2.new(0, 50, 0, 20)
+	gdbBtn.Position = UDim2.new(1, -160, 0.5, -10)
 	gdbBtn.BackgroundColor3 = COLORS.warning
 	gdbBtn.Text = "GDB"
 	gdbBtn.TextColor3 = COLORS.bg
 	gdbBtn.Font = Enum.Font.GothamBold
-	gdbBtn.TextSize = 11
+	gdbBtn.TextSize = 10
 	gdbBtn.Parent = controlsFrame
 	Instance.new("UICorner", gdbBtn).CornerRadius = UDim.new(0, 4)
 
@@ -217,16 +97,170 @@ function MainIDE.create(parent, callbacks)
 	tabsScroll.AutomaticCanvasSize = Enum.AutomaticSize.X
 	tabsScroll.ScrollingDirection = Enum.ScrollingDirection.X
 	tabsScroll.ClipsDescendants = false
-	tabsScroll.Parent = editHeader
+	tabsScroll.Parent = headerBar
 
 	local tabsLayout = Instance.new("UIListLayout")
 	tabsLayout.FillDirection = Enum.FillDirection.Horizontal
 	tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	tabsLayout.Parent = tabsScroll
 
+	local contentArea = Instance.new("Frame")
+	contentArea.Name = "ContentArea"
+	contentArea.Size = UDim2.new(1, 0, 1, -(HEADER_HEIGHT + 4))
+	contentArea.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT + 4)
+	contentArea.BackgroundTransparency = 1
+	contentArea.Parent = container
+
+	local colBytecode = Instance.new("Frame")
+	colBytecode.Name = "Col_Bytecode"
+	colBytecode.Size = UDim2.new(0, BYTECODE_WIDTH, 1, 0)
+	colBytecode.Position = UDim2.new(0, 0, 0, 0)
+	colBytecode.BackgroundColor3 = Color3.fromHex("#1a1a1a")
+	colBytecode.BorderSizePixel = 0
+	colBytecode.Parent = contentArea
+
+	local bcHeader = Instance.new("Frame")
+	bcHeader.Size = UDim2.new(1, 0, 0, 32)
+	bcHeader.BackgroundTransparency = 1
+	bcHeader.Parent = colBytecode
+
+	local cpuLabel = Instance.new("TextLabel")
+	cpuLabel.Size = UDim2.new(0, 55, 0, 14)
+	cpuLabel.Position = UDim2.new(0, 6, 0, 2)
+	cpuLabel.BackgroundTransparency = 1
+	cpuLabel.Text = "CPU: 1Hz"
+	cpuLabel.TextColor3 = COLORS.success
+	cpuLabel.Font = Enum.Font.Code
+	cpuLabel.TextSize = 9
+	cpuLabel.TextXAlignment = Enum.TextXAlignment.Left
+	cpuLabel.Parent = bcHeader
+
+	local buyCpuBtn = Instance.new("TextButton")
+	buyCpuBtn.Size = UDim2.new(0, 24, 0, 12)
+	buyCpuBtn.Position = UDim2.new(0, 62, 0, 3)
+	buyCpuBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	buyCpuBtn.Text = "+"
+	buyCpuBtn.TextColor3 = COLORS.success
+	buyCpuBtn.Font = Enum.Font.GothamBold
+	buyCpuBtn.TextSize = 10
+	buyCpuBtn.Visible = false
+	buyCpuBtn.Parent = bcHeader
+	Instance.new("UICorner", buyCpuBtn).CornerRadius = UDim.new(0, 3)
+
+	local ramLabel = Instance.new("TextLabel")
+	ramLabel.Size = UDim2.new(0, 70, 0, 14)
+	ramLabel.Position = UDim2.new(0, 6, 0, 16)
+	ramLabel.BackgroundTransparency = 1
+	ramLabel.Text = "RAM: 0/32"
+	ramLabel.TextColor3 = COLORS.warning
+	ramLabel.Font = Enum.Font.Code
+	ramLabel.TextSize = 9
+	ramLabel.TextXAlignment = Enum.TextXAlignment.Left
+	ramLabel.Parent = bcHeader
+
+	local buyRamBtn = Instance.new("TextButton")
+	buyRamBtn.Size = UDim2.new(0, 24, 0, 12)
+	buyRamBtn.Position = UDim2.new(0, 78, 0, 17)
+	buyRamBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	buyRamBtn.Text = "+"
+	buyRamBtn.TextColor3 = COLORS.warning
+	buyRamBtn.Font = Enum.Font.GothamBold
+	buyRamBtn.TextSize = 10
+	buyRamBtn.Visible = false
+	buyRamBtn.Parent = bcHeader
+	Instance.new("UICorner", buyRamBtn).CornerRadius = UDim.new(0, 3)
+
+	local bcList = Instance.new("ScrollingFrame")
+	bcList.Size = UDim2.new(1, 0, 1, -32)
+	bcList.Position = UDim2.new(0, 0, 0, 32)
+	bcList.BackgroundTransparency = 1
+	bcList.BorderSizePixel = 0
+	bcList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	bcList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	bcList.ScrollBarThickness = 2
+	bcList.Parent = colBytecode
+
+	local bcLayout = Instance.new("UIListLayout")
+	bcLayout.Parent = bcList
+
+	local colOutput = Instance.new("Frame")
+	colOutput.Name = "Col_Output"
+	colOutput.Size = UDim2.new(0, OUTPUT_WIDTH, 1, 0)
+	colOutput.AnchorPoint = Vector2.new(1, 0)
+	colOutput.Position = UDim2.new(1, 0, 0, 0)
+	colOutput.BackgroundColor3 = Color3.fromHex("#1a1a1a")
+	colOutput.BorderSizePixel = 0
+	colOutput.Parent = contentArea
+
+	local outHeader = Instance.new("TextLabel")
+	outHeader.Size = UDim2.new(1, -6, 0, 16)
+	outHeader.Position = UDim2.new(0, 6, 0, 0)
+	outHeader.BackgroundTransparency = 1
+	outHeader.Text = "OUTPUT"
+	outHeader.TextColor3 = COLORS.subtext
+	outHeader.Font = Enum.Font.GothamBold
+	outHeader.TextSize = 9
+	outHeader.TextXAlignment = Enum.TextXAlignment.Left
+	outHeader.Parent = colOutput
+
+	local outList = Instance.new("ScrollingFrame")
+	outList.Size = UDim2.new(1, 0, 1, -16)
+	outList.Position = UDim2.new(0, 0, 0, 16)
+	outList.BackgroundTransparency = 1
+	outList.BorderSizePixel = 0
+	outList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	outList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	outList.ScrollBarThickness = 2
+	outList.Parent = colOutput
+
+	local outLayout = Instance.new("UIListLayout")
+	outLayout.Parent = outList
+
+	local colVars = Instance.new("Frame")
+	colVars.Name = "Col_Vars"
+	colVars.Size = UDim2.new(0, VARS_WIDTH, 1, 0)
+	colVars.AnchorPoint = Vector2.new(1, 0)
+	colVars.Position = UDim2.new(1, -OUTPUT_WIDTH - 2, 0, 0)
+	colVars.BackgroundColor3 = Color3.fromHex("#252526")
+	colVars.BorderSizePixel = 0
+	colVars.Parent = contentArea
+
+	local varHeader = Instance.new("TextLabel")
+	varHeader.Size = UDim2.new(1, -6, 0, 16)
+	varHeader.Position = UDim2.new(0, 6, 0, 0)
+	varHeader.BackgroundTransparency = 1
+	varHeader.Text = "VARIABLES"
+	varHeader.TextColor3 = COLORS.subtext
+	varHeader.Font = Enum.Font.GothamBold
+	varHeader.TextSize = 9
+	varHeader.TextXAlignment = Enum.TextXAlignment.Left
+	varHeader.Parent = colVars
+
+	local varList = Instance.new("ScrollingFrame")
+	varList.Size = UDim2.new(1, 0, 1, -16)
+	varList.Position = UDim2.new(0, 0, 0, 16)
+	varList.BackgroundTransparency = 1
+	varList.BorderSizePixel = 0
+	varList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	varList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	varList.ScrollBarThickness = 2
+	varList.Parent = colVars
+
+	local varLayout = Instance.new("UIListLayout")
+	varLayout.Padding = UDim.new(0, 1)
+	varLayout.Parent = varList
+
+	local colEditor = Instance.new("Frame")
+	colEditor.Name = "Col_Editor"
+	colEditor.Size = UDim2.new(1, -(BYTECODE_WIDTH + VARS_WIDTH + OUTPUT_WIDTH + 6), 1, 0)
+	colEditor.Position = UDim2.new(0, BYTECODE_WIDTH + 2, 0, 0)
+	colEditor.BackgroundColor3 = Color3.fromHex("#1e1e1e")
+	colEditor.BorderSizePixel = 0
+	colEditor.Parent = contentArea
+
 	local editorArea = Instance.new("Frame")
-	editorArea.Size = UDim2.new(1, 0, 1, -(HEADER_HEIGHT + OUTPUT_HEIGHT))
-	editorArea.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
+	editorArea.Size = UDim2.new(1, 0, 1, -ERROR_HEIGHT)
+	editorArea.Position = UDim2.new(0, 0, 0, 0)
 	editorArea.BackgroundTransparency = 1
 	editorArea.Parent = colEditor
 
@@ -234,7 +268,26 @@ function MainIDE.create(parent, callbacks)
 	local editorTextBox = editor:getTextBox()
 	local isProcessingSync = false
 
-	local stdOutLabel, stdErrLabel
+	local errorBar = Instance.new("Frame")
+	errorBar.Name = "ErrorBar"
+	errorBar.Size = UDim2.new(1, 0, 0, ERROR_HEIGHT)
+	errorBar.Position = UDim2.new(0, 0, 1, -ERROR_HEIGHT)
+	errorBar.BackgroundColor3 = Color3.fromHex("#1a1a1a")
+	errorBar.BorderSizePixel = 0
+	errorBar.Parent = colEditor
+
+	local stdErrLabel = Instance.new("TextLabel")
+	stdErrLabel.Size = UDim2.new(1, -10, 1, -4)
+	stdErrLabel.Position = UDim2.new(0, 5, 0, 2)
+	stdErrLabel.BackgroundTransparency = 1
+	stdErrLabel.Text = ""
+	stdErrLabel.TextColor3 = COLORS.danger
+	stdErrLabel.TextXAlignment = Enum.TextXAlignment.Left
+	stdErrLabel.TextYAlignment = Enum.TextYAlignment.Top
+	stdErrLabel.Font = Enum.Font.Code
+	stdErrLabel.TextSize = 10
+	stdErrLabel.TextWrapped = true
+	stdErrLabel.Parent = errorBar
 
 	local function tryCompile(source, maxBytecode, selfType)
 		local success, result = pcall(function()
@@ -292,99 +345,6 @@ function MainIDE.create(parent, callbacks)
 		end
 	end
 
-	local outputArea = Instance.new("Frame")
-	outputArea.Size = UDim2.new(1, 0, 0, OUTPUT_HEIGHT)
-	outputArea.Position = UDim2.new(0, 0, 1, -OUTPUT_HEIGHT)
-	outputArea.BackgroundColor3 = Color3.fromHex("#1a1a1a")
-	outputArea.BorderSizePixel = 0
-	outputArea.Parent = colEditor
-
-	local outDivider = Instance.new("Frame")
-	outDivider.Size = UDim2.new(0, 2, 1, 0)
-	outDivider.Position = UDim2.new(0.6, 0, 0, 0)
-	outDivider.BackgroundColor3 = Color3.fromHex("#333333")
-	outDivider.BorderSizePixel = 0
-	outDivider.Parent = outputArea
-
-	local stdOutContainer = Instance.new("Frame")
-	stdOutContainer.Size = UDim2.new(0.6, -1, 1, 0)
-	stdOutContainer.BackgroundTransparency = 1
-	stdOutContainer.Parent = outputArea
-
-	local stdOutTitle = Instance.new("TextLabel")
-	stdOutTitle.Size = UDim2.new(1, 0, 0, 16)
-	stdOutTitle.BackgroundTransparency = 1
-	stdOutTitle.Text = "  OUTPUT"
-	stdOutTitle.TextColor3 = COLORS.subtext
-	stdOutTitle.Font = Enum.Font.GothamBold
-	stdOutTitle.TextSize = 9
-	stdOutTitle.TextXAlignment = Enum.TextXAlignment.Left
-	stdOutTitle.Parent = stdOutContainer
-
-	local stdOut = Instance.new("ScrollingFrame")
-	stdOut.Size = UDim2.new(1, 0, 1, -16)
-	stdOut.Position = UDim2.new(0, 0, 0, 16)
-	stdOut.BackgroundTransparency = 1
-	stdOut.BorderSizePixel = 0
-	stdOut.CanvasSize = UDim2.new(0, 0, 0, 0)
-	stdOut.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	stdOut.ScrollBarThickness = 2
-	stdOut.Parent = stdOutContainer
-
-	stdOutLabel = Instance.new("TextLabel")
-	stdOutLabel.Size = UDim2.new(1, -6, 0, 0)
-	stdOutLabel.Position = UDim2.new(0, 3, 0, 0)
-	stdOutLabel.BackgroundTransparency = 1
-	stdOutLabel.Text = ""
-	stdOutLabel.TextColor3 = COLORS.success
-	stdOutLabel.TextXAlignment = Enum.TextXAlignment.Left
-	stdOutLabel.TextYAlignment = Enum.TextYAlignment.Top
-	stdOutLabel.Font = Enum.Font.Code
-	stdOutLabel.TextSize = 11
-	stdOutLabel.TextWrapped = true
-	stdOutLabel.AutomaticSize = Enum.AutomaticSize.Y
-	stdOutLabel.Parent = stdOut
-
-	local stdErrContainer = Instance.new("Frame")
-	stdErrContainer.Size = UDim2.new(0.4, -1, 1, 0)
-	stdErrContainer.Position = UDim2.new(0.6, 2, 0, 0)
-	stdErrContainer.BackgroundTransparency = 1
-	stdErrContainer.Parent = outputArea
-
-	local stdErrTitle = Instance.new("TextLabel")
-	stdErrTitle.Size = UDim2.new(1, 0, 0, 16)
-	stdErrTitle.BackgroundTransparency = 1
-	stdErrTitle.Text = "  ERRORS"
-	stdErrTitle.TextColor3 = COLORS.subtext
-	stdErrTitle.Font = Enum.Font.GothamBold
-	stdErrTitle.TextSize = 9
-	stdErrTitle.TextXAlignment = Enum.TextXAlignment.Left
-	stdErrTitle.Parent = stdErrContainer
-
-	local stdErr = Instance.new("ScrollingFrame")
-	stdErr.Size = UDim2.new(1, 0, 1, -16)
-	stdErr.Position = UDim2.new(0, 0, 0, 16)
-	stdErr.BackgroundTransparency = 1
-	stdErr.BorderSizePixel = 0
-	stdErr.CanvasSize = UDim2.new(0, 0, 0, 0)
-	stdErr.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	stdErr.ScrollBarThickness = 2
-	stdErr.Parent = stdErrContainer
-
-	stdErrLabel = Instance.new("TextLabel")
-	stdErrLabel.Size = UDim2.new(1, -6, 0, 0)
-	stdErrLabel.Position = UDim2.new(0, 3, 0, 0)
-	stdErrLabel.BackgroundTransparency = 1
-	stdErrLabel.Text = ""
-	stdErrLabel.TextColor3 = COLORS.danger
-	stdErrLabel.TextXAlignment = Enum.TextXAlignment.Left
-	stdErrLabel.TextYAlignment = Enum.TextYAlignment.Top
-	stdErrLabel.Font = Enum.Font.Code
-	stdErrLabel.TextSize = 11
-	stdErrLabel.TextWrapped = true
-	stdErrLabel.AutomaticSize = Enum.AutomaticSize.Y
-	stdErrLabel.Parent = stdErr
-
 	editorTextBox:GetPropertyChangedSignal("Text"):Connect(onTextChanged)
 
 	local ide = {}
@@ -395,8 +355,12 @@ function MainIDE.create(parent, callbacks)
 		end
 	end
 
-	local function updateStats(cpu, ram, maxRam)
-		cpuRamLabel.Text = string.format("CPU: %dHz | RAM: %d/%d", cpu or 10, ram or 0, maxRam or 128)
+	local function updateStats(data)
+		local cpu = data.cpuHz or 1
+		local ram = data.bytecode and #data.bytecode or 0
+		local maxRam = data.maxBytecode or 32
+		cpuLabel.Text = string.format("CPU: %dHz", cpu)
+		ramLabel.Text = string.format("RAM: %d/%d", ram, maxRam)
 	end
 
 	local function updateState(pid)
@@ -434,7 +398,9 @@ function MainIDE.create(parent, callbacks)
 			editor:setReadOnly(false)
 		end
 
-		buyContainer.Visible = (data.type == "golem")
+		local isGolem = (data.type == "golem")
+		buyCpuBtn.Visible = isGolem
+		buyRamBtn.Visible = isGolem
 
 		clearList(varList)
 		local varNames = {}
@@ -445,12 +411,13 @@ function MainIDE.create(parent, callbacks)
 			local v = data.variables[k]
 			if v ~= "__NIL__" then
 				local l = Instance.new("TextLabel")
-				l.Size = UDim2.new(1, 0, 0, 16)
+				l.Size = UDim2.new(1, -6, 0, 14)
+				l.Position = UDim2.new(0, 3, 0, 0)
 				l.BackgroundTransparency = 1
 				l.RichText = true
-				l.Text = string.format('<font color="#9CDCFE">%s</font> = <font color="#CE9178">%s</font>', k, formatValue(v, 15))
+				l.Text = string.format('<font color="#9CDCFE">%s</font>=<font color="#CE9178">%s</font>', k, formatValue(v, 12))
 				l.Font = Enum.Font.Code
-				l.TextSize = 10
+				l.TextSize = 9
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				l.Parent = varList
 			end
@@ -461,13 +428,19 @@ function MainIDE.create(parent, callbacks)
 		if data.bytecode then
 			for i, instr in ipairs(data.bytecode) do
 				local l = Instance.new("TextLabel")
-				l.Size = UDim2.new(1, 0, 0, 14)
+				l.Size = UDim2.new(1, -4, 0, 12)
+				l.Position = UDim2.new(0, 2, 0, 0)
 				l.BackgroundTransparency = 1
 				l.RichText = true
-				local color = (data.ip == i) and "#FFFF00" or "#AAAAAA"
-				l.Text = string.format('<font color="%s">%03d %s %s</font>', color, i, instr.op or "?", tostring(instr.arg or ""))
+				local color = (data.ip == i) and "#FFFF00" or "#888888"
+				local argStr = ""
+				if instr.arg ~= nil then
+					argStr = " " .. tostring(instr.arg)
+					if #argStr > 12 then argStr = argStr:sub(1, 10) .. ".." end
+				end
+				l.Text = string.format('<font color="%s">%03d %s%s</font>', color, i, instr.op or "?", argStr)
 				l.Font = Enum.Font.Code
-				l.TextSize = 10
+				l.TextSize = 9
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				l.Parent = bcList
 
@@ -475,12 +448,29 @@ function MainIDE.create(parent, callbacks)
 					execLine = instr.line
 				end
 			end
-			updateStats(data.cpuHz, #data.bytecode, data.maxBytecode)
+			updateStats(data)
 		end
 
 		editor:setExecLine(execLine)
 
-		stdOutLabel.Text = data.output or ""
+		clearList(outList)
+		if data.output and data.output ~= "" then
+			for line in string.gmatch(data.output .. "\n", "([^\n]*)\n") do
+				if line ~= "" then
+					local l = Instance.new("TextLabel")
+					l.Size = UDim2.new(1, -6, 0, 12)
+					l.Position = UDim2.new(0, 3, 0, 0)
+					l.BackgroundTransparency = 1
+					l.Text = line
+					l.TextColor3 = COLORS.success
+					l.Font = Enum.Font.Code
+					l.TextSize = 9
+					l.TextXAlignment = Enum.TextXAlignment.Left
+					l.TextTruncate = Enum.TextTruncate.AtEnd
+					l.Parent = outList
+				end
+			end
+		end
 
 		if editing and data.compileError then
 			stdErrLabel.Text = data.compileError.message or ""
@@ -501,12 +491,15 @@ function MainIDE.create(parent, callbacks)
 		local name = data and (data.name or data.type) or "script.py"
 		local isPlayer = data and data.type == "player"
 
+		local textWidth = #name * 7 + 20
+		if not isPlayer then textWidth = textWidth + 16 end
+
 		local btn = Instance.new("TextButton")
 		btn.Name = tostring(pid)
-		btn.Size = UDim2.new(0, 100, 1, 0)
+		btn.Size = UDim2.new(0, textWidth, 1, 0)
 		btn.BackgroundColor3 = Color3.fromHex("#2d2d2d")
 		btn.BorderSizePixel = 0
-		btn.Text = " " .. name .. "  "
+		btn.Text = " " .. name
 		btn.TextColor3 = COLORS.subtext
 		btn.Font = Enum.Font.Code
 		btn.TextSize = 10
@@ -516,11 +509,14 @@ function MainIDE.create(parent, callbacks)
 		if not isPlayer then
 			local close = Instance.new("TextButton")
 			close.Name = "CloseBtn"
-			close.Size = UDim2.new(0, 20, 1, 0)
-			close.Position = UDim2.new(1, -20, 0, 0)
+			close.Size = UDim2.new(0, 16, 0, 16)
+			close.AnchorPoint = Vector2.new(1, 0.5)
+			close.Position = UDim2.new(1, -2, 0.5, 0)
 			close.BackgroundTransparency = 1
-			close.Text = "x"
+			close.Text = "×"
 			close.TextColor3 = COLORS.subtext
+			close.Font = Enum.Font.GothamBold
+			close.TextSize = 12
 			close.Parent = btn
 			close.MouseButton1Click:Connect(function() ide:closeTab(pid) end)
 		end
