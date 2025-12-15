@@ -109,8 +109,9 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 	local dist = (enemyHrp.Position - hrp.Position).Magnitude
 	if dist > 50 then return false end
 
-	-- Deal damage
-	local damage = stats.damage
+	-- Deal damage (apply power multiplier)
+	local power = WaveManager and WaveManager.getPower() or 1
+	local damage = stats.damage * power
 
 	if stats.splashRadius and stats.splashRadius > 0 then
 		-- AOE damage (rocket)
