@@ -25,7 +25,7 @@ function Interpreter.new(player, isMonster, deps)
 	self.paused = false
 	self.blocked = false
 
-	self.cpuHz = 10
+	self.cpuHz = 2
 	self.maxBytecode = 128
 	self.selfType = nil
 

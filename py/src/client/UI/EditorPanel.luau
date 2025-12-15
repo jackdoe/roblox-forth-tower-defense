@@ -79,7 +79,7 @@ function EditorPanel.create(parent)
 			if i == currentErrorLine then
 				numStr = numStr .. '<font color="#FF5050">● ' .. i .. '</font>\n'
 			elseif i == currentExecLine then
-				numStr = numStr .. '<font color="#FFFF66">▶ ' .. i .. '</font>\n'
+				numStr = numStr .. '<font color="#6A9955">▶ ' .. i .. '</font>\n'
 			else
 				numStr = numStr .. i .. "\n"
 			end
