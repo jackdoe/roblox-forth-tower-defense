@@ -283,7 +283,7 @@ end
 
 local CPU_BASE_COST = 100
 local CPU_COST_MULTIPLIER = 1.5
-local CPU_HZ_INCREMENT = 5
+local CPU_HZ_INCREMENT = 2
 
 function Interpreters.upgradeCPU(pid)
 	local data = interpreters[pid]
@@ -291,7 +291,7 @@ function Interpreters.upgradeCPU(pid)
 
 	local interp = data.interpreter
 	local currentHz = interp.cpuHz or BASE_CPU_HZ
-	local upgradeCount = math.floor((currentHz - BASE_CPU_HZ) / CPU_HZ_INCREMENT)
+	local upgradeCount = math.floor((currentHz - BASE_CPU_HZ) / CPU_HZ_INCREMENT + 0.5)
 	local cost = math.floor(CPU_BASE_COST * (CPU_COST_MULTIPLIER ^ upgradeCount))
 
 	if deps.WaveManager then
@@ -580,7 +580,26 @@ local function executeBotTask(data, dt)
 		local targetZ = task.args.z
 		if not targetX or not targetZ then return "FAILED" end
 
-		character:PivotTo(CFrame.new(targetX, GROUND_Y + 3, targetZ))
+		if not task.teleportPhase then
+			task.teleportPhase = "CHARGING"
+			task.teleportStartTime = tick()
+			task.startPos = hrp.Position
+			task.endPos = Vector3.new(targetX, GROUND_Y + 3, targetZ)
+			entity.status = "TELEPORTING"
+			BotModel.createTeleportEffect(entity, task.startPos, task.endPos)
+			return "RUNNING"
+		end
+
+		if task.teleportPhase == "CHARGING" then
+			if tick() - task.teleportStartTime >= 0.15 then
+				character:PivotTo(CFrame.new(targetX, GROUND_Y + 3, targetZ))
+				entity.status = "IDLE"
+				task.result = true
+				return "DONE"
+			end
+			return "RUNNING"
+		end
+
 		entity.status = "IDLE"
 		task.result = true
 		return "DONE"

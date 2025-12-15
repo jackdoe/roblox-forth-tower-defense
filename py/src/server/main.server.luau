@@ -130,7 +130,7 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, pid)
 
 	if type(source) ~= "string" then return end
 	if #source > MAX_PROGRAM_LENGTH then
-		interp.error = "PROGRAM TOO LONG (max " .. MAX_PROGRAM_LENGTH .. " chars)"
+		interp.error = { message = "PROGRAM TOO LONG (max " .. MAX_PROGRAM_LENGTH .. " chars)", line = nil }
 		interp.status = "ERROR"
 		Interpreters.sendFullSync(player)
 		return
@@ -156,7 +156,7 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, pid)
 			instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
 			if data.type == "bot" then
 				if instructionCount > MAX_BOT_INSTRUCTIONS then
-					interp.error = "PROGRAM TOO COMPLEX (" .. instructionCount .. "/" .. MAX_BOT_INSTRUCTIONS .. " instructions)"
+					interp.error = { message = "PROGRAM TOO COMPLEX (" .. instructionCount .. "/" .. MAX_BOT_INSTRUCTIONS .. " instructions)", line = nil }
 					interp.status = "ERROR"
 					Interpreters.sendFullSync(player)
 					return
@@ -164,7 +164,7 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, pid)
 			elseif data.type == "golem" and data.entity then
 				local maxBytecode = interp.maxBytecode or 128
 				if instructionCount > maxBytecode then
-					interp.error = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions)"
+					interp.error = { message = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions)", line = nil }
 					interp.status = "ERROR"
 					Interpreters.sendFullSync(player)
 					return

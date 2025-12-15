@@ -267,18 +267,45 @@ end)
 
 golemUpgradeEvent.OnClientEvent:Connect(function(success, result)
 	if success then
+		local upgradeSound = Instance.new("Sound")
+		upgradeSound.SoundId = "rbxassetid://71764947817417"
+		upgradeSound.Volume = 0.5
+		upgradeSound.Parent = SoundService
+		upgradeSound:Play()
+		upgradeSound.Ended:Once(function()
+			upgradeSound:Destroy()
+		end)
+
 		local currentPid = ide:getCurrentTabId()
 		local interpType = ide:getInterpreterType(currentPid)
+		local targetPos = nil
+
 		if currentPid and interpType == "golem" then
 			for _, model in ipairs(workspace:GetDescendants()) do
 				if model:IsA("Model") and model:GetAttribute("GolemId") == currentPid then
 					local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-					if hrp then
-						Effects.turretUpgrade(hrp.Position, result.tier or 2)
-					end
+					if hrp then targetPos = hrp.Position end
 					break
 				end
 			end
+		elseif currentPid and interpType == "bot" then
+			for _, model in ipairs(workspace:GetDescendants()) do
+				if model:IsA("Model") and model:GetAttribute("BotId") == currentPid then
+					local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+					if hrp then targetPos = hrp.Position end
+					break
+				end
+			end
+		elseif currentPid and interpType == "player" then
+			local char = player.Character
+			if char then
+				local hrp = char:FindFirstChild("HumanoidRootPart")
+				if hrp then targetPos = hrp.Position end
+			end
+		end
+
+		if targetPos then
+			Effects.turretUpgrade(targetPos, 2)
 		end
 	end
 end)

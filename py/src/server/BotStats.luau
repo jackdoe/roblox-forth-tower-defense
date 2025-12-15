@@ -9,8 +9,9 @@ BotStats.GROUND_Y = Config.PLATFORM_Y
 BotStats.DEFAULT_PROGRAM = [[
 while True:
     if self.collect():
-        self.teleport([0, 0])
-        self.deposit()
+        if self.carrying() >= 3:
+            self.teleport([0, 0])
+            self.deposit()
 ]]
 
 BotStats.BASE = {

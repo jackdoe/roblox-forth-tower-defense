@@ -246,6 +246,9 @@ function BotModel.updateBillboard(bot)
 		elseif status == "SHOCKING" then
 			statusLabel.Text = "ZAP!"
 			statusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+		elseif status == "TELEPORTING" then
+			statusLabel.Text = "WARP"
+			statusLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
 		elseif status == "STUNNED" then
 			statusLabel.Text = "STUNNED"
 			statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
@@ -415,6 +418,80 @@ function BotModel.createMeltdownEffect(character)
 
 	task.delay(0.2, function()
 		if exp then exp.Enabled = false end
+	end)
+end
+
+function BotModel.createTeleportEffect(bot, startPos, endPos)
+	if not bot.character then return end
+	local hrp = bot.character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local function createZapRing(pos, expanding)
+		local ring = Instance.new("Part")
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Size = expanding and Vector3.new(0.3, 1, 1) or Vector3.new(0.3, 8, 8)
+		ring.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.Material = Enum.Material.Neon
+		ring.Color = Color3.fromRGB(0, 255, 255)
+		ring.Transparency = 0.2
+		ring.Parent = workspace
+
+		task.spawn(function()
+			for i = 1, 10 do
+				local size = expanding and (1 + i * 0.8) or (8 - i * 0.7)
+				ring.Size = Vector3.new(0.3, size, size)
+				ring.Transparency = 0.2 + (i / 10) * 0.8
+				task.wait(0.02)
+			end
+			ring:Destroy()
+		end)
+	end
+
+	local function createSparks(pos)
+		local sparkPart = Instance.new("Part")
+		sparkPart.Size = Vector3.new(0.1, 0.1, 0.1)
+		sparkPart.Position = pos
+		sparkPart.Transparency = 1
+		sparkPart.Anchored = true
+		sparkPart.CanCollide = false
+		sparkPart.Parent = workspace
+
+		local sparks = Instance.new("ParticleEmitter")
+		sparks.Color = ColorSequence.new(Color3.fromRGB(0, 255, 255), Color3.fromRGB(255, 255, 255))
+		sparks.Size = NumberSequence.new(0.3, 0)
+		sparks.Lifetime = NumberRange.new(0.15, 0.3)
+		sparks.Rate = 0
+		sparks.Speed = NumberRange.new(5, 15)
+		sparks.SpreadAngle = Vector2.new(180, 180)
+		sparks.Parent = sparkPart
+
+		sparks:Emit(30)
+		game.Debris:AddItem(sparkPart, 0.5)
+	end
+
+	createZapRing(startPos, true)
+	createSparks(startPos)
+
+	for _, part in pairs(bot.character:GetDescendants()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			local oldColor = part.Color
+			local oldTransparency = part.Transparency
+			part.Color = Color3.fromRGB(0, 255, 255)
+			part.Transparency = 0.5
+			task.delay(0.15, function()
+				if part and part.Parent then
+					part.Color = oldColor
+					part.Transparency = oldTransparency
+				end
+			end)
+		end
+	end
+
+	task.delay(0.1, function()
+		createZapRing(endPos, false)
+		createSparks(endPos)
 	end)
 end
 

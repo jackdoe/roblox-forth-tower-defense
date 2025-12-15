@@ -207,7 +207,7 @@ function GolemModel.applyVisualUpgrade(golem, cpuHz)
 	local character = golem.character
 	if not character then return end
 
-	local upgradeLevel = math.floor((cpuHz - 2) / 5) + 1
+	local upgradeLevel = math.floor((cpuHz - 1) / 2 + 0.5) + 1
 	local colorIndex = math.min(upgradeLevel, #UPGRADE_COLORS)
 	local baseColor = UPGRADE_COLORS[colorIndex]
 	local accentColor = ACCENT_COLORS[colorIndex]
