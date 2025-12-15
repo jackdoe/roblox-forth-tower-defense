@@ -11,6 +11,52 @@ function HUD.create(parent, callbacks)
 		selection = nil,
 	}
 
+	local buildBar = Instance.new("Frame")
+	buildBar.Name = "BuildBar"
+	buildBar.Size = UDim2.new(0, 320, 0, 32)
+	buildBar.Position = UDim2.new(0.5, -160, 0, 8)
+	buildBar.BackgroundColor3 = Color3.fromHex("#1a1a1a")
+	buildBar.BackgroundTransparency = 0.3
+	buildBar.Parent = parent
+	Instance.new("UICorner", buildBar).CornerRadius = UDim.new(0, 6)
+
+	local buildLayout = Instance.new("UIListLayout")
+	buildLayout.FillDirection = Enum.FillDirection.Horizontal
+	buildLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	buildLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	buildLayout.Padding = UDim.new(0, 8)
+	buildLayout.Parent = buildBar
+
+	local botBtn = Instance.new("TextButton")
+	botBtn.Name = "BotBtn"
+	botBtn.Size = UDim2.new(0, 145, 0, 24)
+	botBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	botBtn.Text = "+ROBOT (B): 75"
+	botBtn.TextColor3 = Color3.fromRGB(215, 135, 70)
+	botBtn.Font = Enum.Font.RobotoMono
+	botBtn.TextSize = 11
+	botBtn.Parent = buildBar
+	Instance.new("UICorner", botBtn).CornerRadius = UDim.new(0, 4)
+
+	local turretBtn = Instance.new("TextButton")
+	turretBtn.Name = "TurretBtn"
+	turretBtn.Size = UDim2.new(0, 145, 0, 24)
+	turretBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	turretBtn.Text = "+TURRET (T): 100"
+	turretBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
+	turretBtn.Font = Enum.Font.RobotoMono
+	turretBtn.TextSize = 11
+	turretBtn.Parent = buildBar
+	Instance.new("UICorner", turretBtn).CornerRadius = UDim.new(0, 4)
+
+	botBtn.MouseButton1Click:Connect(function()
+		if callbacks.onBuildBot then callbacks.onBuildBot() end
+	end)
+
+	turretBtn.MouseButton1Click:Connect(function()
+		if callbacks.onBuildTurret then callbacks.onBuildTurret() end
+	end)
+
 	local coreDisplay = Instance.new("Frame")
 	coreDisplay.Name = "CoreDisplay"
 	coreDisplay.Size = UDim2.new(0, 160, 0, 50)
@@ -139,6 +185,8 @@ function HUD.create(parent, callbacks)
 
 	function hud.updateEconomy(scrap, turretCost, botCost)
 		scrapText.Text = "SCRAP: " .. (scrap or 0)
+		botBtn.Text = string.format("+ROBOT (B): %d", botCost or 75)
+		turretBtn.Text = string.format("+TURRET (T): %d", turretCost or 100)
 	end
 
 	function hud.updateCore(hp, maxHp)

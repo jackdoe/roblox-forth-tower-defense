@@ -16,8 +16,8 @@ GolemStats.BASE = {
 
 GolemStats.UpgradeTiers = {
 	[1] = {
-		name = "1 Hz",
-		cpuHz = 1,
+		name = "2 Hz",
+		cpuHz = 2,
 		tickRate = 1.0,
 		damageMultiplier = 1.0,
 		rangeMultiplier = 1.0,

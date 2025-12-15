@@ -20,7 +20,7 @@ BotStats.BASE = {
 	pickupRange = 5,
 	transferRange = 8,
 	cost = 75,
-	cpuHz = 10,
+	cpuHz = 2,
 	maxBytecode = 32,
 }
 
@@ -29,7 +29,7 @@ BotStats.UpgradeTiers = {
 		name = "Mk. I",
 		maxCapacity = 3,
 		speed = 14,
-		cpuHz = 10,
+		cpuHz = 2,
 		upgradeCost = 0,
 		color = Color3.fromRGB(215, 135, 70),
 	},
@@ -80,6 +80,9 @@ BotStats.RAMTiers = {
 }
 
 BotStats.MAX_RAM_TIER = 3
+
+BotStats.BOT_BASE_COST = 75
+BotStats.BOT_COST_MULTIPLIER = 1.3
 
 BotStats.BOT_RADIUS = 2
 BotStats.TURRET_RADIUS = 3

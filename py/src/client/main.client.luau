@@ -24,12 +24,19 @@ local selectionRing = nil
 local selectionRingTarget = nil
 local selectionRingModel = nil
 
-local function createSelectionRing()
+local RING_SIZE = {
+	player = 6,
+	bot = 6,
+	golem = 10,
+}
+
+local function createSelectionRing(ringType)
 	if selectionRing then selectionRing:Destroy() end
+	local size = RING_SIZE[ringType] or 6
 	local ring = Instance.new("Part")
 	ring.Name = "SelectionRing"
 	ring.Shape = Enum.PartType.Cylinder
-	ring.Size = Vector3.new(0.03, 6, 6)
+	ring.Size = Vector3.new(0.03, size, size)
 	ring.Material = Enum.Material.SmoothPlastic
 	ring.Color = Color3.fromRGB(80, 140, 180)
 	ring.Anchored = true
@@ -143,7 +150,7 @@ ide = MainIDE.create(screenGui, {
 	onTabOpen = function(pid)
 		local interpType = ide:getInterpreterType(pid)
 		if interpType == "golem" or interpType == "bot" or interpType == "player" then
-			createSelectionRing()
+			createSelectionRing(interpType)
 			selectionRingTarget = { id = pid, type = interpType }
 		else
 			destroySelectionRing()
@@ -164,6 +171,22 @@ hud = HUD.create(screenGui, {
 	onReady = function()
 		playerReadyEvent:FireServer()
 	end,
+	onBuildBot = function()
+		if ClientState.placementMode then PlacementSystem.exitTurretMode() end
+		if ClientState.botPlacementMode then
+			PlacementSystem.exitBotMode()
+		else
+			PlacementSystem.enterBotMode(Overlays.showNotification)
+		end
+	end,
+	onBuildTurret = function()
+		if ClientState.botPlacementMode then PlacementSystem.exitBotMode() end
+		if ClientState.placementMode then
+			PlacementSystem.exitTurretMode()
+		else
+			PlacementSystem.enterTurretMode(Overlays.showNotification)
+		end
+	end,
 })
 
 Overlays.create(screenGui)
@@ -171,6 +194,9 @@ Overlays.create(screenGui)
 interpreterSyncEvent.OnClientEvent:Connect(function(payload)
 	ide:sync(payload)
 	ClientState.currentTurretCount, ClientState.currentBotCount = ide:getCounts()
+	ClientState.nextTurretCost = ClientState.calculateTurretCost()
+	ClientState.nextBotCost = ClientState.calculateBotCost()
+	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
 end)
 
 stateUpdateEvent.OnClientEvent:Connect(function(state)
@@ -180,7 +206,7 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
 		hud.updatePhase(state.phase or "LOBBY")
 		ClientState.currentScrap = state.scrap or 0
-		hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, 75)
+		hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
 		Overlays.updateGameState(state.phase, state.restartTimeRemaining)
 	end
 end)
@@ -188,12 +214,20 @@ end)
 golemPlaceAtEvent.OnClientEvent:Connect(function(success, result)
 	if not success then
 		Overlays.showNotification("BUILD FAILED", tostring(result), "", 3)
+	elseif result and result.pid then
+		task.delay(0.1, function()
+			ide:openTab(result.pid)
+		end)
 	end
 end)
 
 botBuildEvent.OnClientEvent:Connect(function(success, result)
 	if not success then
 		Overlays.showNotification("BUILD FAILED", tostring(result), "", 3)
+	elseif result and result.pid then
+		task.delay(0.1, function()
+			ide:openTab(result.pid)
+		end)
 	end
 end)
 
@@ -203,7 +237,7 @@ waveStateEvent.OnClientEvent:Connect(function(state)
 	hud.updateWave(state.waveNumber, state.enemiesRemaining or 0, state.enemiesTotal or 0)
 	hud.updateCore(state.coreHp or 0, state.coreMaxHp or 1000)
 	hud.updatePhase(state.phase or "LOBBY")
-	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, 75)
+	hud.updateEconomy(ClientState.currentScrap, ClientState.nextTurretCost, ClientState.nextBotCost)
 	Overlays.updateGameState(state.phase, state.restartTimeRemaining)
 end)
 
@@ -337,14 +371,14 @@ end)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 
-	if input.KeyCode == Enum.KeyCode.B then
+	if input.KeyCode == Enum.KeyCode.T then
 		if ClientState.botPlacementMode then PlacementSystem.exitBotMode() end
 		if ClientState.placementMode then
 			PlacementSystem.exitTurretMode()
 		else
 			PlacementSystem.enterTurretMode(Overlays.showNotification)
 		end
-	elseif input.KeyCode == Enum.KeyCode.N then
+	elseif input.KeyCode == Enum.KeyCode.B then
 		if ClientState.placementMode then PlacementSystem.exitTurretMode() end
 		if ClientState.botPlacementMode then
 			PlacementSystem.exitBotMode()

@@ -324,7 +324,7 @@ RemoteEvents.botBuild.OnServerEvent:Connect(function(player, x, z)
 		return
 	end
 
-	local cost = BotStats.BASE.cost
+	local cost = math.floor(BotStats.BOT_BASE_COST * (BotStats.BOT_COST_MULTIPLIER ^ count))
 	local scrap = WaveManager.getScrap()
 	if scrap < cost then
 		RemoteEvents.botBuild:FireClient(player, false, "Not enough scrap")

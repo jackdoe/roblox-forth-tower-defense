@@ -163,7 +163,7 @@ function Interpreters.createPlayer(ownerId, character, playerId)
 	local interp = InterpreterModule.new(nil, false, deps)
 	interp.character = character
 	interp.selfType = "Player"
-	interp.cpuHz = 10
+	interp.cpuHz = 2
 	interp.maxBytecode = 128
 	interp.isPlayer = true
 	interp.playerId = playerId
