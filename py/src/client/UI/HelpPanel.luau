@@ -290,115 +290,115 @@ SYNOPSIS
 ]]
 
 function HelpPanel.create(parent, onClose)
-	local panel = {}
+    local panel = {}
 
-	local overlay = Instance.new("Frame")
-	overlay.Name = "HelpOverlay"
-	overlay.Size = UDim2.new(1, 0, 1, 0)
-	overlay.BackgroundColor3 = Color3.new(0, 0, 0)
-	overlay.BackgroundTransparency = 0.4
-	overlay.BorderSizePixel = 0
-	overlay.Visible = false
-	overlay.Parent = parent
+    local overlay = Instance.new("Frame")
+    overlay.Name = "HelpOverlay"
+    overlay.Size = UDim2.new(1, 0, 1, 0)
+    overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    overlay.BackgroundTransparency = 0.4
+    overlay.BorderSizePixel = 0
+    overlay.Visible = false
+    overlay.Parent = parent
 
-	local frame = Instance.new("Frame")
-	frame.Name = "HelpPanel"
-	frame.Size = UDim2.new(0, 620, 0.85, 0)
-	frame.Position = UDim2.new(0.5, 0, 0.5, 0)
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.BackgroundColor3 = BG_COLOR
-	frame.BorderSizePixel = 0
-	frame.Parent = overlay
+    local frame = Instance.new("Frame")
+    frame.Name = "HelpPanel"
+    frame.Size = UDim2.new(0, 620, 0.85, 0)
+    frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.BackgroundColor3 = BG_COLOR
+    frame.BorderSizePixel = 0
+    frame.Parent = overlay
 
-	local border = Instance.new("UIStroke")
-	border.Color = AMBER_DIM
-	border.Thickness = 2
-	border.Parent = frame
+    local border = Instance.new("UIStroke")
+    border.Color = AMBER_DIM
+    border.Thickness = 2
+    border.Parent = frame
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
-	corner.Parent = frame
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = frame
 
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Name = "Scroll"
-	scroll.Size = UDim2.new(1, -24, 1, -50)
-	scroll.Position = UDim2.new(0, 12, 0, 10)
-	scroll.BackgroundTransparency = 1
-	scroll.BorderSizePixel = 0
-	scroll.ScrollBarThickness = 6
-	scroll.ScrollBarImageColor3 = AMBER_DIM
-	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	scroll.Parent = frame
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name = "Scroll"
+    scroll.Size = UDim2.new(1, -24, 1, -50)
+    scroll.Position = UDim2.new(0, 12, 0, 10)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 6
+    scroll.ScrollBarImageColor3 = AMBER_DIM
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.Parent = frame
 
-	local content = Instance.new("TextLabel")
-	content.Name = "Content"
-	content.Size = UDim2.new(1, 0, 0, 0)
-	content.BackgroundTransparency = 1
-	content.Text = HELP_TEXT
-	content.TextColor3 = AMBER
-	content.Font = Enum.Font.Code
-	content.TextSize = 14
-	content.TextXAlignment = Enum.TextXAlignment.Left
-	content.TextYAlignment = Enum.TextYAlignment.Top
-	content.AutomaticSize = Enum.AutomaticSize.Y
-	content.TextWrapped = false
-	content.Parent = scroll
+    local content = Instance.new("TextLabel")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, 0, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Text = HELP_TEXT
+    content.TextColor3 = AMBER
+    content.Font = Enum.Font.Code
+    content.TextSize = 14
+    content.TextXAlignment = Enum.TextXAlignment.Left
+    content.TextYAlignment = Enum.TextYAlignment.Top
+    content.AutomaticSize = Enum.AutomaticSize.Y
+    content.TextWrapped = false
+    content.Parent = scroll
 
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Name = "CloseBtn"
-	closeBtn.Size = UDim2.new(0, 100, 0, 30)
-	closeBtn.Position = UDim2.new(0.5, -50, 1, -40)
-	closeBtn.BackgroundColor3 = AMBER_DIM
-	closeBtn.Text = "[ESC] CLOSE"
-	closeBtn.TextColor3 = BG_COLOR
-	closeBtn.Font = Enum.Font.Code
-	closeBtn.TextSize = 14
-	closeBtn.Parent = frame
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Name = "CloseBtn"
+    closeBtn.Size = UDim2.new(0, 100, 0, 30)
+    closeBtn.Position = UDim2.new(0.5, -50, 1, -40)
+    closeBtn.BackgroundColor3 = AMBER_DIM
+    closeBtn.Text = "CLOSE"
+    closeBtn.TextColor3 = BG_COLOR
+    closeBtn.Font = Enum.Font.Code
+    closeBtn.TextSize = 14
+    closeBtn.Parent = frame
 
-	local closeCorner = Instance.new("UICorner")
-	closeCorner.CornerRadius = UDim.new(0, 4)
-	closeCorner.Parent = closeBtn
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 4)
+    closeCorner.Parent = closeBtn
 
-	closeBtn.MouseButton1Click:Connect(function()
-		panel.hide()
-		if onClose then onClose() end
-	end)
+    closeBtn.MouseButton1Click:Connect(function()
+        panel.hide()
+        if onClose then onClose() end
+    end)
 
-	overlay.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			local pos = input.Position
-			local framePos = frame.AbsolutePosition
-			local frameSize = frame.AbsoluteSize
-			if pos.X < framePos.X or pos.X > framePos.X + frameSize.X or
-			   pos.Y < framePos.Y or pos.Y > framePos.Y + frameSize.Y then
-				panel.hide()
-				if onClose then onClose() end
-			end
-		end
-	end)
+    overlay.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local pos = input.Position
+            local framePos = frame.AbsolutePosition
+            local frameSize = frame.AbsoluteSize
+            if pos.X < framePos.X or pos.X > framePos.X + frameSize.X or
+                pos.Y < framePos.Y or pos.Y > framePos.Y + frameSize.Y then
+                panel.hide()
+                if onClose then onClose() end
+            end
+        end
+    end)
 
-	function panel.show()
-		overlay.Visible = true
-	end
+    function panel.show()
+        overlay.Visible = true
+    end
 
-	function panel.hide()
-		overlay.Visible = false
-	end
+    function panel.hide()
+        overlay.Visible = false
+    end
 
-	function panel.toggle()
-		overlay.Visible = not overlay.Visible
-	end
+    function panel.toggle()
+        overlay.Visible = not overlay.Visible
+    end
 
-	function panel.isVisible()
-		return overlay.Visible
-	end
+    function panel.isVisible()
+        return overlay.Visible
+    end
 
-	function panel.getFrame()
-		return overlay
-	end
+    function panel.getFrame()
+        return overlay
+    end
 
-	return panel
+    return panel
 end
 
 return HelpPanel
