@@ -53,14 +53,15 @@ local OP_COLORS = {
 	HALT = "#F44747",
 }
 
-local BYTECODE_WIDTH = 200
-local STACK_WIDTH = 100
+local BYTECODE_WIDTH = 240
+local STACK_WIDTH = 80
 local VARS_WIDTH = 160
 local OUTPUT_WIDTH = 160
 local IDE_HEIGHT_SCALE = 0.36
 local HEADER_HEIGHT = 28
 local TOOLBAR_HEIGHT = 24
 local ERROR_HEIGHT = 36
+local BASE_TEXT_SIZE = 14
 
 function MainIDE.create(parent, callbacks)
 	callbacks = callbacks or {}
@@ -100,7 +101,7 @@ function MainIDE.create(parent, callbacks)
 	botBuildBtn.Text = "+ROBOT (B): 75"
 	botBuildBtn.TextColor3 = Color3.fromRGB(215, 135, 70)
 	botBuildBtn.Font = Enum.Font.RobotoMono
-	botBuildBtn.TextSize = 10
+	botBuildBtn.TextSize = BASE_TEXT_SIZE
 	botBuildBtn.Parent = topBar
 	Instance.new("UICorner", botBuildBtn).CornerRadius = UDim.new(0, 4)
 
@@ -111,7 +112,7 @@ function MainIDE.create(parent, callbacks)
 	gundamBuildBtn.Text = "+GUNDAM (G): 100"
 	gundamBuildBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
 	gundamBuildBtn.Font = Enum.Font.RobotoMono
-	gundamBuildBtn.TextSize = 10
+	gundamBuildBtn.TextSize = BASE_TEXT_SIZE
 	gundamBuildBtn.Parent = topBar
 	Instance.new("UICorner", gundamBuildBtn).CornerRadius = UDim.new(0, 4)
 
@@ -122,7 +123,7 @@ function MainIDE.create(parent, callbacks)
 	helpBtn.Text = "HELP"
 	helpBtn.TextColor3 = Color3.fromRGB(12, 12, 8)
 	helpBtn.Font = Enum.Font.RobotoMono
-	helpBtn.TextSize = 10
+	helpBtn.TextSize = BASE_TEXT_SIZE
 	helpBtn.Parent = topBar
 	Instance.new("UICorner", helpBtn).CornerRadius = UDim.new(0, 4)
 
@@ -133,11 +134,11 @@ function MainIDE.create(parent, callbacks)
 	hideBtn.Text = "HIDE"
 	hideBtn.TextColor3 = COLORS.subtext
 	hideBtn.Font = Enum.Font.RobotoMono
-	hideBtn.TextSize = 10
+	hideBtn.TextSize = BASE_TEXT_SIZE
 	hideBtn.Parent = topBar
 	Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 4)
 
-	local fontScale = 1.5
+	local fontScale = 1
 	local BASE_FONT_SIZES = {}
 	local textElements = {}
 	local editorRef = nil
@@ -181,7 +182,7 @@ function MainIDE.create(parent, callbacks)
 	fontDownBtn.Text = "A-"
 	fontDownBtn.TextColor3 = COLORS.text
 	fontDownBtn.Font = Enum.Font.RobotoMono
-	fontDownBtn.TextSize = 10
+	fontDownBtn.TextSize = BASE_TEXT_SIZE
 	fontDownBtn.Parent = topBar
 	Instance.new("UICorner", fontDownBtn).CornerRadius = UDim.new(0, 4)
 
@@ -192,7 +193,7 @@ function MainIDE.create(parent, callbacks)
 	fontUpBtn.Text = "A+"
 	fontUpBtn.TextColor3 = COLORS.text
 	fontUpBtn.Font = Enum.Font.RobotoMono
-	fontUpBtn.TextSize = 10
+	fontUpBtn.TextSize = BASE_TEXT_SIZE
 	fontUpBtn.Parent = topBar
 	Instance.new("UICorner", fontUpBtn).CornerRadius = UDim.new(0, 4)
 
@@ -257,7 +258,7 @@ function MainIDE.create(parent, callbacks)
 	computerLabel.Text = "[BYTECODE]"
 	computerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	computerLabel.Font = Enum.Font.RobotoMono
-	computerLabel.TextSize = 11
+	computerLabel.TextSize = BASE_TEXT_SIZE
 	computerLabel.TextXAlignment = Enum.TextXAlignment.Left
 	computerLabel.Parent = bcHeader
 
@@ -269,7 +270,7 @@ function MainIDE.create(parent, callbacks)
 	statsLabel.RichText = true
 	statsLabel.Text = '<font color="#4EC9B0">CPU:1hz</font> <font color="#DCDCAA">RAM:0/32</font>'
 	statsLabel.Font = Enum.Font.RobotoMono
-	statsLabel.TextSize = 9
+	statsLabel.TextSize = BASE_TEXT_SIZE
 	statsLabel.TextXAlignment = Enum.TextXAlignment.Left
 	statsLabel.Parent = bcHeader
 
@@ -301,7 +302,7 @@ function MainIDE.create(parent, callbacks)
 	stackHeader.Text = "[STACK]"
 	stackHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	stackHeader.Font = Enum.Font.RobotoMono
-	stackHeader.TextSize = 11
+	stackHeader.TextSize = BASE_TEXT_SIZE
 	stackHeader.TextXAlignment = Enum.TextXAlignment.Left
 	stackHeader.Parent = colStack
 
@@ -334,7 +335,7 @@ function MainIDE.create(parent, callbacks)
 	outHeader.Text = "[OUTPUT]"
 	outHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	outHeader.Font = Enum.Font.RobotoMono
-	outHeader.TextSize = 11
+	outHeader.TextSize = BASE_TEXT_SIZE
 	outHeader.TextXAlignment = Enum.TextXAlignment.Left
 	outHeader.Parent = colOutput
 
@@ -367,7 +368,7 @@ function MainIDE.create(parent, callbacks)
 	varHeader.Text = "[VARIABLES]"
 	varHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	varHeader.Font = Enum.Font.RobotoMono
-	varHeader.TextSize = 11
+	varHeader.TextSize = BASE_TEXT_SIZE
 	varHeader.TextXAlignment = Enum.TextXAlignment.Left
 	varHeader.Parent = colVars
 
@@ -409,7 +410,7 @@ function MainIDE.create(parent, callbacks)
 	runBtn.Text = "./script.py"
 	runBtn.TextColor3 = COLORS.bg
 	runBtn.Font = Enum.Font.RobotoMono
-	runBtn.TextSize = 10
+	runBtn.TextSize = BASE_TEXT_SIZE
 	runBtn.Parent = toolbar
 	Instance.new("UICorner", runBtn).CornerRadius = UDim.new(0, 4)
 
@@ -421,7 +422,7 @@ function MainIDE.create(parent, callbacks)
 	gdbBtn.Text = "GDB"
 	gdbBtn.TextColor3 = COLORS.bg
 	gdbBtn.Font = Enum.Font.RobotoMono
-	gdbBtn.TextSize = 10
+	gdbBtn.TextSize = BASE_TEXT_SIZE
 	gdbBtn.Parent = toolbar
 	Instance.new("UICorner", gdbBtn).CornerRadius = UDim.new(0, 4)
 
@@ -433,7 +434,7 @@ function MainIDE.create(parent, callbacks)
 	dbgBtn.Text = "DBG"
 	dbgBtn.TextColor3 = COLORS.text
 	dbgBtn.Font = Enum.Font.RobotoMono
-	dbgBtn.TextSize = 10
+	dbgBtn.TextSize = BASE_TEXT_SIZE
 	dbgBtn.Visible = false
 	dbgBtn.Parent = toolbar
 	Instance.new("UICorner", dbgBtn).CornerRadius = UDim.new(0, 4)
@@ -446,7 +447,7 @@ function MainIDE.create(parent, callbacks)
 	defaultBtn.Text = "DEFAULT"
 	defaultBtn.TextColor3 = Color3.fromRGB(150, 150, 200)
 	defaultBtn.Font = Enum.Font.RobotoMono
-	defaultBtn.TextSize = 10
+	defaultBtn.TextSize = BASE_TEXT_SIZE
 	defaultBtn.Parent = toolbar
 	Instance.new("UICorner", defaultBtn).CornerRadius = UDim.new(0, 4)
 
@@ -458,7 +459,7 @@ function MainIDE.create(parent, callbacks)
 	powerBtn.Text = "+POWER: 100"
 	powerBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
 	powerBtn.Font = Enum.Font.RobotoMono
-	powerBtn.TextSize = 10
+	powerBtn.TextSize = BASE_TEXT_SIZE
 	powerBtn.Parent = toolbar
 	Instance.new("UICorner", powerBtn).CornerRadius = UDim.new(0, 4)
 
@@ -469,7 +470,7 @@ function MainIDE.create(parent, callbacks)
 	buyCpuBtn.Text = "+CPU"
 	buyCpuBtn.TextColor3 = COLORS.success
 	buyCpuBtn.Font = Enum.Font.RobotoMono
-	buyCpuBtn.TextSize = 10
+	buyCpuBtn.TextSize = BASE_TEXT_SIZE
 	buyCpuBtn.Visible = false
 	buyCpuBtn.Parent = toolbar
 	Instance.new("UICorner", buyCpuBtn).CornerRadius = UDim.new(0, 4)
@@ -481,7 +482,7 @@ function MainIDE.create(parent, callbacks)
 	buyRamBtn.Text = "+RAM"
 	buyRamBtn.TextColor3 = COLORS.warning
 	buyRamBtn.Font = Enum.Font.RobotoMono
-	buyRamBtn.TextSize = 10
+	buyRamBtn.TextSize = BASE_TEXT_SIZE
 	buyRamBtn.Visible = false
 	buyRamBtn.Parent = toolbar
 	Instance.new("UICorner", buyRamBtn).CornerRadius = UDim.new(0, 4)
@@ -514,7 +515,7 @@ function MainIDE.create(parent, callbacks)
 	stdErrLabel.TextXAlignment = Enum.TextXAlignment.Left
 	stdErrLabel.TextYAlignment = Enum.TextYAlignment.Top
 	stdErrLabel.Font = Enum.Font.RobotoMono
-	stdErrLabel.TextSize = 10
+	stdErrLabel.TextSize = BASE_TEXT_SIZE
 	stdErrLabel.TextWrapped = true
 	stdErrLabel.Parent = errorBar
 
@@ -673,7 +674,7 @@ function MainIDE.create(parent, callbacks)
 				l.Text = string.format('<font color="#9CDCFE">%s</font>=<font color="#CE9178">%s</font>', k,
 					formatValue(v, 12))
 				l.Font = Enum.Font.RobotoMono
-				l.TextSize = scaledSize(9)
+				l.TextSize = scaledSize(BASE_TEXT_SIZE)
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				l.Parent = varList
 			end
@@ -691,7 +692,7 @@ function MainIDE.create(parent, callbacks)
 				l.Text = string.format('<font color="#606080">[%d]</font> <font color="#B5CEA8">%s</font>', i - 1,
 					formatValue(stack[i], 8))
 				l.Font = Enum.Font.RobotoMono
-				l.TextSize = scaledSize(9)
+				l.TextSize = scaledSize(BASE_TEXT_SIZE)
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				l.Parent = stackList
 			end
@@ -703,7 +704,7 @@ function MainIDE.create(parent, callbacks)
 			l.Text = "(empty)"
 			l.TextColor3 = Color3.fromRGB(96, 96, 128)
 			l.Font = Enum.Font.RobotoMono
-			l.TextSize = scaledSize(9)
+			l.TextSize = scaledSize(BASE_TEXT_SIZE)
 			l.TextXAlignment = Enum.TextXAlignment.Left
 			l.Parent = stackList
 		end
@@ -745,7 +746,7 @@ function MainIDE.create(parent, callbacks)
 					prefix, i, opColor, instr.op or "?", argStr)
 				l.TextColor3 = Color3.fromRGB(200, 200, 200)
 				l.Font = Enum.Font.RobotoMono
-				l.TextSize = scaledSize(9)
+				l.TextSize = scaledSize(BASE_TEXT_SIZE)
 				l.TextXAlignment = Enum.TextXAlignment.Left
 				if data.ip == i then
 					l.BackgroundColor3 = Color3.fromRGB(60, 60, 40)
@@ -775,7 +776,7 @@ function MainIDE.create(parent, callbacks)
 					l.Text = line
 					l.TextColor3 = COLORS.success
 					l.Font = Enum.Font.RobotoMono
-					l.TextSize = scaledSize(9)
+					l.TextSize = scaledSize(BASE_TEXT_SIZE)
 					l.TextXAlignment = Enum.TextXAlignment.Left
 					l.TextTruncate = Enum.TextTruncate.AtEnd
 					l.Parent = outList
@@ -820,10 +821,10 @@ function MainIDE.create(parent, callbacks)
 		btn.Text = " " .. name
 		btn.TextColor3 = COLORS.subtext
 		btn.Font = Enum.Font.RobotoMono
-		btn.TextSize = math.floor(10 * fontScale)
+		btn.TextSize = math.floor(BASE_TEXT_SIZE * fontScale)
 		btn.TextXAlignment = Enum.TextXAlignment.Left
 		btn.Parent = tabsScroll
-		registerText(btn, 10)
+		registerText(btn, BASE_TEXT_SIZE)
 
 		if not isPlayer then
 			local close = Instance.new("TextButton")
@@ -835,10 +836,10 @@ function MainIDE.create(parent, callbacks)
 			close.Text = "×"
 			close.TextColor3 = COLORS.subtext
 			close.Font = Enum.Font.RobotoMono
-			close.TextSize = math.floor(12 * fontScale)
+			close.TextSize = math.floor(BASE_TEXT_SIZE * fontScale)
 			close.Parent = btn
 			close.MouseButton1Click:Connect(function() ide:closeTab(pid) end)
-			registerText(close, 12)
+			registerText(close, BASE_TEXT_SIZE)
 		end
 
 		btn.MouseButton1Click:Connect(function() ide:openTab(pid) end)
