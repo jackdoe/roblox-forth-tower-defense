@@ -50,15 +50,6 @@ GundamStats.AmmoStats = {
 		color = Color3.fromRGB(100, 200, 255),
 	},
 	[5] = {
-		name = "FREEZE",
-		damage = 0,
-		ammoCost = 1,
-		fireRate = 0.1,
-		slowAmount = 0.3,
-		slowDuration = 3.0,
-		color = Color3.fromRGB(0, 255, 255),
-	},
-	[6] = {
 		name = "GRENADE",
 		damage = 60,
 		ammoCost = 5,
@@ -73,8 +64,7 @@ GundamStats.AMMO_NAMES = {
 	[2] = "ROCKET",
 	[3] = "LASER",
 	[4] = "ICE",
-	[5] = "FREEZE",
-	[6] = "GRENADE",
+	[5] = "GRENADE",
 }
 
 GundamStats.DEFAULT_PROGRAM = [[

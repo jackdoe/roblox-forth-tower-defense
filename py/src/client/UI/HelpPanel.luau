@@ -21,24 +21,24 @@ SYNOPSIS
                                  AMMO TYPES
 -------------------------------------------------------------------------------
        Gundams use ammo from their magazine. Players spend scrap per shot.
+       Player ROCKET applies OILED debuff (sets up SHOCK combo!)
 
        GUNDAM WEAPONS                              PLAYER WEAPONS
        Name      Dmg  Ammo  Rate  Notes            Name      Dmg  Scrap  Rate
        --------- ---  ----  ----  -----            --------- ---  -----  ----
        BULLET     15    1   0.2s  Fast             BULLET     15     2   0.3s
-       ROCKET     80    4   1.0s  Splash r=12      ROCKET     40     8   1.0s
+       ROCKET     80    4   1.0s  Splash r=12      ROCKET     40     8   1.0s  Oils!
        LASER      40    2   0.1s  Burns            LASER      25     4   0.5s
-       ICE        20    2   0.4s  60% slow 4s      ICE        10     4   0.4s
-       FREEZE      0    1   0.1s  30% slow 3s      FREEZE      0     2   0.2s
+       ICE        20    2   0.4s  Freezes 60%      ICE        10     4   0.4s  Freezes!
        GRENADE    60    5   1.5s  Splash r=12      GRENADE    60    10   1.5s
 
 -------------------------------------------------------------------------------
                                   DEBUFFS
 -------------------------------------------------------------------------------
-       SLOW      Enemy moves at reduced speed. Stacks additively.
-       OILED     Coated in oil for 5 seconds. Amplifies SHOCK damage.
-       BURNING   Takes 5 damage per tick for 3 seconds. Spreads on death.
-       FROZEN    Slowed by 50% or more. Shatters with ROCKET.
+       SLOW      Enemy moves at reduced speed. New slow replaces old.
+       OILED     Coated in oil for 5 seconds. Amplifies SHOCK damage 2x.
+       BURNING   Takes 5 damage every 0.5s for 3s (30 total). From LASER.
+       FROZEN    Slowed by 50% or more. ROCKET shatters for 1.5x damage.
 
 -------------------------------------------------------------------------------
                                    COMBOS
@@ -46,11 +46,15 @@ SYNOPSIS
        Bots can SHOCK enemies to trigger powerful combos:
 
        SHOCK + OILED     = 2x damage, explosion visual, clears oil
-       SHOCK + BURNING   = 1.5x damage, lightning chains to 3 nearby
-       SHOCK + SLOW      = +slowAmount% damage (60% slow = +60% dmg)
-       ROCKET + FROZEN   = SHATTER: 1.5x damage, clears ice debuff
+       SHOCK + BURNING   = 1.5x damage, chains lightning to 3 nearby (30% dmg)
+       SHOCK + SLOW      = (1 + slowAmount)x damage (60% slow = 1.6x)
+       ROCKET + FROZEN   = SHATTER: 1.5x damage, clears ice (needs 50%+ slow)
 
-       Combos stack! SHOCK an oiled+burning+slowed enemy = massive damage
+       Combos stack MULTIPLICATIVELY! Order: cargo -> oiled -> burning -> slow
+       Example: 5 cargo + oiled + burning + 60% slow on 30 base shock:
+         30 × 7.6 (cargo) × 2 (oil) × 1.5 (burn) × 1.6 (slow) = 1094 damage!
+
+       Chain lightning range: 15 units from target
        Bot stuns for 2s after shocking (vulnerable!)
 
 -------------------------------------------------------------------------------
@@ -61,7 +65,7 @@ SYNOPSIS
        Enemy     A single enemy. Has hp, pos, is_boss, etc.
        [Enemy]   A list of enemies. Use len() to count, [0] to get first.
        [x, z]    A position. Two numbers: x (left/right), z (forward/back).
-       AmmoType  One of: BULLET, ROCKET, LASER, ICE, FREEZE, GRENADE
+       AmmoType  One of: BULLET, ROCKET, LASER, ICE, GRENADE
        number    A whole or decimal number like 10, 3.5, -20
        bool      True or False
 
@@ -161,8 +165,8 @@ SYNOPSIS
 -------------------------------------------------------------------------------
                               GUNDAM ABILITIES
 -------------------------------------------------------------------------------
-       self.fire(AMMO)              True/False
-           Fires at current target. Returns False if no target/ammo.
+       self.fire(AMMO)              True/False  [BLOCKING]
+           Fires at current target. Waits for cooldown (scales with CPU).
 
        self.scan()                  [Enemy]
            Returns list of enemies within range.
@@ -191,8 +195,8 @@ SYNOPSIS
 -------------------------------------------------------------------------------
                               PLAYER ABILITIES
 -------------------------------------------------------------------------------
-       self.fire(AMMO)              True/False
-           Fire at target. Costs scrap (see ammo table above).
+       self.fire(AMMO)              True/False  [BLOCKING]
+           Fire at target. Costs scrap. Waits for cooldown (scales with CPU).
 
        self.scan()                  [Enemy]
            Returns enemies within range 50.
@@ -216,7 +220,7 @@ SYNOPSIS
            Deposits scrap at core. Must be within 15 units.
 
        self.drop(n)                 True/False
-           Drops n scrap pieces on the ground for others to pick up.
+           Drops n scrap pieces (costs n×10 from wallet). Share with team!
 
        self.explode()               True/False
            AOE attack that consumes carried scrap.
@@ -303,9 +307,11 @@ SYNOPSIS
          5 Hz -> 7 Hz    225 scrap
          ...and so on
 
-       Higher Hz = your program runs faster.
-       At 1 Hz, the VM ticks once per second.
-       At 5 Hz, it ticks 5 times per second!
+       Higher Hz = your program runs faster AND you fire faster!
+       Fire rate scales with CPU: actualRate = baseRate / cpuHz
+       At 5 Hz with BULLET (0.2s): fires every 0.04s instead of 0.2s!
+
+       fire() is BLOCKING - your program waits for the cooldown.
 
        RAM (PROGRAM SIZE)
        Base: 32 bytes   Each upgrade: +32 bytes
@@ -338,12 +344,13 @@ SYNOPSIS
 -------------------------------------------------------------------------------
                                   TIPS
 -------------------------------------------------------------------------------
-       - ICE or FREEZE enemies before ROCKET for shatter bonus
-       - SHOCK oiled enemies for massive chain damage
+       - ICE enemies before ROCKET for shatter bonus (freezes at 50%+ slow)
+       - SHOCK oiled enemies for 2x damage + explosion
+       - SHOCK burning enemies for 1.5x + chain lightning
+       - Stack debuffs before SHOCK for multiplicative damage!
        - Bots can teleport([0,0]) to instantly return to core
-       - Higher range = less damage (40 base / your range)
+       - Higher gundam range = less damage (40 / range multiplier)
        - Check enemy.is_boss to prioritize threats
-       - LASER causes BURNING which spreads on death!
        - Use B1.carrying to coordinate between units
 
                                                               PYTHONTD(1)

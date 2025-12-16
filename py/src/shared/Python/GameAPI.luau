@@ -93,7 +93,7 @@ local function addUtilities(env, interp)
 	env.int = function(x) return math.floor(tonumber(x) or 0) end
 	env.str = tostring
 	env.True, env.False = true, false
-	env.BULLET, env.ROCKET, env.LASER, env.ICE, env.FREEZE, env.GRENADE = 1, 2, 3, 4, 5, 6
+	env.BULLET, env.ROCKET, env.LASER, env.ICE, env.GRENADE = 1, 2, 3, 4, 5
 end
 
 local function addEnemySelectors(env, getPos, deps)

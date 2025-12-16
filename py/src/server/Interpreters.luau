@@ -721,18 +721,15 @@ local function executeBotTask(data, dt)
 		if not task.shockExecuted then
 			local dist = (enemyHrp.Position - hrp.Position).Magnitude
 			if dist > BotStats.SHOCK_RANGE then
-				entity.status = "MOVING"
-				local targetPos = enemyHrp.Position
-				local dir = (targetPos - hrp.Position).Unit
-				entity.moveTargetX = hrp.Position.X + dir.X * (dist - BotStats.SHOCK_RANGE + 1)
-				entity.moveTargetZ = hrp.Position.Z + dir.Z * (dist - BotStats.SHOCK_RANGE + 1)
-				entity.isMoving = true
-				return "RUNNING"
+				local dir = (hrp.Position - enemyHrp.Position).Unit
+				local teleportPos = enemyHrp.Position + dir * (BotStats.SHOCK_RANGE - 1)
+				hrp.CFrame = CFrame.new(teleportPos.X, hrp.Position.Y, teleportPos.Z)
 			end
 
 			local botScrap = entity.scrapInventory or 0
 			local unitPower = data.interpreter and data.interpreter.power or 1
 			EnemyManager.shock(enemyId, BotStats.SHOCK_DAMAGE, hrp.Position.X, hrp.Position.Z, botScrap, unitPower)
+			entity.scrapInventory = 0
 			task.shockExecuted = true
 			task.stunEndTime = tick() + BotStats.SHOCK_STUN_TIME
 
@@ -836,7 +833,8 @@ local function updateBot(data, dt)
 			entity.moveTargetZ = nil
 			entity.isMoving = false
 		else
-			local speed = BotStats.BASE.speed
+			local cpuHz = data.interpreter and data.interpreter.cpuHz or 1
+			local speed = BotStats.BASE.speed + (cpuHz - 1) * 4
 			local dirX = dx / dist
 			local dirZ = dz / dist
 			local moveAmount = math.min(speed * dt, dist)

@@ -154,10 +154,8 @@ Classes.Gundam = {
 
 			if interp.ammo < ammoStats.ammoCost then return false end
 
-			local now = tick()
-			local fireRateMult = interp.fireRateMultiplier or 1
-			local adjustedFireRate = ammoStats.fireRate / fireRateMult
-			if now - interp.lastFireTime < adjustedFireRate then return false end
+			local cpuHz = interp.cpuHz or 1
+			local adjustedFireRate = ammoStats.fireRate / cpuHz
 
 			if not interp.target then return false end
 
@@ -183,7 +181,6 @@ Classes.Gundam = {
 			end
 
 			interp.ammo = interp.ammo - ammoStats.ammoCost
-			interp.lastFireTime = now
 
 			local baseRange = 40
 			local damageMult = baseRange / currentRange
@@ -224,6 +221,14 @@ Classes.Gundam = {
 			end
 
 			GundamModel.createMuzzleFlash(gundam, enemyHrp.Position, ammoStats)
+
+			local vm = interp.runtime and interp.runtime.vm
+			if vm and vm.block then
+				vm:block()
+				task.delay(adjustedFireRate, function()
+					if vm and vm.unblock then vm:unblock() end
+				end)
+			end
 
 			return true
 		end),
@@ -674,7 +679,6 @@ Classes.Builtins = {
 	["ROCKET"] = T.AMMO_TYPE,
 	["LASER"] = T.AMMO_TYPE,
 	["ICE"] = T.AMMO_TYPE,
-	["FREEZE"] = T.AMMO_TYPE,
 	["GRENADE"] = T.AMMO_TYPE,
 
 	["CORE"] = T.ANY,

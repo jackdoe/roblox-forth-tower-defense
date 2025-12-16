@@ -16,7 +16,7 @@ while True:
 
 BotStats.BASE = {
 	name = "SupplyBot",
-	speed = 14,
+	speed = 28,
 	maxCapacity = 10,
 	pickupRange = 5,
 	transferRange = 8,

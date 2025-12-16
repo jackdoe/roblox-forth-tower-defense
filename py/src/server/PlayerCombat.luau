@@ -39,15 +39,6 @@ local AmmoStats = {
 		name = "Ice",
 	},
 	[5] = {
-		damage = 0,
-		fireRate = 0.2,
-		scrapCost = 2,
-		slowAmount = 0.3,
-		slowDuration = 3,
-		color = Color3.fromRGB(0, 255, 255),
-		name = "Freeze",
-	},
-	[6] = {
 		damage = 60,
 		fireRate = 1.5,
 		scrapCost = 10,
@@ -58,15 +49,11 @@ local AmmoStats = {
 	},
 }
 
--- Player fire cooldowns (per player)
-local playerCooldowns = {}
-
 function PlayerCombat.init(deps)
 	EnemyManager = deps.EnemyManager
 	WaveManager = deps.WaveManager
 end
 
--- Get the scrap cost for a weapon type
 function PlayerCombat.getScrapCost(ammoType)
 	local stats = AmmoStats[ammoType] or AmmoStats[1]
 	return stats.scrapCost or 2
@@ -88,23 +75,18 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 	ammoType = ammoType or 1
 	local stats = AmmoStats[ammoType] or AmmoStats[1]
 
-	local playerId = interp.playerId or 0
-	local now = tick()
-	local lastFire = playerCooldowns[playerId] or 0
-	if now - lastFire < stats.fireRate then
-		return false
-	end
+	local cpuHz = interp.cpuHz or 1
+	local adjustedFireRate = stats.fireRate / cpuHz
 
 	local scrapCost = stats.scrapCost or 2
 	if WaveManager then
+		local playerId = interp.playerId or 0
 		local currentScrap = WaveManager.getScrap(playerId)
 		if currentScrap < scrapCost then
 			return false
 		end
 		WaveManager.removeScrap(playerId, scrapCost)
 	end
-
-	playerCooldowns[playerId] = now
 
 	-- Check distance (max range 50)
 	local dist = (enemyHrp.Position - hrp.Position).Magnitude
@@ -151,6 +133,14 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 	end
 
 	ProjectileEffects.shot(hrp.Position, enemyHrp.Position, stats)
+
+	local vm = interp.runtime and interp.runtime.vm
+	if vm and vm.block then
+		vm:block()
+		task.delay(adjustedFireRate, function()
+			if vm and vm.unblock then vm:unblock() end
+		end)
+	end
 
 	return true
 end
