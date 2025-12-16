@@ -14,72 +14,6 @@ GundamStats.BASE = {
 	cost = 100,
 }
 
-GundamStats.UpgradeTiers = {
-	[1] = {
-		name = "2 Hz",
-		cpuHz = 2,
-		tickRate = 1.0,
-		damageMultiplier = 1.0,
-		rangeMultiplier = 1.0,
-		ammoMultiplier = 1.0,
-		fireRateMultiplier = 1.0,
-		color = Color3.fromRGB(200, 200, 210),
-		accentColor = Color3.fromRGB(0, 255, 255),
-	},
-	[2] = {
-		name = "5 Hz",
-		cpuHz = 5,
-		tickRate = 0.2,
-		damageMultiplier = 1.0,
-		rangeMultiplier = 1.0,
-		ammoMultiplier = 1.0,
-		fireRateMultiplier = 1.0,
-		upgradeCost = 200,
-		color = Color3.fromRGB(80, 80, 90),
-		accentColor = Color3.fromRGB(255, 150, 0),
-	},
-	[3] = {
-		name = "20 Hz",
-		cpuHz = 20,
-		tickRate = 0.05,
-		damageMultiplier = 1.0,
-		rangeMultiplier = 1.0,
-		ammoMultiplier = 1.0,
-		fireRateMultiplier = 1.0,
-		upgradeCost = 400,
-		color = Color3.fromRGB(70, 80, 60),
-		accentColor = Color3.fromRGB(255, 220, 50),
-	},
-}
-
-GundamStats.MAX_CPU_TIER = 3
-
-GundamStats.RAMTiers = {
-	[1] = {
-		name = "32B",
-		maxBytecode = 32,
-		upgradeCost = nil,
-		color = Color3.fromRGB(200, 200, 210),
-		accentColor = Color3.fromRGB(0, 255, 255),
-	},
-	[2] = {
-		name = "64B",
-		maxBytecode = 64,
-		upgradeCost = 150,
-		color = Color3.fromRGB(80, 80, 90),
-		accentColor = Color3.fromRGB(255, 150, 0),
-	},
-	[3] = {
-		name = "128B",
-		maxBytecode = 128,
-		upgradeCost = 300,
-		color = Color3.fromRGB(70, 80, 60),
-		accentColor = Color3.fromRGB(255, 220, 50),
-	},
-}
-
-GundamStats.MAX_RAM_TIER = 3
-
 GundamStats.AmmoStats = {
 	[1] = {
 		name = "BULLET",
@@ -140,12 +74,6 @@ GundamStats.AMMO_NAMES = {
 	[6] = "GRENADE",
 }
 
-GundamStats.TIER_AMMO_UNLOCKS = {
-	[1] = {1},
-	[2] = {1, 2},
-	[3] = {1, 2, 4, 5, 6},
-}
-
 GundamStats.DEFAULT_PROGRAM = [[
 while True:
     enemies = self.scan()
@@ -154,61 +82,6 @@ while True:
         self.fire(BULLET)
 ]]
 
-GundamStats.TIER_PROGRAMS = {
-	[1] = GundamStats.DEFAULT_PROGRAM,
-
-	[2] = [[
-while True:
-    enemies = self.scan()
-    if len(enemies) > 0:
-        self.set_target(nearest(enemies))
-        self.fire(BULLET)
-]],
-
-	[3] = [[
-while True:
-    enemies = self.scan()
-    if len(enemies) > 0:
-        self.set_target(nearest(enemies))
-        self.fire(BULLET)
-]],
-}
-
 GundamStats.MAX_GUNDAMS = 10
-GundamStats.GUNDAM_BASE_COST = 100
-GundamStats.GUNDAM_COST_MULTIPLIER = 1.5
-
-function GundamStats.isAmmoUnlocked(tier, ammoType)
-	local unlocks = GundamStats.TIER_AMMO_UNLOCKS[tier]
-	if not unlocks then return ammoType == 1 end
-	for _, aType in ipairs(unlocks) do
-		if aType == ammoType then return true end
-	end
-	return false
-end
-
-function GundamStats.getUnlockedAmmo(tier)
-	return GundamStats.TIER_AMMO_UNLOCKS[tier] or {1}
-end
-
-function GundamStats.getCpuHz(tier)
-	local tierData = GundamStats.UpgradeTiers[tier or 1]
-	return tierData and tierData.cpuHz or 1
-end
-
-function GundamStats.getTickRate(tier)
-	local tierData = GundamStats.UpgradeTiers[tier or 1]
-	return tierData and tierData.tickRate or 1.0
-end
-
-function GundamStats.getMaxBytecode(ramTier)
-	local tierData = GundamStats.RAMTiers[ramTier or 1]
-	return tierData and tierData.maxBytecode or 32
-end
-
-function GundamStats.getRAMUpgradeCost(ramTier)
-	local nextTier = GundamStats.RAMTiers[(ramTier or 1) + 1]
-	return nextTier and nextTier.upgradeCost or nil
-end
 
 return GundamStats

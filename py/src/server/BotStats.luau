@@ -21,66 +21,7 @@ BotStats.BASE = {
 	pickupRange = 5,
 	transferRange = 8,
 	cost = 75,
-	cpuHz = 2,
-	maxBytecode = 32,
 }
-
-BotStats.UpgradeTiers = {
-	[1] = {
-		name = "Mk. I",
-		maxCapacity = 10,
-		speed = 14,
-		cpuHz = 2,
-		upgradeCost = 0,
-		color = Color3.fromRGB(215, 135, 70),
-	},
-	[2] = {
-		name = "Mk. II",
-		maxCapacity = 25,
-		speed = 18,
-		cpuHz = 15,
-		upgradeCost = 200,
-		color = Color3.fromRGB(180, 180, 190),
-	},
-	[3] = {
-		name = "Mk. III",
-		maxCapacity = 50,
-		speed = 24,
-		cpuHz = 25,
-		upgradeCost = 500,
-		color = Color3.fromRGB(255, 215, 0),
-	},
-	[4] = {
-		name = "Mk. IV",
-		maxCapacity = 999,
-		speed = 32,
-		cpuHz = 50,
-		upgradeCost = 1200,
-		color = Color3.fromRGB(0, 255, 255),
-	},
-}
-
-BotStats.MAX_TIER = 4
-BotStats.MAX_CPU_TIER = 4
-
-BotStats.RAMTiers = {
-	[1] = {
-		name = "32B",
-		maxBytecode = 32,
-	},
-	[2] = {
-		name = "64B",
-		maxBytecode = 64,
-		upgradeCost = 100,
-	},
-	[3] = {
-		name = "128B",
-		maxBytecode = 128,
-		upgradeCost = 250,
-	},
-}
-
-BotStats.MAX_RAM_TIER = 3
 
 BotStats.BOT_BASE_COST = 75
 BotStats.BOT_COST_MULTIPLIER = 1.3

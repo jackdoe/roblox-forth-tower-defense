@@ -48,8 +48,6 @@ Classes.Enemy = {
 	members = {
 		id = prop(T.STRING, function(deps, e) return e.id end),
 		is_boss = prop(T.BOOL, function(deps, e) return e.typeName == "Boss" end),
-		is_tank = prop(T.BOOL, function(deps, e) return e.typeName == "Tank" end),
-		is_runner = prop(T.BOOL, function(deps, e) return e.typeName == "Runner" end),
 		hp = prop(T.NUMBER, function(deps, e) return e.hp or 0 end),
 		max_hp = prop(T.NUMBER, function(deps, e) return e.maxHp or 1 end),
 		burning = prop(T.BOOL, function(deps, e) return e.burning or false end),
@@ -68,12 +66,6 @@ Classes.Enemy = {
 				end
 			end
 			return { 0, 0 }
-		end),
-
-		alive = method({}, T.BOOL, function(deps, enemy)
-			local EnemyManager = deps.EnemyManager
-			local e = EnemyManager and EnemyManager.get and EnemyManager.get(enemy.id)
-			return e and e.hp and e.hp > 0
 		end),
 	},
 }
@@ -248,17 +240,6 @@ Classes.Gundam = {
 			end
 			return {}
 		end),
-
-		danger = method({}, T.NUMBER, function(deps, gundam)
-			if not gundam.character then return 9999 end
-			local x, z = deps.getCharacterPos(gundam.character)
-			local EnemyManager = deps.EnemyManager
-			if EnemyManager and EnemyManager.findNearest then
-				local enemy, dist = EnemyManager.findNearest(x, z, 100)
-				if enemy then return math.floor(dist) end
-			end
-			return 9999
-		end),
 	},
 }
 
@@ -272,10 +253,6 @@ Classes.Bot = {
 				return { math.floor(x - coreX), math.floor(z - coreZ) }
 			end
 			return { 0, 0 }
-		end),
-
-		cargo = prop(T.NUMBER, function(deps, bot)
-			return bot.scrapInventory or 0
 		end),
 
 		carrying = method({}, T.NUMBER, function(deps, bot)
@@ -440,10 +417,6 @@ Classes.Player = {
 			return { 0, 0 }
 		end),
 
-		cargo = prop(T.NUMBER, function(deps, player)
-			return player.interpreter and player.interpreter.scrapInventory or 0
-		end),
-
 		forward = method({ T.NUMBER }, T.BOOL, function(deps, player, steps)
 			steps = steps or 10
 			if not player.character then return false end
@@ -605,17 +578,6 @@ Classes.Player = {
 				end
 			end
 			return nil
-		end),
-
-		danger = method({}, T.NUMBER, function(deps, player)
-			if not player.character then return 9999 end
-			local x, z = deps.getCharacterPos(player.character)
-			local EnemyManager = deps.EnemyManager
-			if EnemyManager and EnemyManager.findNearest then
-				local enemy, dist = EnemyManager.findNearest(x, z, 100)
-				if enemy then return math.floor(dist) end
-			end
-			return 9999
 		end),
 	},
 }

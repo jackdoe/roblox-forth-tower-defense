@@ -767,20 +767,10 @@ local function executeBotTask(data, dt)
 		end
 
 		BotModel.createExplosionEffect(entity, cargo)
-		entity.scrapInventory = 0
-		entity.status = "STUNNED"
-		task.stunEndTime = tick() + 1.5
-		task.exploded = true
-		task.result = true
-		return "RUNNING"
-	end
 
-	if task.exploded and task.stunEndTime then
-		if tick() >= task.stunEndTime then
-			entity.status = "IDLE"
-			return "DONE"
-		end
-		return "RUNNING"
+		Interpreters.destroy(data.pid)
+		task.result = true
+		return "DONE"
 	end
 
 	entity.status = "IDLE"
@@ -845,7 +835,7 @@ local function updateBot(data, dt)
 			entity.moveTargetZ = nil
 			entity.isMoving = false
 		else
-			local speed = BotStats.UpgradeTiers[entity.tier or 1].speed or BotStats.BASE.speed
+			local speed = BotStats.BASE.speed
 			local dirX = dx / dist
 			local dirZ = dz / dist
 			local moveAmount = math.min(speed * dt, dist)

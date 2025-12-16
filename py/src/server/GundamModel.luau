@@ -5,8 +5,6 @@ local ProjectileEffects = require(script.Parent.ProjectileEffects)
 local GundamModel = {}
 
 local GROUND_Y = GundamStats.GROUND_Y
-local UpgradeTiers = GundamStats.UpgradeTiers
-local RAMTiers = GundamStats.RAMTiers
 
 function GundamModel.create(x, z, ownerColor)
 	local model = Instance.new("Model")
@@ -556,15 +554,15 @@ function GundamModel.updateBillboard(gundam)
 	local bg = billboard:FindFirstChild("Background")
 	if not bg then return end
 
-	local tier = gundam.tier or 1
-	local tierData = UpgradeTiers[tier]
+	local cpuHz = interp and interp.cpuHz or 1
+	local upgradeLevel = math.floor((cpuHz - 1) / 2 + 0.5) + 1
 
 	local idLabel = bg:FindFirstChild("IdLabel")
 	if idLabel then
 		idLabel.Text = gundam.name or "G_?.py"
-		if tier == 3 then
+		if upgradeLevel >= 3 then
 			idLabel.TextColor3 = Color3.fromRGB(255, 150, 220)
-		elseif tier == 2 then
+		elseif upgradeLevel >= 2 then
 			idLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
 		else
 			idLabel.TextColor3 = Color3.fromRGB(255, 255, 255)

@@ -310,9 +310,8 @@ RemoteEvents.gundamSell.OnServerEvent:Connect(function(player, pid)
 	local data = Interpreters.get(pid)
 	if not data or data.ownerId ~= player.UserId or data.type ~= "gundam" then return end
 
-	local tier = data.entity and data.entity.tier or 1
 	local baseCost = GundamStats.BASE.cost
-	local refund = math.floor(baseCost * 0.5 * tier)
+	local refund = math.floor(baseCost * 0.5)
 
 	Interpreters.destroy(pid)
 	WaveManager.addScrap(refund)

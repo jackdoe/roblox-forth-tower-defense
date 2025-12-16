@@ -17,72 +17,274 @@ SYNOPSIS
                self.set_target(nearest(enemies))
                self.fire(BULLET)
 
-AMMO TYPES
-       BULLET    Fast, cheap, reliable. Good for sustained damage.
-       ROCKET    Explosive splash damage. Best vs groups.
-       LASER     High damage single target. Pierces armor.
-       ICE       Applies SLOW debuff. Reduces enemy speed 60%.
-       FREEZE    Light slow effect. Low damage, fast fire rate.
-       GRENADE   Arc trajectory, large splash. High damage.
+-------------------------------------------------------------------------------
+                                 AMMO TYPES
+-------------------------------------------------------------------------------
+       Gundams use ammo from their magazine. Players spend scrap per shot.
 
-DEBUFFS
-       SLOW      Enemy moves slower. Duration 3-4s. Stacks with damage.
-       OILED     Enemy is coated in oil. Lasts 5s. Amplifies SHOCK.
-       BURNING   Damage over time. 5 dmg/tick for 3s. Spreads on death.
+       GUNDAM WEAPONS                              PLAYER WEAPONS
+       Name      Dmg  Ammo  Rate  Notes            Name      Dmg  Scrap  Rate
+       --------- ---  ----  ----  -----            --------- ---  -----  ----
+       BULLET     15    1   0.2s  Fast             BULLET     15     2   0.3s
+       ROCKET     80    4   1.0s  Splash r=12      ROCKET     40     8   1.0s
+       LASER      40    2   0.1s  Burns            LASER      25     4   0.5s
+       ICE        20    2   0.4s  60% slow 4s      ICE        10     4   0.4s
+       FREEZE      0    1   0.1s  30% slow 3s      FREEZE      0     2   0.2s
+       GRENADE    60    5   1.5s  Splash r=12      GRENADE    60    10   1.5s
 
-COMBOS
-       SHOCK + OILED     = 2x damage + explosion visual
-       SHOCK + BURNING   = 1.5x damage + chain lightning to 3 nearby
-       SHOCK + SLOW      = bonus damage equal to slow amount
-       ROCKET + FROZEN   = SHATTER: 1.5x damage, clears ice
+-------------------------------------------------------------------------------
+                                  DEBUFFS
+-------------------------------------------------------------------------------
+       SLOW      Enemy moves at reduced speed. Stacks additively.
+       OILED     Coated in oil for 5 seconds. Amplifies SHOCK damage.
+       BURNING   Takes 5 damage per tick for 3 seconds. Spreads on death.
+       FROZEN    Slowed by 50% or more. Shatters with ROCKET.
 
-BOT ABILITIES
-       self.collect()           Pick up nearby scrap
-       self.deposit()           Return scrap to core
-       self.shock(enemy)        Electric attack, triggers combos
-       self.teleport([x,z])     Instant move to position
-       self.explode()           Sacrifice bot for AOE damage
-       self.forward(n)          Move forward n units
-       self.left(deg)           Turn left by degrees
-       self.carrying()          Returns current cargo amount
+-------------------------------------------------------------------------------
+                                   COMBOS
+-------------------------------------------------------------------------------
+       Bots can SHOCK enemies to trigger powerful combos:
 
-GUNDAM ABILITIES
-       self.fire(AMMO)          Fire selected ammo type
-       self.scan()              Returns list of enemies in range
-       self.set_target(enemy)   Aim at specific enemy
-       self.set_range(n)        Set scan/attack range (max 60)
-       self.pos                 Current [x, z] position
+       SHOCK + OILED     = 2x damage, explosion visual, clears oil
+       SHOCK + BURNING   = 1.5x damage, lightning chains to 3 nearby
+       SHOCK + SLOW      = +slowAmount% damage (60% slow = +60% dmg)
+       ROCKET + FROZEN   = SHATTER: 1.5x damage, clears ice debuff
 
-PLAYER ABILITIES
-       self.fire(AMMO)          Fire from player position
-       self.scan()              Scan for enemies
-       self.collect()           Pick up nearby scrap
-       self.teleport([x,z])     Move to position
-       self.explode()           AOE attack using cargo
+       Combos stack! SHOCK an oiled+burning+slowed enemy = massive damage
+       Bot stuns for 2s after shocking (vulnerable!)
 
-SELECTORS
-       nearest(enemies)         Closest enemy to self
-       furthest(enemies)        Farthest enemy from self
-       weakest(enemies)         Lowest HP enemy
-       strongest(enemies)       Highest HP enemy
+-------------------------------------------------------------------------------
+                                   TYPES
+-------------------------------------------------------------------------------
+       Understanding what your functions return and accept:
 
-GLOBAL VARIABLES
-       CORE.hp                  Current core health
-       CORE.position            Core [x, z] position
-       G1, G2, ... G30          Access other gundams by ID
-       B1, B2, B3, B4           Access bots by ID
+       Enemy     A single enemy. Has hp, pos, alive(), is_boss, etc.
+       [Enemy]   A list of enemies. Use len() to count, [0] to get first.
+       [x, z]    A position. Two numbers: x (left/right), z (forward/back).
+       AmmoType  One of: BULLET, ROCKET, LASER, ICE, FREEZE, GRENADE
+       number    A whole or decimal number like 10, 3.5, -20
+       bool      True or False
 
-ECONOMY
-       Scrap drops from killed enemies. Bots collect and deposit.
-       Gundams cost scrap to build. Upgrades cost scrap.
-       Power upgrades increase all unit damage globally.
+-------------------------------------------------------------------------------
+                               BOT ABILITIES
+-------------------------------------------------------------------------------
+       self.collect()               [Enemy] or nothing
+           Finds nearest scrap cluster and moves to collect it.
 
-TIPS
-       - ICE enemies before ROCKET for shatter bonus
-       - SHOCK oiled enemies for massive damage
-       - Bots can chain-collect with teleport
-       - Higher CPU Hz = faster program execution
-       - More RAM = longer programs allowed
+       self.deposit()               True/False
+           Deposits carried scrap at core. Must be within 15 units.
+
+       self.shock(enemy)            True/False
+           Zaps an enemy for 30 damage. Range 10. Triggers combos!
+           Damage scales with cargo: 30 × 1.5^cargo (exponential!)
+           5 cargo = 228 dmg, 10 cargo = 1732 dmg!
+
+       self.teleport([x, z])        True/False
+           Instantly moves to position. [0,0] is the core.
+
+       self.explode()               True/False
+           Sacrifices 10+ cargo for massive AOE. Bot is destroyed.
+
+       self.forward(n)              True/False
+           Walks forward n units in facing direction.
+
+       self.backward(n)             True/False
+           Walks backward n units.
+
+       self.left(degrees)           True/False
+           Rotates left. Default 90 degrees.
+
+       self.right(degrees)          True/False
+           Rotates right. Default 90 degrees.
+
+       self.carrying()              number
+           Returns how much scrap bot is carrying.
+
+       self.scan()                  [Enemy]
+           Returns list of enemies within range 50.
+
+       self.say("message")          nothing
+           Shows a speech bubble above bot for 3 seconds.
+
+       self.pos                     [x, z]
+           Current position relative to core.
+
+-------------------------------------------------------------------------------
+                              GUNDAM ABILITIES
+-------------------------------------------------------------------------------
+       self.fire(AMMO)              True/False
+           Fires at current target. Returns False if no target/ammo.
+
+       self.scan()                  [Enemy]
+           Returns list of enemies within range.
+
+       self.set_target(enemy)       nothing
+           Locks aim onto an enemy. Required before fire().
+
+       self.target()                Enemy or None
+           Returns currently targeted enemy, or None.
+
+       self.set_range(n)            nothing
+           Sets scan/attack range. Min 10, max 60. Farther = less damage.
+
+       self.ammo()                  number
+           Returns current ammo in magazine.
+
+       self.max_ammo()              number
+           Returns maximum ammo capacity (300).
+
+       self.reload(amount)          number
+           Reloads ammo from scrap. Returns amount reloaded.
+
+       self.pos                     [x, z]
+           Current position relative to core.
+
+-------------------------------------------------------------------------------
+                              PLAYER ABILITIES
+-------------------------------------------------------------------------------
+       self.fire(AMMO)              True/False
+           Fire at target. Costs scrap (see ammo table above).
+
+       self.scan()                  [Enemy]
+           Returns enemies within range 50.
+
+       self.set_target(enemy)       nothing
+           Lock aim onto an enemy.
+
+       self.collect()               True/False
+           Picks up scrap within range 8. Max capacity 5.
+
+       self.teleport([x, z])        True/False
+           Instantly moves to position.
+
+       self.deposit()               True/False
+           Deposits scrap at core. Must be within 15 units.
+
+       self.explode()               True/False
+           AOE attack that consumes carried scrap.
+
+       self.pos                     [x, z]
+           Current position relative to core.
+
+-------------------------------------------------------------------------------
+                                 SELECTORS
+-------------------------------------------------------------------------------
+       These pick ONE enemy from a list:
+
+       nearest([Enemy])             Enemy
+           Returns enemy closest to you.
+
+       furthest([Enemy])            Enemy
+           Returns enemy farthest from you.
+
+       weakest([Enemy])             Enemy
+           Returns enemy with lowest HP.
+
+       strongest([Enemy])           Enemy
+           Returns enemy with highest HP.
+
+       Example:
+           enemies = self.scan()          # get list of enemies
+           target = nearest(enemies)      # pick the closest one
+           self.set_target(target)        # aim at it
+
+-------------------------------------------------------------------------------
+                                  ENEMY
+-------------------------------------------------------------------------------
+       When you scan, you get Enemy objects. Here's what they have:
+
+       enemy.hp                     number - Current health
+       enemy.max_hp                 number - Maximum health
+       enemy.pos                    [x, z] - Position
+       enemy.is_boss                True/False - Is it a boss?
+       enemy.burning                True/False - Is it on fire?
+       enemy.frozen                 True/False - Is it frozen (50%+ slow)?
+       enemy.slowed                 True/False - Is it slowed at all?
+       enemy.oiled                  True/False - Is it oiled?
+
+-------------------------------------------------------------------------------
+                             GLOBAL VARIABLES
+-------------------------------------------------------------------------------
+       CORE.hp                      Current core health
+       CORE.position                Core position [0, 0]
+       G1, G2, ... G10              Access other gundams by ID
+       B1, B2, B3, B4               Access bots by ID
+
+-------------------------------------------------------------------------------
+                            HOW PYTHON WORKS
+-------------------------------------------------------------------------------
+       Your code goes through 3 stages before running:
+
+       1. LEXER
+          Reads your text and breaks it into tokens.
+          "if x > 5:" becomes: [IF] [x] [>] [5] [:]
+          Tracks indentation for Python blocks.
+
+       2. COMPILER
+          Converts tokens into bytecode instructions.
+          "x = 5" becomes: LOAD_CONST 5, STORE_VAR x
+          Checks for errors like undefined variables.
+
+       3. VIRTUAL MACHINE (VM)
+          Executes bytecode one instruction at a time.
+          Uses a stack to compute values.
+          Each CPU tick runs multiple instructions.
+
+-------------------------------------------------------------------------------
+                              CPU AND RAM
+-------------------------------------------------------------------------------
+       Each unit has CPU speed (Hz) and RAM (bytes).
+
+       CPU (SPEED)
+       Base: 1 Hz       Each upgrade: +2 Hz
+       Cost: 100 scrap, then x1.5 per upgrade
+
+       Example costs:
+         1 Hz -> 3 Hz    100 scrap
+         3 Hz -> 5 Hz    150 scrap
+         5 Hz -> 7 Hz    225 scrap
+         ...and so on
+
+       Higher Hz = your program runs faster.
+       At 1 Hz, the VM ticks once per second.
+       At 5 Hz, it ticks 5 times per second!
+
+       RAM (PROGRAM SIZE)
+       Base: 32 bytes   Each upgrade: +32 bytes
+       Cost: 75 scrap, then x1.5 per upgrade
+
+       Example costs:
+         32B -> 64B      75 scrap
+         64B -> 96B     112 scrap
+         96B -> 128B    168 scrap
+         ...and so on
+
+       RAM limits your program size (bytecode instructions).
+       More RAM = longer, more complex programs.
+       Simple loop = ~15 bytes. Full AI = ~60+ bytes.
+
+-------------------------------------------------------------------------------
+                                 ECONOMY
+-------------------------------------------------------------------------------
+       Scrap drops from killed enemies.
+       Bots collect scrap and deposit at core.
+       Each scrap piece = 10 scrap currency.
+
+       COSTS
+       Gundam base cost: 100 scrap (increases per gundam)
+       Bot base cost: 75 scrap (increases per bot)
+       CPU/RAM upgrades: see tables above
+
+-------------------------------------------------------------------------------
+                                  TIPS
+-------------------------------------------------------------------------------
+       - ICE or FREEZE enemies before ROCKET for shatter bonus
+       - SHOCK oiled enemies for massive chain damage
+       - Bots can teleport([0,0]) to instantly return to core
+       - Higher range = less damage (40 base / your range)
+       - Use danger() to know when enemies are close
+       - Check enemy.is_boss to prioritize threats
+       - LASER causes BURNING which spreads on death!
 
                                                               PYTHONTD(1)
 ]]
@@ -101,8 +303,9 @@ function HelpPanel.create(parent, onClose)
 
 	local frame = Instance.new("Frame")
 	frame.Name = "HelpPanel"
-	frame.Size = UDim2.new(0.8, 0, 0.85, 0)
-	frame.Position = UDim2.new(0.1, 0, 0.075, 0)
+	frame.Size = UDim2.new(0, 620, 0.85, 0)
+	frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
 	frame.BackgroundColor3 = BG_COLOR
 	frame.BorderSizePixel = 0
 	frame.Parent = overlay
@@ -118,11 +321,11 @@ function HelpPanel.create(parent, onClose)
 
 	local scroll = Instance.new("ScrollingFrame")
 	scroll.Name = "Scroll"
-	scroll.Size = UDim2.new(1, -20, 1, -50)
-	scroll.Position = UDim2.new(0, 10, 0, 10)
+	scroll.Size = UDim2.new(1, -24, 1, -50)
+	scroll.Position = UDim2.new(0, 12, 0, 10)
 	scroll.BackgroundTransparency = 1
 	scroll.BorderSizePixel = 0
-	scroll.ScrollBarThickness = 8
+	scroll.ScrollBarThickness = 6
 	scroll.ScrollBarImageColor3 = AMBER_DIM
 	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -130,7 +333,7 @@ function HelpPanel.create(parent, onClose)
 
 	local content = Instance.new("TextLabel")
 	content.Name = "Content"
-	content.Size = UDim2.new(1, -20, 0, 0)
+	content.Size = UDim2.new(1, 0, 0, 0)
 	content.BackgroundTransparency = 1
 	content.Text = HELP_TEXT
 	content.TextColor3 = AMBER
