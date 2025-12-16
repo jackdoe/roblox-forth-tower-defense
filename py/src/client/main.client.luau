@@ -415,6 +415,12 @@ gundamUpgradeEvent.OnClientEvent:Connect(function(success, result)
 		if targetPos then
 			Effects.gundamUpgrade(targetPos, 2)
 		end
+
+		if currentPid then
+			task.delay(0.1, function()
+				ide:recheckCompile(currentPid)
+			end)
+		end
 	else
 		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3)
 	end

@@ -257,7 +257,7 @@ function MainIDE.create(parent, callbacks)
 	computerLabel.Text = "[BYTECODE]"
 	computerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	computerLabel.Font = Enum.Font.RobotoMono
-	computerLabel.TextSize = 9
+	computerLabel.TextSize = 11
 	computerLabel.TextXAlignment = Enum.TextXAlignment.Left
 	computerLabel.Parent = bcHeader
 
@@ -301,7 +301,7 @@ function MainIDE.create(parent, callbacks)
 	stackHeader.Text = "[STACK]"
 	stackHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	stackHeader.Font = Enum.Font.RobotoMono
-	stackHeader.TextSize = 9
+	stackHeader.TextSize = 11
 	stackHeader.TextXAlignment = Enum.TextXAlignment.Left
 	stackHeader.Parent = colStack
 
@@ -334,7 +334,7 @@ function MainIDE.create(parent, callbacks)
 	outHeader.Text = "[OUTPUT]"
 	outHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	outHeader.Font = Enum.Font.RobotoMono
-	outHeader.TextSize = 9
+	outHeader.TextSize = 11
 	outHeader.TextXAlignment = Enum.TextXAlignment.Left
 	outHeader.Parent = colOutput
 
@@ -367,7 +367,7 @@ function MainIDE.create(parent, callbacks)
 	varHeader.Text = "[VARIABLES]"
 	varHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 	varHeader.Font = Enum.Font.RobotoMono
-	varHeader.TextSize = 9
+	varHeader.TextSize = 11
 	varHeader.TextXAlignment = Enum.TextXAlignment.Left
 	varHeader.Parent = colVars
 
@@ -718,8 +718,29 @@ function MainIDE.create(parent, callbacks)
 				l.RichText = true
 				local opColor = OP_COLORS[instr.op] or "#cccccc"
 				local prefix = (data.ip == i) and ">" or " "
-				local argStr = tostring(instr.arg or "")
-				if #argStr > 10 then argStr = argStr:sub(1, 8) .. ".." end
+				local argStr = ""
+				if instr.arg ~= nil then
+					if type(instr.arg) == "table" then
+						if instr.arg.type then
+							if instr.arg.value == nil then
+								argStr = "None"
+							elseif type(instr.arg.value) == "boolean" then
+								argStr = instr.arg.value and "True" or "False"
+							elseif type(instr.arg.value) == "string" then
+								argStr = '"' .. tostring(instr.arg.value) .. '"'
+							else
+								argStr = tostring(instr.arg.value)
+							end
+						elseif instr.arg.name then
+							argStr = "fn:" .. instr.arg.name
+						else
+							argStr = tostring(instr.arg)
+						end
+					else
+						argStr = tostring(instr.arg)
+					end
+				end
+				if #argStr > 14 then argStr = argStr:sub(1, 12) .. ".." end
 				l.Text = string.format('%s<font color="#888">%02d</font> <font color="%s">%-12s</font> %s',
 					prefix, i, opColor, instr.op or "?", argStr)
 				l.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -958,6 +979,32 @@ function MainIDE.create(parent, callbacks)
 		return interpreters[pid] and interpreters[pid].type
 	end
 
+	function ide:recheckCompile(pid)
+		pid = pid or currentTabId
+		if not pid then return end
+		local data = interpreters[pid]
+		if not data then return end
+
+		local source = data.localSource or data.source or ""
+		local maxBytecode = data.maxBytecode or 128
+		local compileOk, compileError = tryCompile(source, maxBytecode, data.selfType)
+		data.compileOk = compileOk
+		data.compileError = compileError
+		data.error = nil
+
+		if pid == currentTabId then
+			if compileOk then
+				stdErrLabel.Text = ""
+				editor:setErrorLine(-1)
+			else
+				stdErrLabel.TextColor3 = COLORS.danger
+				stdErrLabel.Text = compileError and compileError.message or ""
+				editor:setErrorLine(compileError and compileError.line or -1)
+			end
+			updateState(pid)
+		end
+	end
+
 	function ide:getCounts()
 		local g, b = 0, 0
 		for _, d in pairs(interpreters) do
@@ -980,6 +1027,7 @@ function MainIDE.create(parent, callbacks)
 		data.originalSource = data.localSource
 		data.compileOk = true
 		data.compileError = nil
+		data.paused = false
 		stdErrLabel.Text = ""
 		editor:setErrorLine(-1)
 
@@ -995,12 +1043,12 @@ function MainIDE.create(parent, callbacks)
 			data.localSource = data.originalSource
 			data.compileOk = true
 			data.compileError = nil
+			data.paused = false
 			isProcessingSync = true
 			editor:setText(data.originalSource or "")
 			isProcessingSync = false
 			stdErrLabel.Text = ""
 			editor:setErrorLine(-1)
-			updateState(currentTabId)
 			if callbacks.onRun then callbacks.onRun(currentTabId) end
 		else
 			if data.status == "RUNNING" and not data.paused then
