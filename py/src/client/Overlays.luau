@@ -111,11 +111,23 @@ function Overlays.create(screenGui)
 	notificationHint.Parent = notificationFrame
 end
 
-function Overlays.showNotification(title, word, hint, duration)
+function Overlays.showNotification(title, word, hint, duration, isError)
 	notificationTitle.Text = title or "NEW WORD UNLOCKED!"
 	notificationWord.Text = word or ""
 	notificationHint.Text = hint or ""
 	notificationFrame.Visible = true
+
+	if isError then
+		notificationFrame.BackgroundColor3 = Color3.fromRGB(60, 30, 30)
+		notificationWord.TextColor3 = Color3.fromRGB(255, 100, 100)
+		local stroke = notificationFrame:FindFirstChildOfClass("UIStroke")
+		if stroke then stroke.Color = Color3.fromRGB(255, 100, 100) end
+	else
+		notificationFrame.BackgroundColor3 = Color3.fromRGB(30, 50, 30)
+		notificationWord.TextColor3 = Color3.fromRGB(100, 255, 100)
+		local stroke = notificationFrame:FindFirstChildOfClass("UIStroke")
+		if stroke then stroke.Color = Color3.fromRGB(100, 255, 100) end
+	end
 
 	notificationFrame.Position = UDim2.new(0.5, -200, 0, -100)
 	local tweenIn = TweenService:Create(

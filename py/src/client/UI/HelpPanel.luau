@@ -345,6 +345,27 @@ SYNOPSIS
        CPU/RAM upgrades: see tables above
 
 -------------------------------------------------------------------------------
+                              FIRST CHALLENGE
+-------------------------------------------------------------------------------
+       The default gundam program fires but NEVER RELOADS!
+
+           while True:
+               enemies = self.scan()
+               if len(enemies) > 0:
+                   self.set_target(nearest(enemies))
+                   self.fire(BULLET)
+
+       Your first task: add reload logic. But there's a catch...
+       Base RAM (32 bytes) is NOT enough for a full reload program!
+
+       You must choose wisely:
+         - Write minimal code that fits in 32 bytes
+         - Or upgrade RAM first (costs scrap)
+         - Or accept running dry and reloading manually
+
+       This is the machinist's dilemma: code efficiency vs upgrades.
+
+-------------------------------------------------------------------------------
                                   TIPS
 -------------------------------------------------------------------------------
        - ICE enemies before ROCKET for shatter bonus (freezes at 50%+ slow)

@@ -8,7 +8,6 @@ local ClientState = require(script.Parent.ClientState)
 local PlacementSystem = {}
 
 local GROUND_Y = Config.PLATFORM_Y
-local BOT_COST = 75
 
 local ghostGundam = nil
 local ghostBot = nil
@@ -68,7 +67,7 @@ end
 function PlacementSystem.updateGhostBot(x, z)
 	if not ghostBot then return false end
 
-	local hasScrap = ClientState.currentScrap >= BOT_COST
+	local hasScrap = ClientState.currentScrap >= ClientState.nextBotCost
 
 	local color = hasScrap and Color3.fromRGB(255, 180, 50) or Color3.fromRGB(255, 50, 50)
 
@@ -92,6 +91,9 @@ function PlacementSystem.enterGundamMode(showNotification)
 	end
 
 	if ClientState.currentScrap < ClientState.nextGundamCost then
+		if showNotification then
+			showNotification("NOT ENOUGH SCRAP", "Need " .. ClientState.nextGundamCost .. " scrap", "", 3, true)
+		end
 		return
 	end
 
@@ -122,7 +124,10 @@ function PlacementSystem.enterBotMode(showNotification)
 		return
 	end
 
-	if ClientState.currentScrap < BOT_COST then
+	if ClientState.currentScrap < ClientState.nextBotCost then
+		if showNotification then
+			showNotification("NOT ENOUGH SCRAP", "Need " .. ClientState.nextBotCost .. " scrap", "", 3, true)
+		end
 		return
 	end
 

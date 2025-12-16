@@ -4,6 +4,7 @@ local UITheme = require(script.Parent.UITheme)
 
 local HUD = {}
 local COLORS = UITheme.COLORS
+local TOP_INSET = 46
 
 function HUD.create(parent, callbacks)
 	local hud = {
@@ -14,7 +15,7 @@ function HUD.create(parent, callbacks)
 	local coreDisplay = Instance.new("Frame")
 	coreDisplay.Name = "CoreDisplay"
 	coreDisplay.Size = UDim2.new(0, 160, 0, 50)
-	coreDisplay.Position = UDim2.new(0, 15, 0, 10)
+	coreDisplay.Position = UDim2.new(0, 15, 0, TOP_INSET + 10)
 	coreDisplay.BackgroundColor3 = COLORS.panel
 	coreDisplay.Parent = parent
 
@@ -49,7 +50,7 @@ function HUD.create(parent, callbacks)
 	local scrapDisplay = Instance.new("Frame")
 	scrapDisplay.Name = "ScrapDisplay"
 	scrapDisplay.Size = UDim2.new(0, 160, 0, 28)
-	scrapDisplay.Position = UDim2.new(0, 15, 0, 65)
+	scrapDisplay.Position = UDim2.new(0, 15, 0, TOP_INSET + 65)
 	scrapDisplay.BackgroundColor3 = COLORS.panel
 	scrapDisplay.Parent = parent
 
@@ -72,7 +73,7 @@ function HUD.create(parent, callbacks)
 	local waveDisplay = Instance.new("Frame")
 	waveDisplay.Name = "WaveDisplay"
 	waveDisplay.Size = UDim2.new(0, 160, 0, 40)
-	waveDisplay.Position = UDim2.new(0, 15, 0, 98)
+	waveDisplay.Position = UDim2.new(0, 15, 0, TOP_INSET + 98)
 	waveDisplay.BackgroundColor3 = COLORS.panel
 	waveDisplay.Parent = parent
 
@@ -107,7 +108,7 @@ function HUD.create(parent, callbacks)
 	local waveActionBtn = Instance.new("TextButton")
 	waveActionBtn.Name = "WaveActionBtn"
 	waveActionBtn.Size = UDim2.new(0, 160, 0, 35)
-	waveActionBtn.Position = UDim2.new(0, 15, 0, 143)
+	waveActionBtn.Position = UDim2.new(0, 15, 0, TOP_INSET + 143)
 	waveActionBtn.BackgroundColor3 = COLORS.accent
 	waveActionBtn.Text = "START"
 	waveActionBtn.TextColor3 = COLORS.bg

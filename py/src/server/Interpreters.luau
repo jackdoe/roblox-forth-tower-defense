@@ -123,6 +123,13 @@ function Interpreters.create(interpType, ownerId, x, z)
 		BotModel.createBillboard(entity)
 	end
 
+	if entity then
+		entity.interpreter = interp
+		entity.id = pid
+		entity.pid = pid
+		entity.ownerId = ownerId
+	end
+
 	local gameEnv = nil
 	local registries = {
 		EnemyManager = deps.EnemyManager,
@@ -145,13 +152,6 @@ function Interpreters.create(interpType, ownerId, x, z)
 	if defaultProgram then
 		interp:load(defaultProgram)
 		interp.lastProgram = defaultProgram
-	end
-
-	if entity then
-		entity.interpreter = interp
-		entity.id = pid
-		entity.pid = pid
-		entity.ownerId = ownerId
 	end
 
 	interpreters[pid] = {

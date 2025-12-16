@@ -127,6 +127,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PythonTDGui"
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
 local ide, hud, helpPanel
@@ -318,7 +319,7 @@ end)
 
 gundamPlaceAtEvent.OnClientEvent:Connect(function(success, result)
 	if not success then
-		Overlays.showNotification("BUILD FAILED", tostring(result), "", 3)
+		Overlays.showNotification("BUILD FAILED", tostring(result), "", 3, true)
 	elseif result and result.pid then
 		task.delay(0.1, function()
 			ide:openTab(result.pid)
@@ -328,7 +329,7 @@ end)
 
 botBuildEvent.OnClientEvent:Connect(function(success, result)
 	if not success then
-		Overlays.showNotification("BUILD FAILED", tostring(result), "", 3)
+		Overlays.showNotification("BUILD FAILED", tostring(result), "", 3, true)
 	elseif result and result.pid then
 		task.delay(0.1, function()
 			ide:openTab(result.pid)
@@ -422,7 +423,7 @@ gundamUpgradeEvent.OnClientEvent:Connect(function(success, result)
 			end)
 		end
 	else
-		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3)
+		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3, true)
 	end
 end)
 
@@ -437,7 +438,7 @@ buyPowerEvent.OnClientEvent:Connect(function(success, result)
 			upgradeSound:Destroy()
 		end)
 	else
-		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3)
+		Overlays.showNotification("UPGRADE FAILED", tostring(result), "", 3, true)
 	end
 end)
 

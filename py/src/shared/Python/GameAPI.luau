@@ -73,6 +73,7 @@ end
 
 local function addUtilities(env, interp)
 	env.print = function(...)
+		if not interp.output then interp.output = {} end
 		local parts = {}
 		for _, v in ipairs({...}) do parts[#parts + 1] = pyToString(v) end
 		local id = interp.nextPrintId or 1
