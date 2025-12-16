@@ -471,4 +471,70 @@ function Effects.gundamUpgrade(position, tier, color)
 	end)
 end
 
+--============================================================================
+-- SCRAP DEPOSIT EFFECT
+--============================================================================
+
+function Effects.scrapDeposit(fromPos, toPos, amount)
+	if not fromPos or not toPos then return end
+	amount = math.min(amount or 1, 10)
+
+	local scrapColor = Color3.fromRGB(255, 200, 50)
+
+	for i = 1, amount do
+		task.delay((i - 1) * 0.05, function()
+			local particle = getPooledPart()
+			particle.Name = "ScrapParticle"
+			particle.Shape = Enum.PartType.Ball
+			particle.Size = Vector3.new(0.8, 0.8, 0.8)
+			particle.Material = Enum.Material.Neon
+			particle.Color = scrapColor
+			particle.Transparency = 0
+
+			local offset = Vector3.new(
+				(math.random() - 0.5) * 2,
+				math.random() * 1,
+				(math.random() - 0.5) * 2
+			)
+			particle.CFrame = CFrame.new(fromPos + offset)
+
+			local arcHeight = (fromPos - toPos).Magnitude * 0.3
+			local midPoint = (fromPos + toPos) / 2 + Vector3.new(0, arcHeight, 0)
+
+			task.spawn(function()
+				local duration = 0.4
+				local steps = 20
+				for j = 1, steps do
+					local t = j / steps
+					local t1 = 1 - t
+					local pos = t1 * t1 * fromPos + 2 * t1 * t * midPoint + t * t * toPos
+					particle.CFrame = CFrame.new(pos)
+					particle.Size = Vector3.new(0.8 - t * 0.5, 0.8 - t * 0.5, 0.8 - t * 0.5)
+					particle.Transparency = t * 0.5
+					task.wait(duration / steps)
+				end
+			end)
+
+			recyclePart(particle, 0.5)
+		end)
+	end
+
+	task.delay(amount * 0.05 + 0.3, function()
+		local flash = getPooledPart()
+		flash.Shape = Enum.PartType.Ball
+		flash.Size = Vector3.new(1, 1, 1)
+		flash.CFrame = CFrame.new(toPos)
+		flash.Material = Enum.Material.Neon
+		flash.Color = scrapColor
+		flash.Transparency = 0.3
+
+		local flashTween = TweenService:Create(flash, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.new(4, 4, 4),
+			Transparency = 1
+		})
+		flashTween:Play()
+		recyclePart(flash, 0.4)
+	end)
+end
+
 return Effects

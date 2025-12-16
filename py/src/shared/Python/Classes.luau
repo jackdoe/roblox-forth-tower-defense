@@ -400,11 +400,22 @@ Classes.Bot = {
 			if not WaveManager then return false end
 
 			local ReplicatedStorage = game:GetService("ReplicatedStorage")
-			local Config = require(ReplicatedStorage:WaitForChild("PythonTD").Config)
+			local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
+			local Config = require(PythonTD.Config)
 			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
+			local amount = bot.scrapInventory
 
-			WaveManager.addScrap(bot.ownerId, bot.scrapInventory * pieceValue)
+			WaveManager.addScrap(bot.ownerId, amount * pieceValue)
 			bot.scrapInventory = 0
+
+			local depositEvent = PythonTD:FindFirstChild("DepositEffect")
+			if depositEvent then
+				depositEvent:FireAllClients(
+					hrp.Position,
+					Vector3.new(coreX, Config.PLATFORM_Y + 3, coreZ),
+					amount
+				)
+			end
 			return true
 		end),
 	},
@@ -511,10 +522,24 @@ Classes.Player = {
 			local WaveManager = deps.WaveManager
 			if not WaveManager then return false end
 
-			local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("PythonTD").Config)
+			local ReplicatedStorage = game:GetService("ReplicatedStorage")
+			local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
+			local Config = require(PythonTD.Config)
 			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
-			WaveManager.addScrap(interp.scrapInventory * pieceValue)
+			local amount = interp.scrapInventory
+
+			local playerId = interp.playerId or 0
+			WaveManager.addScrap(playerId, amount * pieceValue)
 			interp.scrapInventory = 0
+
+			local depositEvent = PythonTD:FindFirstChild("DepositEffect")
+			if depositEvent then
+				depositEvent:FireAllClients(
+					hrp.Position,
+					Vector3.new(coreX, Config.PLATFORM_Y + 3, coreZ),
+					amount
+				)
+			end
 			return true
 		end),
 

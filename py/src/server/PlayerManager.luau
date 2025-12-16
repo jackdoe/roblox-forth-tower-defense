@@ -6,6 +6,8 @@ local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
 local Config = require(PythonTD.Config)
 local EntityRegistry = require(PythonTD.Modules.EntityRegistry)
 
+local RemoteEvents = require(script.Parent.RemoteEvents)
+
 local PlayerManager = {}
 
 PhysicsService:RegisterCollisionGroup("Players")
@@ -162,8 +164,14 @@ function PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
 	local distToCore = math.sqrt((px - coreX)^2 + (pz - coreZ)^2)
 	if distToCore <= 10 and (interp.scrapInventory or 0) > 0 then
 		local pieceValue = Config.SCRAP_PIECE_VALUE or 10
-		WaveManager.addScrap(player.UserId, interp.scrapInventory * pieceValue)
+		local amount = interp.scrapInventory
+		WaveManager.addScrap(player.UserId, amount * pieceValue)
 		interp.scrapInventory = 0
+		RemoteEvents.depositEffect:FireAllClients(
+			Vector3.new(px, Config.PLATFORM_Y + 2, pz),
+			Vector3.new(coreX, Config.PLATFORM_Y + 3, coreZ),
+			amount
+		)
 	end
 end
 

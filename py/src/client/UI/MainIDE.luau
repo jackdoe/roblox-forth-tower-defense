@@ -53,7 +53,7 @@ local OP_COLORS = {
 	HALT = "#F44747",
 }
 
-local BYTECODE_WIDTH = 160
+local BYTECODE_WIDTH = 200
 local STACK_WIDTH = 100
 local VARS_WIDTH = 160
 local OUTPUT_WIDTH = 160
@@ -137,7 +137,7 @@ function MainIDE.create(parent, callbacks)
 	hideBtn.Parent = topBar
 	Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 4)
 
-	local fontScale = 1.0
+	local fontScale = 1.5
 	local BASE_FONT_SIZES = {}
 	local textElements = {}
 	local editorRef = nil
@@ -154,6 +154,19 @@ function MainIDE.create(parent, callbacks)
 		end
 		if editorRef and editorRef.setFontScale then
 			editorRef:setFontScale(fontScale)
+		end
+		for pid, tab in pairs(tabs) do
+			if tab.button then
+				local name = tab.button.Text:gsub("^ ", "")
+				local isPlayer = interpreters[pid] and interpreters[pid].type == "player"
+				local textWidth = #name * 7 + 20
+				if not isPlayer then textWidth = textWidth + 16 end
+				tab.button.Size = UDim2.new(0, textWidth * fontScale, 1, 0)
+				local close = tab.button:FindFirstChild("CloseBtn")
+				if close then
+					close.Size = UDim2.new(0, 16 * fontScale, 0, 16 * fontScale)
+				end
+			end
 		end
 	end
 
@@ -425,6 +438,18 @@ function MainIDE.create(parent, callbacks)
 	dbgBtn.Parent = toolbar
 	Instance.new("UICorner", dbgBtn).CornerRadius = UDim.new(0, 4)
 
+	local defaultBtn = Instance.new("TextButton")
+	defaultBtn.Name = "DefaultBtn"
+	defaultBtn.Size = UDim2.new(0, 60, 0, 18)
+	defaultBtn.Position = UDim2.new(0, 152, 0.5, -9)
+	defaultBtn.BackgroundColor3 = Color3.fromHex("#333333")
+	defaultBtn.Text = "DEFAULT"
+	defaultBtn.TextColor3 = Color3.fromRGB(150, 150, 200)
+	defaultBtn.Font = Enum.Font.RobotoMono
+	defaultBtn.TextSize = 10
+	defaultBtn.Parent = toolbar
+	Instance.new("UICorner", defaultBtn).CornerRadius = UDim.new(0, 4)
+
 	local powerBtn = Instance.new("TextButton")
 	powerBtn.Name = "PowerBtn"
 	powerBtn.Size = UDim2.new(0, 100, 0, 18)
@@ -562,7 +587,7 @@ function MainIDE.create(parent, callbacks)
 			end
 
 			runBtn.Text = "./" .. (data.name or "script.py")
-			gdbBtn.Text = "RESTORE"
+			gdbBtn.Text = "REVERT"
 			gdbBtn.BackgroundColor3 = COLORS.danger
 		end
 	end
@@ -583,7 +608,9 @@ function MainIDE.create(parent, callbacks)
 		local maxRam = data.maxBytecode or 32
 		local pwr = data.power or 1
 		local ramColor = ram > maxRam and "#F44747" or "#DCDCAA"
-		statsLabel.Text = string.format('<font color="#4EC9B0">CPU:%dhz</font> <font color="%s">RAM:%d/%d</font> <font color="#FF6464">PWR:x%d</font>', cpu, ramColor, ram, maxRam, pwr)
+		statsLabel.Text = string.format(
+			'<font color="#4EC9B0">CPU:%dhz</font> <font color="%s">RAM:%d/%d</font> <font color="#FF6464">PWR:x%d</font>',
+			cpu, ramColor, ram, maxRam, pwr)
 	end
 
 	local function updateState(pid)
@@ -598,7 +625,7 @@ function MainIDE.create(parent, callbacks)
 		if editing then
 			runBtn.Text = "./" .. (data.name or "script.py")
 			runBtn.BackgroundColor3 = data.compileOk and COLORS.success or Color3.fromHex("#555555")
-			gdbBtn.Text = "RESTORE"
+			gdbBtn.Text = "REVERT"
 			gdbBtn.BackgroundColor3 = COLORS.danger
 			editor:setReadOnly(false)
 		elseif isPaused then
@@ -643,7 +670,8 @@ function MainIDE.create(parent, callbacks)
 				l.Position = UDim2.new(0, 2, 0, 0)
 				l.BackgroundTransparency = 1
 				l.RichText = true
-				l.Text = string.format('<font color="#9CDCFE">%s</font>=<font color="#CE9178">%s</font>', k, formatValue(v, 12))
+				l.Text = string.format('<font color="#9CDCFE">%s</font>=<font color="#CE9178">%s</font>', k,
+					formatValue(v, 12))
 				l.Font = Enum.Font.RobotoMono
 				l.TextSize = scaledSize(9)
 				l.TextXAlignment = Enum.TextXAlignment.Left
@@ -660,7 +688,8 @@ function MainIDE.create(parent, callbacks)
 				l.Position = UDim2.new(0, 2, 0, 0)
 				l.BackgroundTransparency = 1
 				l.RichText = true
-				l.Text = string.format('<font color="#606080">[%d]</font> <font color="#B5CEA8">%s</font>', i - 1, formatValue(stack[i], 8))
+				l.Text = string.format('<font color="#606080">[%d]</font> <font color="#B5CEA8">%s</font>', i - 1,
+					formatValue(stack[i], 8))
 				l.Font = Enum.Font.RobotoMono
 				l.TextSize = scaledSize(9)
 				l.TextXAlignment = Enum.TextXAlignment.Left
@@ -764,29 +793,31 @@ function MainIDE.create(parent, callbacks)
 
 		local btn = Instance.new("TextButton")
 		btn.Name = tostring(pid)
-		btn.Size = UDim2.new(0, textWidth, 1, 0)
+		btn.Size = UDim2.new(0, textWidth * fontScale, 1, 0)
 		btn.BackgroundColor3 = Color3.fromHex("#2d2d2d")
 		btn.BorderSizePixel = 0
 		btn.Text = " " .. name
 		btn.TextColor3 = COLORS.subtext
 		btn.Font = Enum.Font.RobotoMono
-		btn.TextSize = 10
+		btn.TextSize = math.floor(10 * fontScale)
 		btn.TextXAlignment = Enum.TextXAlignment.Left
 		btn.Parent = tabsScroll
+		registerText(btn, 10)
 
 		if not isPlayer then
 			local close = Instance.new("TextButton")
 			close.Name = "CloseBtn"
-			close.Size = UDim2.new(0, 16, 0, 16)
+			close.Size = UDim2.new(0, 16 * fontScale, 0, 16 * fontScale)
 			close.AnchorPoint = Vector2.new(1, 0.5)
 			close.Position = UDim2.new(1, -2, 0.5, 0)
 			close.BackgroundTransparency = 1
 			close.Text = "×"
 			close.TextColor3 = COLORS.subtext
 			close.Font = Enum.Font.RobotoMono
-			close.TextSize = 12
+			close.TextSize = math.floor(12 * fontScale)
 			close.Parent = btn
 			close.MouseButton1Click:Connect(function() ide:closeTab(pid) end)
+			registerText(close, 12)
 		end
 
 		btn.MouseButton1Click:Connect(function() ide:openTab(pid) end)
@@ -810,7 +841,7 @@ function MainIDE.create(parent, callbacks)
 		currentTabId = pid
 		local data = interpreters[pid]
 		if data then
-			local selfTypeMap = {player = "Player", gundam = "Gundam", bot = "Bot"}
+			local selfTypeMap = { player = "Player", gundam = "Gundam", bot = "Bot" }
 			editor:setSelfType(selfTypeMap[data.type] or "Player")
 
 			local source = data.localSource or data.source or ""
@@ -936,6 +967,7 @@ function MainIDE.create(parent, callbacks)
 	end
 
 	function ide:getCurrentTabId() return currentTabId end
+
 	function ide:getText() return editor:getText() end
 
 	runBtn.MouseButton1Click:Connect(function()
@@ -969,6 +1001,7 @@ function MainIDE.create(parent, callbacks)
 			stdErrLabel.Text = ""
 			editor:setErrorLine(-1)
 			updateState(currentTabId)
+			if callbacks.onRun then callbacks.onRun(currentTabId) end
 		else
 			if data.status == "RUNNING" and not data.paused then
 				if callbacks.onPause then callbacks.onPause(currentTabId) end
@@ -984,6 +1017,18 @@ function MainIDE.create(parent, callbacks)
 
 	buyRamBtn.MouseButton1Click:Connect(function()
 		if callbacks.onBuyRam and currentTabId then callbacks.onBuyRam(currentTabId) end
+	end)
+
+	defaultBtn.MouseButton1Click:Connect(function()
+		if not currentTabId then return end
+		local data = interpreters[currentTabId]
+		if data then
+			data.localSource = nil
+			data.originalSource = nil
+			data.compileOk = true
+			data.compileError = nil
+		end
+		if callbacks.onReset then callbacks.onReset(currentTabId) end
 	end)
 
 	dbgBtn.MouseButton1Click:Connect(function()

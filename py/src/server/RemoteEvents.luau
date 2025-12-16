@@ -30,5 +30,6 @@ RemoteEvents.gundamUpgrade = create("GundamUpgrade")
 RemoteEvents.botBuild = create("BotBuild")
 RemoteEvents.botSell = create("BotSell")
 RemoteEvents.buyPower = create("BuyPower")
+RemoteEvents.depositEffect = create("DepositEffect")
 
 return RemoteEvents

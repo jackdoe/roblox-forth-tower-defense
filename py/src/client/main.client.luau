@@ -121,6 +121,7 @@ local requestStateEvent = PythonTD:WaitForChild("RequestState")
 local botBuildEvent = PythonTD:WaitForChild("BotBuild")
 local botSellEvent = PythonTD:WaitForChild("BotSell")
 local buyPowerEvent = PythonTD:WaitForChild("BuyPower")
+local depositEffectEvent = PythonTD:WaitForChild("DepositEffect")
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PythonTDGui"
@@ -201,6 +202,92 @@ hud = HUD.create(screenGui, {
 
 Overlays.create(screenGui)
 
+local playerBillboard = nil
+local playerCarryingLabel = nil
+local playerCarryingBar = nil
+
+local function createPlayerBillboard(character)
+	if playerBillboard then playerBillboard:Destroy() end
+
+	local head = character:WaitForChild("Head", 5)
+	if not head then return end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "PlayerCarryingBillboard"
+	billboard.Size = UDim2.new(0, 60, 0, 24)
+	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = head
+
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(20, 30, 40)
+	bg.BackgroundTransparency = 0.3
+	bg.BorderSizePixel = 0
+	bg.Parent = billboard
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = bg
+
+	local border = Instance.new("UIStroke")
+	border.Color = Color3.fromRGB(255, 200, 50)
+	border.Thickness = 1
+	border.Parent = bg
+
+	local label = Instance.new("TextLabel")
+	label.Name = "CarryingLabel"
+	label.Size = UDim2.new(1, 0, 0.55, 0)
+	label.Position = UDim2.new(0, 0, 0, 2)
+	label.BackgroundTransparency = 1
+	label.Text = "0/5"
+	label.TextColor3 = Color3.fromRGB(255, 200, 50)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 10
+	label.Parent = bg
+
+	local barBg = Instance.new("Frame")
+	barBg.Name = "BarBg"
+	barBg.Size = UDim2.new(0.8, 0, 0.2, 0)
+	barBg.Position = UDim2.new(0.1, 0, 0.65, 0)
+	barBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	barBg.BorderSizePixel = 0
+	barBg.Parent = bg
+
+	local bar = Instance.new("Frame")
+	bar.Name = "Bar"
+	bar.Size = UDim2.new(0, 0, 1, 0)
+	bar.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
+	bar.BorderSizePixel = 0
+	bar.Parent = barBg
+
+	playerBillboard = billboard
+	playerCarryingLabel = label
+	playerCarryingBar = bar
+end
+
+local function updatePlayerBillboard(carrying, maxCapacity)
+	if not playerBillboard or not playerBillboard.Parent then
+		local char = player.Character
+		if char then createPlayerBillboard(char) end
+	end
+	if playerCarryingLabel then
+		playerCarryingLabel.Text = carrying .. "/" .. maxCapacity
+	end
+	if playerCarryingBar then
+		local ratio = carrying / maxCapacity
+		playerCarryingBar.Size = UDim2.new(ratio, 0, 1, 0)
+	end
+end
+
+player.CharacterAdded:Connect(function(character)
+	createPlayerBillboard(character)
+end)
+
+if player.Character then
+	createPlayerBillboard(player.Character)
+end
+
 local function updateAllEconomy()
 	hud.updateEconomy(ClientState.currentScrap, ClientState.nextGundamCost, ClientState.nextBotCost)
 	ide:updateEconomy(ClientState.nextBotCost, ClientState.nextGundamCost)
@@ -225,7 +312,7 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		Overlays.updateGameState(state.phase, state.restartTimeRemaining)
 	end
 	if state.scrapInventory ~= nil then
-		hud.updateCargo(state.scrapInventory, state.maxCapacity or 5)
+		updatePlayerBillboard(state.scrapInventory, state.maxCapacity or 5)
 	end
 end)
 
@@ -261,6 +348,10 @@ end)
 
 attackHitEvent.OnClientEvent:Connect(function(data)
 	Effects.attackHit(data)
+end)
+
+depositEffectEvent.OnClientEvent:Connect(function(fromPos, toPos, amount)
+	Effects.scrapDeposit(fromPos, toPos, amount)
 end)
 
 playerTeleportEvent.OnClientEvent:Connect(function(x, z)
