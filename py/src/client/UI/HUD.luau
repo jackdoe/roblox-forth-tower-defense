@@ -4,7 +4,7 @@ local UITheme = require(script.Parent.UITheme)
 
 local HUD = {}
 local COLORS = UITheme.COLORS
-local TOP_INSET = 46
+local TOP_INSET = 48
 
 function HUD.create(parent, callbacks)
 	local hud = {
