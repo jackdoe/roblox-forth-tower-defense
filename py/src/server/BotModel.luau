@@ -149,6 +149,12 @@ function BotModel.createBillboard(bot)
 	local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
 	if not hrp then return end
 
+	local ownerColor = Color3.fromRGB(
+		(character:GetAttribute("OwnerColorR") or 0) * 255,
+		(character:GetAttribute("OwnerColorG") or 1) * 255,
+		(character:GetAttribute("OwnerColorB") or 1) * 255
+	)
+
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BotBillboard"
 	billboard.Size = UDim2.new(0, 80, 0, 40)
@@ -167,13 +173,18 @@ function BotModel.createBillboard(bot)
 	corner.CornerRadius = UDim.new(0, 6)
 	corner.Parent = bg
 
+	local border = Instance.new("UIStroke")
+	border.Color = ownerColor
+	border.Thickness = 2
+	border.Parent = bg
+
 	local idLabel = Instance.new("TextLabel")
 	idLabel.Name = "IdLabel"
 	idLabel.Size = UDim2.new(0.5, 0, 0.5, 0)
 	idLabel.Position = UDim2.new(0, 4, 0, 2)
 	idLabel.BackgroundTransparency = 1
 	idLabel.Text = bot.name or "B_?.py"
-	idLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+	idLabel.TextColor3 = ownerColor
 	idLabel.Font = Enum.Font.GothamBold
 	idLabel.TextSize = 11
 	idLabel.TextXAlignment = Enum.TextXAlignment.Left

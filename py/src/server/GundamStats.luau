@@ -14,6 +14,9 @@ GundamStats.BASE = {
 	cost = 100,
 }
 
+GundamStats.GUNDAM_BASE_COST = 100
+GundamStats.GUNDAM_COST_MULTIPLIER = 1.5
+
 GundamStats.AmmoStats = {
 	[1] = {
 		name = "BULLET",
