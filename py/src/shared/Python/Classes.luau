@@ -82,11 +82,11 @@ Classes.Gundam = {
 			return { 0, 0 }
 		end),
 
-		ammo = method({}, T.NUMBER, function(deps, gundam)
+		ammo = prop(T.NUMBER, function(deps, gundam)
 			return gundam.interpreter and gundam.interpreter.ammo or 0
 		end),
 
-		max_ammo = method({}, T.NUMBER, function(deps, gundam)
+		max_ammo = prop(T.NUMBER, function(deps, gundam)
 			return gundam.interpreter and gundam.interpreter.maxAmmo or 300
 		end),
 
@@ -255,8 +255,12 @@ Classes.Bot = {
 			return { 0, 0 }
 		end),
 
-		carrying = method({}, T.NUMBER, function(deps, bot)
+		carrying = prop(T.NUMBER, function(deps, bot)
 			return bot.scrapInventory or 0
+		end),
+
+		max_capacity = prop(T.NUMBER, function(deps, bot)
+			return bot.maxCapacity or 10
 		end),
 
 		forward = method({ T.NUMBER }, T.BOOL, function(deps, bot, steps)
@@ -317,7 +321,7 @@ Classes.Bot = {
 		end),
 
 		collect = method({}, T.BOOL, function(deps, bot)
-			local capacity = bot.maxCapacity or 3
+			local capacity = bot.maxCapacity or 10
 			if (bot.scrapInventory or 0) >= capacity then return true end
 
 			local ScrapManager = deps.ScrapManager
@@ -417,6 +421,14 @@ Classes.Player = {
 			return { 0, 0 }
 		end),
 
+		carrying = prop(T.NUMBER, function(deps, player)
+			return player.interpreter and player.interpreter.scrapInventory or 0
+		end),
+
+		max_capacity = prop(T.NUMBER, function(deps, player)
+			return player.interpreter and player.interpreter.maxCapacity or 10
+		end),
+
 		forward = method({ T.NUMBER }, T.BOOL, function(deps, player, steps)
 			steps = steps or 10
 			if not player.character then return false end
@@ -513,7 +525,7 @@ Classes.Player = {
 			local interp = player.interpreter
 			if not interp then return false end
 
-			local capacity = interp.maxCapacity or 5
+			local capacity = interp.maxCapacity or 10
 			if (interp.scrapInventory or 0) >= capacity then return true end
 
 			local ScrapManager = deps.ScrapManager

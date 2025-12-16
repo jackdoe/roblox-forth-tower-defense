@@ -144,7 +144,7 @@ end
 local function addCore(env, deps)
 	env.CORE = setmetatable({}, {
 		__index = function(_, key)
-			if key == "position" then return {0, 0} end
+			if key == "pos" then return {0, 0} end
 			if key == "hp" then
 				local wm = deps.WaveManager
 				return wm and wm.getCoreHealth and wm.getCoreHealth() or 100

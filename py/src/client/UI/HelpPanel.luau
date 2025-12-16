@@ -58,12 +58,58 @@ SYNOPSIS
 -------------------------------------------------------------------------------
        Understanding what your functions return and accept:
 
-       Enemy     A single enemy. Has hp, pos, alive(), is_boss, etc.
+       Enemy     A single enemy. Has hp, pos, is_boss, etc.
        [Enemy]   A list of enemies. Use len() to count, [0] to get first.
        [x, z]    A position. Two numbers: x (left/right), z (forward/back).
        AmmoType  One of: BULLET, ROCKET, LASER, ICE, FREEZE, GRENADE
        number    A whole or decimal number like 10, 3.5, -20
        bool      True or False
+
+-------------------------------------------------------------------------------
+                          OBJECTS: SELF AND OTHERS
+-------------------------------------------------------------------------------
+       Each unit (Gundam, Bot, Player) is an OBJECT with data and actions.
+
+       SELF - YOUR UNIT
+       "self" refers to the unit running the code. Use it to control yourself:
+
+           self.pos                 # read your position
+           self.carrying            # read how much scrap you have
+           self.scan()              # perform a scan action
+           self.fire(BULLET)        # perform a fire action
+
+       OTHER UNITS - G1, G2, B1, B2, etc.
+       You can read data from other units on your team:
+
+           B1.pos                   # where is Bot 1?
+           B1.carrying              # how much scrap does Bot 1 have?
+           G3.ammo                  # how much ammo does Gundam 3 have?
+
+       PROPERTIES vs METHODS
+       Properties are data you READ. No parentheses:
+
+           self.pos                 # [x, z] position
+           self.carrying            # number of scrap
+           self.ammo                # current ammo (Gundam)
+           self.max_ammo            # max ammo capacity (Gundam)
+           self.max_capacity        # max scrap capacity (Bot/Player)
+           enemy.hp                 # enemy health
+           enemy.is_boss            # True/False
+
+       Methods are actions you DO. Use parentheses:
+
+           self.scan()              # returns list of enemies
+           self.fire(BULLET)        # shoots, returns True/False
+           self.collect()           # picks up scrap
+           self.teleport([0, 0])    # moves to position
+           self.set_target(enemy)   # aims at enemy
+
+       EXAMPLE - Coordinated Attack
+           # Bot checks if Gundam needs help
+           if G1.ammo < 50 and self.carrying > 0:
+               self.say("G1 low on ammo!")
+               self.teleport([0, 0])
+               self.deposit()
 
 -------------------------------------------------------------------------------
                                BOT ABILITIES
@@ -97,8 +143,11 @@ SYNOPSIS
        self.right(degrees)          True/False
            Rotates right. Default 90 degrees.
 
-       self.carrying()              number
-           Returns how much scrap bot is carrying.
+       self.carrying                number
+           How much scrap bot is carrying.
+
+       self.max_capacity            number
+           Maximum scrap bot can carry (10).
 
        self.scan()                  [Enemy]
            Returns list of enemies within range 50.
@@ -127,11 +176,11 @@ SYNOPSIS
        self.set_range(n)            nothing
            Sets scan/attack range. Min 10, max 60. Farther = less damage.
 
-       self.ammo()                  number
-           Returns current ammo in magazine.
+       self.ammo                    number
+           Current ammo in magazine.
 
-       self.max_ammo()              number
-           Returns maximum ammo capacity (300).
+       self.max_ammo                number
+           Maximum ammo capacity (300).
 
        self.reload(amount)          number
            Reloads ammo from scrap. Returns amount reloaded.
@@ -151,8 +200,14 @@ SYNOPSIS
        self.set_target(enemy)       nothing
            Lock aim onto an enemy.
 
+       self.carrying                number
+           How much scrap player is carrying.
+
+       self.max_capacity            number
+           Maximum scrap player can carry (10).
+
        self.collect()               True/False
-           Picks up scrap within range 8. Max capacity 5.
+           Picks up scrap within range 8.
 
        self.teleport([x, z])        True/False
            Instantly moves to position.
@@ -206,7 +261,7 @@ SYNOPSIS
                              GLOBAL VARIABLES
 -------------------------------------------------------------------------------
        CORE.hp                      Current core health
-       CORE.position                Core position [0, 0]
+       CORE.pos                     Core position [0, 0]
        G1, G2, ... G10              Access other gundams by ID
        B1, B2, B3, B4               Access bots by ID
 
@@ -282,9 +337,9 @@ SYNOPSIS
        - SHOCK oiled enemies for massive chain damage
        - Bots can teleport([0,0]) to instantly return to core
        - Higher range = less damage (40 base / your range)
-       - Use danger() to know when enemies are close
        - Check enemy.is_boss to prioritize threats
        - LASER causes BURNING which spreads on death!
+       - Use B1.carrying to coordinate between units
 
                                                               PYTHONTD(1)
 ]]

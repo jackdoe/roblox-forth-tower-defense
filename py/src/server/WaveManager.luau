@@ -42,7 +42,7 @@ local lastBroadcast = 0
 
 function WaveManager.generateWave(waveNum)
 	local composition = {}
-	local baseCount = 30 + waveNum * 8
+	local baseCount = 10 + waveNum * 5
 	local enemyCount = math.floor(baseCount * (0.8 + math.random() * 0.4))
 	local interval = math.max(0.3, 1 - waveNum * 0.05)
 
@@ -378,7 +378,7 @@ function WaveManager.onEnemyReachedCore()
 end
 
 function WaveManager.waveComplete()
-	WaveManager.addScrap(state.waveNumber * 50)
+	WaveManager.addScrap(deps.Config.WAVE_BONUS_BASE + state.waveNumber * 25)
 	WaveManager.startWave()
 end
 
