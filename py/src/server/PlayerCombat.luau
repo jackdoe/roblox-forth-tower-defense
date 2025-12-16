@@ -88,26 +88,23 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 	local enemyHrp = enemyChar and enemyChar:FindFirstChild("HumanoidRootPart")
 	if not enemyHrp then return false end
 
-	-- Get ammo stats
 	ammoType = ammoType or 1
 	local stats = AmmoStats[ammoType] or AmmoStats[1]
 
-	-- Check cooldown
-	local playerId = interp.player and interp.player.UserId or 0
+	local playerId = interp.playerId or 0
 	local now = tick()
 	local lastFire = playerCooldowns[playerId] or 0
 	if now - lastFire < stats.fireRate then
 		return false
 	end
 
-	-- Check and deduct scrap cost
 	local scrapCost = stats.scrapCost or 2
 	if WaveManager then
-		local currentScrap = WaveManager.getScrap()
+		local currentScrap = WaveManager.getScrap(playerId)
 		if currentScrap < scrapCost then
-			return false  -- Not enough scrap to fire
+			return false
 		end
-		WaveManager.removeScrap(scrapCost)
+		WaveManager.removeScrap(playerId, scrapCost)
 	end
 
 	playerCooldowns[playerId] = now

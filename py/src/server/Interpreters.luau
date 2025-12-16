@@ -151,6 +151,7 @@ function Interpreters.create(interpType, ownerId, x, z)
 		entity.interpreter = interp
 		entity.id = pid
 		entity.pid = pid
+		entity.ownerId = ownerId
 	end
 
 	interpreters[pid] = {
@@ -331,9 +332,9 @@ function Interpreters.upgradeCPU(pid)
 	local cost = math.floor(CPU_BASE_COST * (CPU_COST_MULTIPLIER ^ upgradeCount))
 
 	if deps.WaveManager then
-		local scrap = deps.WaveManager.getScrap()
+		local scrap = deps.WaveManager.getScrap(data.ownerId)
 		if scrap < cost then return false, "Not enough scrap" end
-		deps.WaveManager.removeScrap(cost)
+		deps.WaveManager.removeScrap(data.ownerId, cost)
 	end
 
 	interp.cpuHz = currentHz + CPU_HZ_INCREMENT
@@ -360,9 +361,9 @@ function Interpreters.upgradeRAM(pid)
 	local cost = math.floor(RAM_BASE_COST * (RAM_COST_MULTIPLIER ^ upgradeCount))
 
 	if deps.WaveManager then
-		local scrap = deps.WaveManager.getScrap()
+		local scrap = deps.WaveManager.getScrap(data.ownerId)
 		if scrap < cost then return false, "Not enough scrap" end
-		deps.WaveManager.removeScrap(cost)
+		deps.WaveManager.removeScrap(data.ownerId, cost)
 	end
 
 	interp.maxBytecode = currentRam + RAM_INCREMENT
@@ -530,9 +531,9 @@ function Interpreters.upgradePower(pid)
 	local cost = math.floor(POWER_BASE_COST * (POWER_COST_MULTIPLIER ^ upgradeCount))
 
 	if deps.WaveManager then
-		local scrap = deps.WaveManager.getScrap()
+		local scrap = deps.WaveManager.getScrap(data.ownerId)
 		if scrap < cost then return false, "Not enough scrap" end
-		deps.WaveManager.removeScrap(cost)
+		deps.WaveManager.removeScrap(data.ownerId, cost)
 	end
 
 	interp.power = currentPower + POWER_INCREMENT

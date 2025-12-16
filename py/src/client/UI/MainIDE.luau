@@ -412,6 +412,18 @@ function MainIDE.create(parent, callbacks)
 	gdbBtn.Parent = toolbar
 	Instance.new("UICorner", gdbBtn).CornerRadius = UDim.new(0, 4)
 
+	local dbgBtn = Instance.new("TextButton")
+	dbgBtn.Name = "DbgBtn"
+	dbgBtn.Size = UDim2.new(0, 40, 0, 18)
+	dbgBtn.Position = UDim2.new(0, 152, 0.5, -9)
+	dbgBtn.BackgroundColor3 = COLORS.danger
+	dbgBtn.Text = "DBG"
+	dbgBtn.TextColor3 = COLORS.text
+	dbgBtn.Font = Enum.Font.RobotoMono
+	dbgBtn.TextSize = 10
+	dbgBtn.Parent = toolbar
+	Instance.new("UICorner", dbgBtn).CornerRadius = UDim.new(0, 4)
+
 	local powerBtn = Instance.new("TextButton")
 	powerBtn.Name = "PowerBtn"
 	powerBtn.Size = UDim2.new(0, 100, 0, 18)
@@ -594,6 +606,8 @@ function MainIDE.create(parent, callbacks)
 			gdbBtn.Text = "STEP"
 			gdbBtn.BackgroundColor3 = COLORS.warning
 			editor:setReadOnly(true)
+			stdErrLabel.TextColor3 = COLORS.warning
+			stdErrLabel.Text = "editing disabled: program paused for debugging, click RESUME to edit"
 		elseif status == "RUNNING" then
 			runBtn.Text = "RUNNING..."
 			runBtn.BackgroundColor3 = Color3.fromHex("#555555")
@@ -718,12 +732,14 @@ function MainIDE.create(parent, callbacks)
 		end
 
 		if editing and data.compileError then
+			stdErrLabel.TextColor3 = COLORS.danger
 			stdErrLabel.Text = data.compileError.message or ""
 			editor:setErrorLine(data.compileError.line)
 		elseif data.error and data.error.message and data.error.message ~= "" then
+			stdErrLabel.TextColor3 = COLORS.danger
 			stdErrLabel.Text = data.error.message
 			editor:setErrorLine(data.error.line)
-		else
+		elseif not isPaused then
 			stdErrLabel.Text = ""
 			editor:setErrorLine(-1)
 		end
@@ -920,15 +936,15 @@ function MainIDE.create(parent, callbacks)
 		local data = interpreters[currentTabId]
 		if not data then return end
 
-		if isEditing(data) then
-			if not data.compileOk then return end
-			data.originalSource = data.localSource
-			if callbacks.onRun then callbacks.onRun(currentTabId) end
-		else
-			if data.paused or data.status ~= "RUNNING" then
-				if callbacks.onRun then callbacks.onRun(currentTabId) end
-			end
-		end
+		if isEditing(data) and not data.compileOk then return end
+
+		data.originalSource = data.localSource
+		data.compileOk = true
+		data.compileError = nil
+		stdErrLabel.Text = ""
+		editor:setErrorLine(-1)
+
+		if callbacks.onRun then callbacks.onRun(currentTabId) end
 	end)
 
 	gdbBtn.MouseButton1Click:Connect(function()
@@ -961,6 +977,43 @@ function MainIDE.create(parent, callbacks)
 
 	buyRamBtn.MouseButton1Click:Connect(function()
 		if callbacks.onBuyRam and currentTabId then callbacks.onBuyRam(currentTabId) end
+	end)
+
+	dbgBtn.MouseButton1Click:Connect(function()
+		if not currentTabId then return end
+		local data = interpreters[currentTabId]
+		if not data then return end
+		print("========== DEBUG: BYTECODE ==========")
+		print("PID:", currentTabId, "Type:", data.type or "?", "Name:", data.name or "?")
+		print("Source:")
+		print(data.localSource or data.source or "(no source)")
+		print("")
+		local bc = data.bytecode or {}
+		print("Bytecode (" .. #bc .. " instructions):")
+		for i, instr in ipairs(bc) do
+			local argStr = ""
+			if instr.arg ~= nil then
+				if type(instr.arg) == "table" then
+					if instr.arg.type then
+						if instr.arg.value == nil then
+							argStr = "None"
+						elseif type(instr.arg.value) == "string" then
+							argStr = '"' .. tostring(instr.arg.value) .. '"'
+						else
+							argStr = tostring(instr.arg.value)
+						end
+					elseif instr.arg.name then
+						argStr = "<func " .. instr.arg.name .. ">"
+					else
+						argStr = tostring(instr.arg)
+					end
+				else
+					argStr = tostring(instr.arg)
+				end
+			end
+			print(string.format("%3d [L%d] %-20s %s", i, instr.line or 0, instr.op or "?", argStr))
+		end
+		print("========== END BYTECODE ==========")
 	end)
 
 	local hidden = false

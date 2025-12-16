@@ -22,7 +22,6 @@ local state = {
 	coreMaxHp = 1000,
 	corePosition = nil,
 	coreModel = nil,
-	scrap = 0,
 	power = 1,
 	enemiesRemaining = 0,
 	enemiesSpawned = 0,
@@ -32,6 +31,8 @@ local state = {
 	restartTimeRemaining = 0,
 	waveStartTime = 0,
 }
+
+local playerScrap = {}
 
 local POWER_COSTS = {100, 200, 400, 800, 1600, 3200}
 
@@ -87,11 +88,23 @@ function WaveManager.init(dependencies)
 		WaveManager.playerReady(player.UserId)
 	end)
 
-	state.scrap = deps.Config.STARTING_SCRAP or 200
+	Players.PlayerAdded:Connect(function(player)
+		WaveManager.initPlayerScrap(player.UserId)
+	end)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		WaveManager.initPlayerScrap(player.UserId)
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
 		state.readyPlayers[player.UserId] = nil
 	end)
+end
+
+function WaveManager.initPlayerScrap(playerId)
+	if not playerScrap[playerId] then
+		playerScrap[playerId] = deps.Config.STARTING_SCRAP or 250
+	end
 end
 
 function WaveManager.setEnemyManager(enemyMgr)
@@ -360,9 +373,12 @@ function WaveManager.startWave()
 	state.enemiesRemaining = state.enemiesTotal
 end
 
-function WaveManager.onEnemyKilled()
+function WaveManager.onEnemyKilled(killerOwnerId)
 	state.enemiesRemaining = state.enemiesRemaining - 1
-	WaveManager.addScrap(deps.Config.SCRAP_ASSIST_BONUS or 2)
+
+	if killerOwnerId then
+		WaveManager.addScrap(killerOwnerId, deps.Config.SCRAP_ASSIST_BONUS or 5)
+	end
 
 	if state.enemiesRemaining <= 0 and state.enemiesSpawned >= state.enemiesTotal then
 		WaveManager.waveComplete()
@@ -378,24 +394,27 @@ function WaveManager.onEnemyReachedCore()
 end
 
 function WaveManager.waveComplete()
-	WaveManager.addScrap(deps.Config.WAVE_BONUS_BASE + state.waveNumber * 25)
+	local bonus = deps.Config.WAVE_BONUS_BASE + state.waveNumber * 25
+	for _, player in ipairs(Players:GetPlayers()) do
+		WaveManager.addScrap(player.UserId, bonus)
+	end
 	WaveManager.startWave()
 end
 
-function WaveManager.addScrap(amount)
-	state.scrap = state.scrap + amount
+function WaveManager.addScrap(playerId, amount)
+	playerScrap[playerId] = (playerScrap[playerId] or 0) + amount
 end
 
-function WaveManager.removeScrap(amount)
-	if state.scrap >= amount then
-		state.scrap = state.scrap - amount
+function WaveManager.removeScrap(playerId, amount)
+	if (playerScrap[playerId] or 0) >= amount then
+		playerScrap[playerId] = playerScrap[playerId] - amount
 		return true
 	end
 	return false
 end
 
-function WaveManager.getScrap()
-	return state.scrap
+function WaveManager.getScrap(playerId)
+	return playerScrap[playerId] or 0
 end
 
 function WaveManager.getPower()
@@ -406,24 +425,13 @@ function WaveManager.getPowerCost()
 	return POWER_COSTS[state.power] or (state.power * 1000)
 end
 
-function WaveManager.buyPower()
+function WaveManager.buyPower(playerId)
 	local cost = WaveManager.getPowerCost()
-	if state.scrap >= cost then
-		state.scrap = state.scrap - cost
+	if WaveManager.removeScrap(playerId, cost) then
 		state.power = state.power + 1
 		return true, state.power
 	end
 	return false, "Not enough scrap"
-end
-
-function WaveManager.removeCoreStockpile(amount)
-	local toTake = math.min(amount, state.scrap)
-	state.scrap = state.scrap - toTake
-	return toTake
-end
-
-function WaveManager.getCoreStockpile()
-	return state.scrap
 end
 
 function WaveManager.gameOver()
@@ -453,8 +461,12 @@ function WaveManager.restart()
 	state.enemiesRemaining = 0
 	state.enemiesSpawned = 0
 	state.enemiesTotal = 0
-	state.scrap = deps.Config.STARTING_SCRAP or 200
 	state.power = 1
+
+	playerScrap = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		WaveManager.initPlayerScrap(player.UserId)
+	end
 
 	WaveManager.resetCoreVisual()
 
@@ -498,19 +510,18 @@ function WaveManager.update(dt)
 end
 
 function WaveManager.broadcastState()
-	local stateData = {
-		phase = state.phase,
-		waveNumber = state.waveNumber,
-		coreHp = state.coreHp,
-		coreMaxHp = state.coreMaxHp,
-		restartTimeRemaining = state.restartTimeRemaining,
-		enemiesRemaining = state.enemiesRemaining,
-		enemiesTotal = state.enemiesTotal,
-		scrap = state.scrap,
-		power = state.power,
-	}
-
 	for _, player in ipairs(Players:GetPlayers()) do
+		local stateData = {
+			phase = state.phase,
+			waveNumber = state.waveNumber,
+			coreHp = state.coreHp,
+			coreMaxHp = state.coreMaxHp,
+			restartTimeRemaining = state.restartTimeRemaining,
+			enemiesRemaining = state.enemiesRemaining,
+			enemiesTotal = state.enemiesTotal,
+			scrap = playerScrap[player.UserId] or 0,
+			power = state.power,
+		}
 		waveStateEvent:FireClient(player, stateData)
 	end
 end

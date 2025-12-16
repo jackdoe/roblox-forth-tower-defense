@@ -215,6 +215,9 @@ SYNOPSIS
        self.deposit()               True/False
            Deposits scrap at core. Must be within 15 units.
 
+       self.drop(n)                 True/False
+           Drops n scrap pieces on the ground for others to pick up.
+
        self.explode()               True/False
            AOE attack that consumes carried scrap.
 
@@ -321,8 +324,10 @@ SYNOPSIS
 -------------------------------------------------------------------------------
                                  ECONOMY
 -------------------------------------------------------------------------------
+       Each player has their own scrap balance (not shared!)
        Scrap drops from killed enemies.
-       Bots collect scrap and deposit at core.
+       Your bots deposit scrap to YOUR balance.
+       Use self.drop(n) to share scrap with teammates.
        Each scrap piece = 10 scrap currency.
 
        COSTS

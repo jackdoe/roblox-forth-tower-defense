@@ -162,7 +162,7 @@ function PlayerManager.updateScrap(interp, player, ScrapManager, WaveManager)
 	local distToCore = math.sqrt((px - coreX)^2 + (pz - coreZ)^2)
 	if distToCore <= 10 and (interp.scrapInventory or 0) > 0 then
 		local pieceValue = Config.SCRAP_PIECE_VALUE or 10
-		WaveManager.addScrap(interp.scrapInventory * pieceValue)
+		WaveManager.addScrap(player.UserId, interp.scrapInventory * pieceValue)
 		interp.scrapInventory = 0
 	end
 end
@@ -184,7 +184,7 @@ function PlayerManager.buildGameState(userId, interp)
 	state.allPlayers = allPlayers
 	state.myPlayerId = interp.playerId
 
-	state.scrap = deps.WaveManager.getScrap()
+	state.scrap = deps.WaveManager.getScrap(userId)
 	state.ammoInventory = interp.ammoInventory
 	state.scrapInventory = interp.scrapInventory or 0
 	state.maxCapacity = interp.maxCapacity or 50

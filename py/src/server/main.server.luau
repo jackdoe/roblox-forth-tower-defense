@@ -21,7 +21,6 @@ local GundamStats = require(script.Parent.GundamStats)
 local BotStats = require(script.Parent.BotStats)
 
 local MAX_PROGRAM_LENGTH = 5000
-local MAX_BOT_INSTRUCTIONS = 30
 
 local DEFAULT_PROGRAM = [[
 while True:
@@ -140,40 +139,25 @@ RemoteEvents.runProgram.OnServerEvent:Connect(function(player, source, pid)
 		interp.character = player.Character
 	end
 
-	if interp.paused and interp.source == source then
-		interp.paused = false
-		if interp.runtime then
-			interp.runtime:resume()
+	if data.entity then
+		data.entity.waitingForTask = false
+		data.entity.currentTask = nil
+		data.entity.taskQueue = {}
+	end
+
+	interp.paused = false
+	local loadSuccess, _, instructionCount = interp:load(source)
+	if loadSuccess then
+		instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
+		local maxInstructions = interp.maxBytecode or 128
+		if instructionCount > maxInstructions then
+			interp.error = { message = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxInstructions .. " instructions)", line = nil }
+			interp.status = "ERROR"
+			Interpreters.sendFullSync(player)
+			return
 		end
-	else
-		if data.entity then
-			data.entity.waitingForTask = false
-			data.entity.currentTask = nil
-			data.entity.taskQueue = {}
-		end
-		local loadSuccess, _, instructionCount = interp:load(source)
-		if loadSuccess then
-			instructionCount = instructionCount or (interp.runtime and interp.runtime.instructionCount) or 0
-			if data.type == "bot" then
-				if instructionCount > MAX_BOT_INSTRUCTIONS then
-					interp.error = { message = "PROGRAM TOO COMPLEX (" .. instructionCount .. "/" .. MAX_BOT_INSTRUCTIONS .. " instructions)", line = nil }
-					interp.status = "ERROR"
-					Interpreters.sendFullSync(player)
-					return
-				end
-			elseif data.type == "gundam" and data.entity then
-				local maxBytecode = interp.maxBytecode or 128
-				if instructionCount > maxBytecode then
-					interp.error = { message = "NOT ENOUGH RAM (" .. instructionCount .. "/" .. maxBytecode .. " instructions)", line = nil }
-					interp.status = "ERROR"
-					Interpreters.sendFullSync(player)
-					return
-				end
-			end
-			interp.lastProgram = source
-			Interpreters.incrementGen(pid)
-		end
-		interp.paused = false
+		interp.lastProgram = source
+		Interpreters.incrementGen(pid)
 	end
 
 	Interpreters.sendFullSync(player)
@@ -289,19 +273,19 @@ RemoteEvents.gundamPlaceAt.OnServerEvent:Connect(function(player, x, z)
 	end
 
 	local cost = math.floor(GundamStats.GUNDAM_BASE_COST * (GundamStats.GUNDAM_COST_MULTIPLIER ^ count))
-	local scrap = WaveManager.getScrap()
+	local scrap = WaveManager.getScrap(player.UserId)
 	if scrap < cost then
 		RemoteEvents.gundamPlaceAt:FireClient(player, false, "Not enough scrap")
 		return
 	end
 
-	WaveManager.removeScrap(cost)
+	WaveManager.removeScrap(player.UserId, cost)
 	local pid = Interpreters.create("gundam", player.UserId, x, z)
 	if pid then
 		RemoteEvents.gundamPlaceAt:FireClient(player, true, {pid = pid})
 		Interpreters.sendFullSync(player)
 	else
-		WaveManager.addScrap(cost)
+		WaveManager.addScrap(player.UserId, cost)
 		RemoteEvents.gundamPlaceAt:FireClient(player, false, "Failed to create gundam")
 	end
 end)
@@ -314,7 +298,7 @@ RemoteEvents.gundamSell.OnServerEvent:Connect(function(player, pid)
 	local refund = math.floor(baseCost * 0.5)
 
 	Interpreters.destroy(pid)
-	WaveManager.addScrap(refund)
+	WaveManager.addScrap(player.UserId, refund)
 	Interpreters.sendFullSync(player)
 end)
 
@@ -348,19 +332,19 @@ RemoteEvents.botBuild.OnServerEvent:Connect(function(player, x, z)
 	end
 
 	local cost = math.floor(BotStats.BOT_BASE_COST * (BotStats.BOT_COST_MULTIPLIER ^ count))
-	local scrap = WaveManager.getScrap()
+	local scrap = WaveManager.getScrap(player.UserId)
 	if scrap < cost then
 		RemoteEvents.botBuild:FireClient(player, false, "Not enough scrap")
 		return
 	end
 
-	WaveManager.removeScrap(cost)
+	WaveManager.removeScrap(player.UserId, cost)
 	local pid = Interpreters.create("bot", player.UserId, x, z)
 	if pid then
 		RemoteEvents.botBuild:FireClient(player, true, {pid = pid})
 		Interpreters.sendFullSync(player)
 	else
-		WaveManager.addScrap(cost)
+		WaveManager.addScrap(player.UserId, cost)
 		RemoteEvents.botBuild:FireClient(player, false, "Failed to create bot")
 	end
 end)
@@ -372,7 +356,7 @@ RemoteEvents.botSell.OnServerEvent:Connect(function(player, pid)
 	local refund = math.floor(BotStats.BASE.cost * 0.5)
 
 	Interpreters.destroy(pid)
-	WaveManager.addScrap(refund)
+	WaveManager.addScrap(player.UserId, refund)
 	Interpreters.sendFullSync(player)
 end)
 

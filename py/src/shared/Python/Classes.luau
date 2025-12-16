@@ -387,6 +387,7 @@ Classes.Bot = {
 		deposit = method({}, T.BOOL, function(deps, bot)
 			if (bot.scrapInventory or 0) <= 0 then return false end
 			if not bot.character then return false end
+			if not bot.ownerId then return false end
 
 			local hrp = bot.character:FindFirstChild("HumanoidRootPart")
 			if not hrp then return false end
@@ -402,7 +403,7 @@ Classes.Bot = {
 			local Config = require(ReplicatedStorage:WaitForChild("PythonTD").Config)
 			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
 
-			WaveManager.addScrap(bot.scrapInventory * pieceValue)
+			WaveManager.addScrap(bot.ownerId, bot.scrapInventory * pieceValue)
 			bot.scrapInventory = 0
 			return true
 		end),
@@ -590,6 +591,34 @@ Classes.Player = {
 				end
 			end
 			return nil
+		end),
+
+		drop = method({ T.NUMBER }, T.BOOL, function(deps, player, amount)
+			amount = math.floor(amount or 1)
+			if amount < 1 then return false end
+
+			local interp = player.interpreter
+			if not interp then return false end
+
+			local hrp = player.character and player.character:FindFirstChild("HumanoidRootPart")
+			if not hrp then return false end
+
+			local ScrapManager = deps.ScrapManager
+			local WaveManager = deps.WaveManager
+			if not ScrapManager or not WaveManager then return false end
+
+			local ReplicatedStorage = game:GetService("ReplicatedStorage")
+			local Config = require(ReplicatedStorage:WaitForChild("PythonTD").Config)
+			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
+
+			local playerId = interp.playerId or 0
+			local scrapNeeded = amount * pieceValue
+			local currentScrap = WaveManager.getScrap(playerId)
+			if currentScrap < scrapNeeded then return false end
+
+			WaveManager.removeScrap(playerId, scrapNeeded)
+			ScrapManager.spawn(hrp.Position, scrapNeeded)
+			return true
 		end),
 	},
 }

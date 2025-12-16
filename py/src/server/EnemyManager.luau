@@ -761,7 +761,14 @@ function EnemyManager.kill(enemyId, killerGundamId)
 	end
 
 	if WaveManager then
-		WaveManager.onEnemyKilled()
+		local killerOwnerId = nil
+		if killerGundamId and deps.Interpreters then
+			local data = deps.Interpreters.get(killerGundamId)
+			if data then
+				killerOwnerId = data.ownerId
+			end
+		end
+		WaveManager.onEnemyKilled(killerOwnerId)
 	end
 
 	removeEnemyFromGrid(enemy)

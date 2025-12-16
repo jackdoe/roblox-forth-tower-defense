@@ -14,11 +14,11 @@ function VM.new()
 	local self = setmetatable({}, VM)
 
 	-- Execution state
-	self.code = {}           -- Bytecode instructions
-	self.ip = 1              -- Instruction pointer
-	self.stack = {}          -- Operand stack
-	self.vars = {}           -- Global variables
-	self.varNames = {}       -- Track all variable names (for UI)
+	self.code = {}  -- Bytecode instructions
+	self.ip = 1     -- Instruction pointer
+	self.stack = {} -- Operand stack
+	self.vars = {}  -- Global variables
+	self.varNames = {} -- Track all variable names (for UI)
 
 	-- Call stack for functions
 	self.callStack = {}
@@ -174,20 +174,20 @@ function VM:step()
 	end
 
 	if self.paused then
-		return true  -- Still "running" but paused
+		return true -- Still "running" but paused
 	end
 
 	-- Check wait state
 	if self.waitUntil > 0 then
 		if os.clock() < self.waitUntil then
-			return true  -- Still waiting
+			return true -- Still waiting
 		end
 		self.waitUntil = 0
 	end
 
 	-- Check blocked state (callback-based)
 	if self.blocked then
-		return true  -- Waiting for unblock() call
+		return true -- Waiting for unblock() call
 	end
 
 	-- Check bounds
@@ -234,7 +234,6 @@ function VM:executeInstruction(op, arg)
 			self:push(arg)
 		end
 		self.ip = self.ip + 1
-
 	elseif op == Op.LOAD_VAR then
 		local value = self:getVar(arg)
 		if value == NOT_FOUND then
@@ -242,12 +241,10 @@ function VM:executeInstruction(op, arg)
 		end
 		self:push(value)
 		self.ip = self.ip + 1
-
 	elseif op == Op.STORE_VAR then
 		local value = self:pop()
 		self:setVar(arg, value)
 		self.ip = self.ip + 1
-
 	elseif op == Op.LOAD_ATTR then
 		local obj = self:pop()
 		if obj == nil then
@@ -258,7 +255,6 @@ function VM:executeInstruction(op, arg)
 			error("AttributeError: '" .. type(obj) .. "' has no attribute '" .. arg .. "'")
 		end
 		self.ip = self.ip + 1
-
 	elseif op == Op.STORE_ATTR then
 		local value = self:pop()
 		local obj = self:pop()
@@ -267,17 +263,16 @@ function VM:executeInstruction(op, arg)
 		end
 		self.ip = self.ip + 1
 
-	-- Stack operations
+		-- Stack operations
 	elseif op == Op.POP then
 		self:pop()
 		self.ip = self.ip + 1
-
 	elseif op == Op.DUP then
 		local value = self:peek()
 		self:push(value)
 		self.ip = self.ip + 1
 
-	-- Binary operations
+		-- Binary operations
 	elseif op == Op.BINARY_ADD then
 		local b = self:pop()
 		local a = self:pop()
@@ -287,107 +282,92 @@ function VM:executeInstruction(op, arg)
 			self:push((a or 0) + (b or 0))
 		end
 		self.ip = self.ip + 1
-
 	elseif op == Op.BINARY_SUB then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) - (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.BINARY_MUL then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) * (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.BINARY_DIV then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) / (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.BINARY_MOD then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) % (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.BINARY_POW then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) ^ (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.BINARY_FLOOR_DIV then
 		local b = self:pop()
 		local a = self:pop()
 		self:push(math.floor((a or 0) / (b or 0)))
 		self.ip = self.ip + 1
 
-	-- Comparison
+		-- Comparison
 	elseif op == Op.COMPARE_EQ then
 		local b = self:pop()
 		local a = self:pop()
 		self:push(a == b)
 		self.ip = self.ip + 1
-
 	elseif op == Op.COMPARE_NE then
 		local b = self:pop()
 		local a = self:pop()
 		self:push(a ~= b)
 		self.ip = self.ip + 1
-
 	elseif op == Op.COMPARE_LT then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) < (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.COMPARE_GT then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) > (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.COMPARE_LE then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) <= (b or 0))
 		self.ip = self.ip + 1
-
 	elseif op == Op.COMPARE_GE then
 		local b = self:pop()
 		local a = self:pop()
 		self:push((a or 0) >= (b or 0))
 		self.ip = self.ip + 1
 
-	-- Logical
+		-- Logical
 	elseif op == Op.BINARY_AND then
 		local b = self:pop()
 		local a = self:pop()
 		self:push(a and b)
 		self.ip = self.ip + 1
-
 	elseif op == Op.BINARY_OR then
 		local b = self:pop()
 		local a = self:pop()
 		self:push(a or b)
 		self.ip = self.ip + 1
-
 	elseif op == Op.UNARY_NOT then
 		local a = self:pop()
 		self:push(not a)
 		self.ip = self.ip + 1
-
 	elseif op == Op.UNARY_NEG then
 		local a = self:pop()
 		self:push(-(a or 0))
 		self.ip = self.ip + 1
 
-	-- Control flow
+		-- Control flow
 	elseif op == Op.JUMP then
 		self.ip = arg
-
 	elseif op == Op.JUMP_IF_FALSE then
 		local cond = self:pop()
 		if not cond then
@@ -395,7 +375,6 @@ function VM:executeInstruction(op, arg)
 		else
 			self.ip = self.ip + 1
 		end
-
 	elseif op == Op.JUMP_IF_TRUE then
 		local cond = self:pop()
 		if cond then
@@ -403,7 +382,6 @@ function VM:executeInstruction(op, arg)
 		else
 			self.ip = self.ip + 1
 		end
-
 	elseif op == Op.POP_JUMP_IF_FALSE then
 		local cond = self:pop()
 		if not cond then
@@ -411,7 +389,6 @@ function VM:executeInstruction(op, arg)
 		else
 			self.ip = self.ip + 1
 		end
-
 	elseif op == Op.POP_JUMP_IF_TRUE then
 		local cond = self:pop()
 		if cond then
@@ -419,7 +396,6 @@ function VM:executeInstruction(op, arg)
 		else
 			self.ip = self.ip + 1
 		end
-
 	elseif op == Op.CALL then
 		local nargs = arg
 		local args = {}
@@ -444,7 +420,6 @@ function VM:executeInstruction(op, arg)
 
 		self:push(result)
 		self.ip = self.ip + 1
-
 	elseif op == Op.RETURN then
 		local returnValue = self:pop()
 
@@ -460,7 +435,6 @@ function VM:executeInstruction(op, arg)
 			self.halted = true
 			self.running = false
 		end
-
 	elseif op == Op.MAKE_FUNCTION then
 		-- arg is the function object
 		self:push({
@@ -471,7 +445,7 @@ function VM:executeInstruction(op, arg)
 		})
 		self.ip = self.ip + 1
 
-	-- Data structures
+		-- Data structures
 	elseif op == Op.BUILD_LIST then
 		local n = arg
 		local list = {}
@@ -480,7 +454,6 @@ function VM:executeInstruction(op, arg)
 		end
 		self:push(list)
 		self.ip = self.ip + 1
-
 	elseif op == Op.GET_INDEX then
 		local index = self:pop()
 		local obj = self:pop()
@@ -494,7 +467,6 @@ function VM:executeInstruction(op, arg)
 			self:push(nil)
 		end
 		self.ip = self.ip + 1
-
 	elseif op == Op.SET_INDEX then
 		local index = self:pop()
 		local obj = self:pop()
@@ -505,7 +477,6 @@ function VM:executeInstruction(op, arg)
 			obj[index + 1] = value
 		end
 		self.ip = self.ip + 1
-
 	elseif op == Op.UNPACK_SEQUENCE then
 		local n = arg
 		local seq = self:pop()
@@ -518,7 +489,7 @@ function VM:executeInstruction(op, arg)
 		end
 		self.ip = self.ip + 1
 
-	-- Iteration
+		-- Iteration
 	elseif op == Op.GET_ITER then
 		local iterable = self:pop()
 		local iterator = {
@@ -527,7 +498,6 @@ function VM:executeInstruction(op, arg)
 		}
 		self:push(iterator)
 		self.ip = self.ip + 1
-
 	elseif op == Op.FOR_ITER then
 		local iterator = self:peek()
 
@@ -546,19 +516,16 @@ function VM:executeInstruction(op, arg)
 			self.ip = arg
 		end
 
-	-- Special
+		-- Special
 	elseif op == Op.NOP then
 		-- No operation, just advance
 		self.ip = self.ip + 1
-
 	elseif op == Op.YIELD then
 		self.shouldYield = true
 		self.ip = self.ip + 1
-
 	elseif op == Op.HALT then
 		self.halted = true
 		self.running = false
-
 	else
 		error("Unknown opcode: " .. tostring(op))
 	end
