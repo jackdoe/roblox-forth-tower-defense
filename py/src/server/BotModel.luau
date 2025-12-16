@@ -402,54 +402,6 @@ function BotModel.createExplosionEffect(bot, scrapAmount)
 	end)
 end
 
-function BotModel.createDeathEffect(character)
-	if not character or not character.PrimaryPart then return end
-	local pos = character.PrimaryPart.Position
-
-	local exp = Instance.new("Explosion")
-	exp.Position = pos
-	exp.BlastRadius = 0
-	exp.BlastPressure = 0
-	exp.Parent = workspace
-	game.Debris:AddItem(exp, 2)
-
-	local p = Instance.new("Part")
-	p.Size = Vector3.new(0.1, 0.1, 0.1)
-	p.Position = pos
-	p.Transparency = 1
-	p.Anchored = true
-	p.CanCollide = false
-	p.Parent = workspace
-
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 150, 50))
-	emitter.Size = NumberSequence.new(1, 0)
-	emitter.Lifetime = NumberRange.new(0.5, 1)
-	emitter.Speed = NumberRange.new(10, 20)
-	emitter.SpreadAngle = Vector2.new(360, 360)
-	emitter.Rate = 0
-	emitter.Parent = p
-	emitter:Emit(30)
-	game.Debris:AddItem(p, 2)
-end
-
-function BotModel.createMeltdownEffect(character)
-	if not character or not character.PrimaryPart then return end
-
-	local exp = Instance.new("ParticleEmitter")
-	exp.Texture = "rbxassetid://243098098"
-	exp.Color = ColorSequence.new(Color3.fromRGB(255, 50, 50))
-	exp.Size = NumberSequence.new(0.5, 0)
-	exp.Lifetime = NumberRange.new(0.5)
-	exp.Rate = 100
-	exp.Speed = NumberRange.new(5, 10)
-	exp.Parent = character.PrimaryPart
-
-	task.delay(0.2, function()
-		if exp then exp.Enabled = false end
-	end)
-end
-
 function BotModel.createTeleportEffect(bot, startPos, endPos)
 	if not bot.character then return end
 	local hrp = bot.character:FindFirstChild("HumanoidRootPart")

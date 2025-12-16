@@ -200,7 +200,11 @@ Classes.Gundam = {
 							local eDist = (eHrp.Position - enemyHrp.Position).Magnitude
 							if eDist <= ammoStats.splashRadius then
 								local falloff = 1 - (eDist / ammoStats.splashRadius) * 0.5
-								EnemyManager.damage(e.id, math.floor(finalDamage * falloff), gundam.id)
+								local dmg = math.floor(finalDamage * falloff)
+								if ammoType == 2 and EnemyManager.checkShatterCombo then
+									dmg = EnemyManager.checkShatterCombo(e.id, dmg)
+								end
+								EnemyManager.damage(e.id, dmg, gundam.id)
 							end
 						end
 					end
@@ -618,9 +622,9 @@ Classes.Player = {
 			return nil
 		end),
 
-		drop = method({ T.NUMBER }, T.BOOL, function(deps, player, amount)
-			amount = math.floor(amount or 1)
-			if amount < 1 then return false end
+		drop = method({ T.NUMBER }, T.BOOL, function(deps, player, pieces)
+			pieces = math.floor(pieces or 1)
+			if pieces < 1 then return false end
 
 			local interp = player.interpreter
 			if not interp then return false end
@@ -632,12 +636,18 @@ Classes.Player = {
 			local WaveManager = deps.WaveManager
 			if not ScrapManager or not WaveManager then return false end
 
-			local playerId = interp.playerId or 0
-			local currentScrap = WaveManager.getScrap(playerId)
-			if currentScrap < amount then return false end
+			local ReplicatedStorage = game:GetService("ReplicatedStorage")
+			local PythonTD = ReplicatedStorage:WaitForChild("PythonTD")
+			local Config = require(PythonTD.Config)
+			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
 
-			WaveManager.removeScrap(playerId, amount)
-			ScrapManager.spawn(hrp.Position, amount)
+			local playerId = interp.playerId or 0
+			local cost = pieces * pieceValue
+			local currentScrap = WaveManager.getScrap(playerId)
+			if currentScrap < cost then return false end
+
+			WaveManager.removeScrap(playerId, cost)
+			ScrapManager.spawn(hrp.Position, pieces)
 			return true
 		end),
 	},

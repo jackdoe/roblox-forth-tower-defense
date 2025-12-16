@@ -3,9 +3,7 @@ local ProjectileEffects = require(script.Parent.ProjectileEffects)
 
 local PlayerCombat = {}
 
--- Dependencies (set via init)
 local EnemyManager = nil
-local Config = nil
 local WaveManager = nil
 
 local AmmoStats = {
@@ -65,7 +63,6 @@ local playerCooldowns = {}
 
 function PlayerCombat.init(deps)
 	EnemyManager = deps.EnemyManager
-	Config = deps.Config
 	WaveManager = deps.WaveManager
 end
 
@@ -118,7 +115,6 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 	local damage = stats.damage * power
 
 	if stats.splashRadius and stats.splashRadius > 0 then
-		-- AOE damage (rocket)
 		local allEnemies = EnemyManager.getAll and EnemyManager.getAll() or {}
 		for _, e in pairs(allEnemies) do
 			if e.hp > 0 and e.character then
@@ -127,9 +123,12 @@ function PlayerCombat.fire(interp, enemy, ammoType)
 					local eDist = (eHrp.Position - enemyHrp.Position).Magnitude
 					if eDist <= stats.splashRadius then
 						local falloff = 1 - (eDist / stats.splashRadius) * 0.5
-						EnemyManager.damage(e.id, math.floor(damage * falloff))
-						-- Apply oiled status for rockets
-						if EnemyManager.applyOiled then
+						local dmg = math.floor(damage * falloff)
+						if ammoType == 2 and EnemyManager.checkShatterCombo then
+							dmg = EnemyManager.checkShatterCombo(e.id, dmg)
+						end
+						EnemyManager.damage(e.id, dmg)
+						if ammoType == 2 and EnemyManager.applyOiled then
 							EnemyManager.applyOiled(e.id, 5)
 						end
 					end

@@ -1,4 +1,3 @@
-local TweenService = game:GetService("TweenService")
 local GundamStats = require(script.Parent.GundamStats)
 local ProjectileEffects = require(script.Parent.ProjectileEffects)
 

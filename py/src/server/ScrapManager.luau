@@ -249,14 +249,6 @@ function ScrapManager.findInRange(x, z, range)
 	return results
 end
 
-function ScrapManager.getTotalScrapOnGround()
-	local count = 0
-	for _ in pairs(scrapPiles) do
-		count = count + 1
-	end
-	return count * PIECE_VALUE
-end
-
 function ScrapManager.findBestCluster(x, z, searchRange, pickupRange)
 	searchRange = searchRange or 200
 	pickupRange = pickupRange or 20

@@ -107,19 +107,6 @@ function SoundConfig.playSound(soundId, volume, parent)
 	return sound
 end
 
--- Create a looped sound (for approach/ambient)
-function SoundConfig.createLoopedSound(soundId, volume, parent)
-	if not soundId or soundId == "" then return nil end
-
-	local sound = Instance.new("Sound")
-	sound.SoundId = soundId
-	sound.Volume = volume or 0.5
-	sound.Looped = true
-	sound.Parent = parent or game:GetService("SoundService")
-
-	return sound
-end
-
 -- Play a sound at a specific 3D position with strict distance falloff
 -- Uses Attachments instead of Parts for better performance (no physics overhead)
 function SoundConfig.playSpatialSound(soundId, position, volume)

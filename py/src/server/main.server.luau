@@ -246,6 +246,16 @@ RemoteEvents.playerFire.OnServerEvent:Connect(function(player, ammoType)
 end)
 
 RemoteEvents.gundamPlaceAt.OnServerEvent:Connect(function(player, x, z)
+	local restricted, reason = PathMap.isRestrictedForGundam(x, z)
+	if restricted then
+		local msg = reason == "path" and "Cannot place on enemy path"
+			or reason == "core" and "Too close to core"
+			or reason == "gate" and "Too close to spawn gate"
+			or "Invalid placement location"
+		RemoteEvents.gundamPlaceAt:FireClient(player, false, msg)
+		return
+	end
+
 	local count = 0
 	local MIN_GUNDAM_DISTANCE = 10
 	for _, data in pairs(Interpreters.getByType("gundam")) do
