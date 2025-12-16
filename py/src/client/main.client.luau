@@ -224,6 +224,9 @@ stateUpdateEvent.OnClientEvent:Connect(function(state)
 		updateAllEconomy()
 		Overlays.updateGameState(state.phase, state.restartTimeRemaining)
 	end
+	if state.scrapInventory ~= nil then
+		hud.updateCargo(state.scrapInventory, state.maxCapacity or 5)
+	end
 end)
 
 gundamPlaceAtEvent.OnClientEvent:Connect(function(success, result)

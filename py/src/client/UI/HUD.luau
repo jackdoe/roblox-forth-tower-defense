@@ -69,6 +69,29 @@ function HUD.create(parent, callbacks)
 	scrapText.TextXAlignment = Enum.TextXAlignment.Left
 	scrapText.Parent = scrapDisplay
 
+	local cargoDisplay = Instance.new("Frame")
+	cargoDisplay.Name = "CargoDisplay"
+	cargoDisplay.Size = UDim2.new(0, 80, 0, 20)
+	cargoDisplay.Position = UDim2.new(0, 180, 0, 69)
+	cargoDisplay.BackgroundColor3 = COLORS.panel
+	cargoDisplay.Parent = parent
+
+	local cargoCorner = Instance.new("UICorner")
+	cargoCorner.CornerRadius = UDim.new(0, 6)
+	cargoCorner.Parent = cargoDisplay
+
+	local cargoText = Instance.new("TextLabel")
+	cargoText.Name = "CargoText"
+	cargoText.Size = UDim2.new(1, -8, 1, 0)
+	cargoText.Position = UDim2.new(0, 4, 0, 0)
+	cargoText.BackgroundTransparency = 1
+	cargoText.Text = "CARGO: 0/5"
+	cargoText.TextColor3 = Color3.fromRGB(255, 200, 50)
+	cargoText.Font = Enum.Font.GothamBold
+	cargoText.TextSize = 10
+	cargoText.TextXAlignment = Enum.TextXAlignment.Left
+	cargoText.Parent = cargoDisplay
+
 	local waveDisplay = Instance.new("Frame")
 	waveDisplay.Name = "WaveDisplay"
 	waveDisplay.Size = UDim2.new(0, 160, 0, 40)
@@ -181,6 +204,7 @@ function HUD.create(parent, callbacks)
 	end
 
 	function hud.updateCargo(amount, maxAmount)
+		cargoText.Text = "CARGO: " .. (amount or 0) .. "/" .. (maxAmount or 5)
 	end
 
 	function hud.triggerGlobalCooldown(duration)

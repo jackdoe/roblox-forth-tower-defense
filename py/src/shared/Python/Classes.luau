@@ -607,17 +607,12 @@ Classes.Player = {
 			local WaveManager = deps.WaveManager
 			if not ScrapManager or not WaveManager then return false end
 
-			local ReplicatedStorage = game:GetService("ReplicatedStorage")
-			local Config = require(ReplicatedStorage:WaitForChild("PythonTD").Config)
-			local pieceValue = Config.SCRAP_PIECE_VALUE or 10
-
 			local playerId = interp.playerId or 0
-			local scrapNeeded = amount * pieceValue
 			local currentScrap = WaveManager.getScrap(playerId)
-			if currentScrap < scrapNeeded then return false end
+			if currentScrap < amount then return false end
 
-			WaveManager.removeScrap(playerId, scrapNeeded)
-			ScrapManager.spawn(hrp.Position, scrapNeeded)
+			WaveManager.removeScrap(playerId, amount)
+			ScrapManager.spawn(hrp.Position, amount)
 			return true
 		end),
 	},
