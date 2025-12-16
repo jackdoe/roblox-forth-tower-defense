@@ -53,7 +53,7 @@ function Interpreter:load(source)
 	self.lastProgram = source
 	self.error = nil
 	self.output = {}
-	self.tickAccumulator = 0
+	self.tickAccumulator = 1
 
 	local success = self.runtime:compile(source, self.maxBytecode, self.selfType)
 

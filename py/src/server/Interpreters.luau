@@ -187,7 +187,7 @@ function Interpreters.createPlayer(ownerId, character, playerId)
 	interp.maxBytecode = BASE_RAM
 	interp.power = 1
 	interp.isPlayer = true
-	interp.playerId = playerId
+	interp.playerId = ownerId
 
 	local defaultProgram = [[
 while True:

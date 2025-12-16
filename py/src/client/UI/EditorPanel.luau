@@ -168,8 +168,8 @@ function EditorPanel.create(parent, selfType)
 	helpBar.Name = "HelpBar"
 	helpBar.Size = UDim2.new(1, 0, 0, HELP_BAR_HEIGHT)
 	helpBar.Position = UDim2.new(0, 0, 1, -HELP_BAR_HEIGHT)
-	helpBar.BackgroundColor3 = COLORS.panel
-	helpBar.BackgroundTransparency = 0.3
+	helpBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	helpBar.BackgroundTransparency = 0
 	helpBar.BorderSizePixel = 0
 	helpBar.ScrollBarThickness = 0
 	helpBar.ScrollingDirection = Enum.ScrollingDirection.X

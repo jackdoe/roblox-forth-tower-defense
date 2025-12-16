@@ -421,6 +421,7 @@ function MainIDE.create(parent, callbacks)
 	dbgBtn.TextColor3 = COLORS.text
 	dbgBtn.Font = Enum.Font.RobotoMono
 	dbgBtn.TextSize = 10
+	dbgBtn.Visible = false
 	dbgBtn.Parent = toolbar
 	Instance.new("UICorner", dbgBtn).CornerRadius = UDim.new(0, 4)
 
@@ -690,8 +691,9 @@ function MainIDE.create(parent, callbacks)
 				local prefix = (data.ip == i) and ">" or " "
 				local argStr = tostring(instr.arg or "")
 				if #argStr > 10 then argStr = argStr:sub(1, 8) .. ".." end
-				l.Text = string.format('%s<font color="#555">%02d</font> <font color="%s">%-12s</font> %s',
+				l.Text = string.format('%s<font color="#888">%02d</font> <font color="%s">%-12s</font> %s',
 					prefix, i, opColor, instr.op or "?", argStr)
+				l.TextColor3 = Color3.fromRGB(200, 200, 200)
 				l.Font = Enum.Font.RobotoMono
 				l.TextSize = scaledSize(9)
 				l.TextXAlignment = Enum.TextXAlignment.Left
@@ -731,10 +733,15 @@ function MainIDE.create(parent, callbacks)
 			end
 		end
 
-		if editing and data.compileError then
-			stdErrLabel.TextColor3 = COLORS.danger
-			stdErrLabel.Text = data.compileError.message or ""
-			editor:setErrorLine(data.compileError.line)
+		if editing then
+			if data.compileError then
+				stdErrLabel.TextColor3 = COLORS.danger
+				stdErrLabel.Text = data.compileError.message or ""
+				editor:setErrorLine(data.compileError.line)
+			else
+				stdErrLabel.Text = ""
+				editor:setErrorLine(-1)
+			end
 		elseif data.error and data.error.message and data.error.message ~= "" then
 			stdErrLabel.TextColor3 = COLORS.danger
 			stdErrLabel.Text = data.error.message
