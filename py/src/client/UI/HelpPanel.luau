@@ -21,16 +21,17 @@ SYNOPSIS
                                  AMMO TYPES
 -------------------------------------------------------------------------------
        Gundams use ammo from their magazine. Players spend scrap per shot.
-       Player ROCKET applies OILED debuff (sets up SHOCK combo!)
 
-       GUNDAM WEAPONS                              PLAYER WEAPONS
-       Name      Dmg  Ammo  Rate  Notes            Name      Dmg  Scrap  Rate
-       --------- ---  ----  ----  -----            --------- ---  -----  ----
-       BULLET     15    1   0.2s  Fast             BULLET     15     2   0.3s
-       ROCKET     80    4   1.0s  Splash r=12      ROCKET     40     8   1.0s  Oils!
-       LASER      40    2   0.1s  Burns            LASER      25     4   0.5s
-       ICE        20    2   0.4s  Freezes 60%      ICE        10     4   0.4s  Freezes!
-       GRENADE    60    5   1.5s  Splash r=12      GRENADE    60    10   1.5s
+       GUNDAM WEAPONS                        PLAYER WEAPONS
+       Name      Dmg  Ammo  Rate  Notes       Name      Dmg  Scrap  Rate
+       --------- ---  ----  ----  ------      --------- ---  -----  ----
+       BULLET     15    1   0.2s  Fast        BULLET     15     2   0.3s
+       ROCKET     80    4   1.0s  Splash      ROCKET     40     8   1.0s
+       LASER      40    2   0.1s  Burns       LASER      25     4   0.5s
+       ICE        20    2   0.4s  60% slow    ICE        10     4   0.4s
+       GRENADE    60    5   1.5s  Splash      GRENADE    60    10   1.5s
+
+       Player ROCKET applies OILED. Both ICE weapons freeze (60% slow).
 
 -------------------------------------------------------------------------------
                                   DEBUFFS
@@ -125,8 +126,9 @@ SYNOPSIS
            Deposits carried scrap at core. Must be within 15 units.
 
        self.shock(enemy)            True/False
-           Zaps an enemy for 30 damage. Range 10. Triggers combos!
+           Teleports to enemy and zaps for 30 base damage. Triggers combos!
            Damage scales with cargo: 30 × 1.5^cargo (exponential!)
+           CONSUMES ALL CARGO after shocking!
            5 cargo = 228 dmg, 10 cargo = 1732 dmg!
 
        self.teleport([x, z])        True/False
@@ -310,6 +312,7 @@ SYNOPSIS
        Higher Hz = your program runs faster AND you fire faster!
        Fire rate scales with CPU: actualRate = baseRate / cpuHz
        At 5 Hz with BULLET (0.2s): fires every 0.04s instead of 0.2s!
+       Bot movement speed also scales: baseSpeed + (cpuHz - 1) × 4
 
        fire() is BLOCKING - your program waits for the cooldown.
 
@@ -348,6 +351,7 @@ SYNOPSIS
        - SHOCK oiled enemies for 2x damage + explosion
        - SHOCK burning enemies for 1.5x + chain lightning
        - Stack debuffs before SHOCK for multiplicative damage!
+       - SHOCK teleports bot to target, then consumes all cargo
        - Bots can teleport([0,0]) to instantly return to core
        - Higher gundam range = less damage (40 / range multiplier)
        - Check enemy.is_boss to prioritize threats
@@ -365,6 +369,7 @@ function HelpPanel.create(parent, onClose)
     overlay.BackgroundColor3 = Color3.new(0, 0, 0)
     overlay.BackgroundTransparency = 0.4
     overlay.BorderSizePixel = 0
+    overlay.ZIndex = 100
     overlay.Visible = false
     overlay.Parent = parent
 
@@ -375,6 +380,7 @@ function HelpPanel.create(parent, onClose)
     frame.AnchorPoint = Vector2.new(0.5, 0.5)
     frame.BackgroundColor3 = BG_COLOR
     frame.BorderSizePixel = 0
+    frame.ZIndex = 101
     frame.Parent = overlay
 
     local border = Instance.new("UIStroke")
@@ -396,6 +402,7 @@ function HelpPanel.create(parent, onClose)
     scroll.ScrollBarImageColor3 = AMBER_DIM
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.ZIndex = 102
     scroll.Parent = frame
 
     local content = Instance.new("TextLabel")
@@ -410,6 +417,7 @@ function HelpPanel.create(parent, onClose)
     content.TextYAlignment = Enum.TextYAlignment.Top
     content.AutomaticSize = Enum.AutomaticSize.Y
     content.TextWrapped = false
+    content.ZIndex = 103
     content.Parent = scroll
 
     local closeBtn = Instance.new("TextButton")
@@ -421,6 +429,7 @@ function HelpPanel.create(parent, onClose)
     closeBtn.TextColor3 = BG_COLOR
     closeBtn.Font = Enum.Font.Code
     closeBtn.TextSize = 14
+    closeBtn.ZIndex = 102
     closeBtn.Parent = frame
 
     local closeCorner = Instance.new("UICorner")
