@@ -19,6 +19,7 @@ local GridNavigator = require(script.Parent.GridNavigator)
 local ClientState = require(script.Parent.ClientState)
 local PlacementSystem = require(script.Parent.PlacementSystem)
 local Overlays = require(script.Parent.Overlays)
+local HelpPanel = require(script.Parent.UI.HelpPanel)
 
 local selectionRing = nil
 local selectionRingTarget = nil
@@ -127,7 +128,9 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
-local ide, hud
+local ide, hud, helpPanel
+
+helpPanel = HelpPanel.create(screenGui)
 
 ide = MainIDE.create(screenGui, {
 	onRun = function(pid)
@@ -184,6 +187,9 @@ ide = MainIDE.create(screenGui, {
 	end,
 	onBuyPower = function(pid)
 		buyPowerEvent:FireServer(pid)
+	end,
+	onHelp = function()
+		helpPanel.toggle()
 	end,
 })
 
@@ -439,7 +445,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			PlacementSystem.enterBotMode(Overlays.showNotification)
 		end
 	elseif input.KeyCode == Enum.KeyCode.Escape then
-		if ClientState.gundamPlacementMode then
+		if helpPanel.isVisible() then
+			helpPanel.hide()
+		elseif ClientState.gundamPlacementMode then
 			PlacementSystem.exitGundamMode()
 		elseif ClientState.botPlacementMode then
 			PlacementSystem.exitBotMode()

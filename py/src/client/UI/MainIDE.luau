@@ -115,6 +115,17 @@ function MainIDE.create(parent, callbacks)
 	gundamBuildBtn.Parent = topBar
 	Instance.new("UICorner", gundamBuildBtn).CornerRadius = UDim.new(0, 4)
 
+	local helpBtn = Instance.new("TextButton")
+	helpBtn.Name = "HelpBtn"
+	helpBtn.Size = UDim2.new(0, 50, 0, 20)
+	helpBtn.BackgroundColor3 = Color3.fromRGB(255, 191, 0)
+	helpBtn.Text = "HELP"
+	helpBtn.TextColor3 = Color3.fromRGB(12, 12, 8)
+	helpBtn.Font = Enum.Font.RobotoMono
+	helpBtn.TextSize = 10
+	helpBtn.Parent = topBar
+	Instance.new("UICorner", helpBtn).CornerRadius = UDim.new(0, 4)
+
 	local hideBtn = Instance.new("TextButton")
 	hideBtn.Name = "HideBtn"
 	hideBtn.Size = UDim2.new(0, 50, 0, 20)
@@ -974,6 +985,10 @@ function MainIDE.create(parent, callbacks)
 
 	gundamBuildBtn.MouseButton1Click:Connect(function()
 		if callbacks.onBuildGundam then callbacks.onBuildGundam() end
+	end)
+
+	helpBtn.MouseButton1Click:Connect(function()
+		if callbacks.onHelp then callbacks.onHelp() end
 	end)
 
 	powerBtn.MouseButton1Click:Connect(function()
