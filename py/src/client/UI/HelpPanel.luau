@@ -191,6 +191,9 @@ SYNOPSIS
        self.max_ammo                number
            Maximum ammo capacity (300).
 
+       self.hacker                  Player
+           Access your owner's player. Use self.hacker.target() etc.
+
        self.reload(amount)          number
            Reloads ammo from scrap. Returns amount reloaded.
 
@@ -201,7 +204,7 @@ SYNOPSIS
                               PLAYER ABILITIES
 -------------------------------------------------------------------------------
        self.fire(AMMO)              True/False  [BLOCKING]
-           Fire at target. Costs scrap. Waits for cooldown (scales with CPU).
+           Fire at target. FREE! Waits for cooldown (scales with CPU).
 
        self.scan()                  [Enemy]
            Returns enemies within range 50.
@@ -214,6 +217,9 @@ SYNOPSIS
 
        self.max_capacity            number
            Maximum scrap player can carry (10).
+
+       self.hacker                  Player
+           Returns yourself. Try self.hacker.hacker.hacker.target()!
 
        self.collect()               True/False
            Picks up scrap within range 8.

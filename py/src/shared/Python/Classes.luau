@@ -90,6 +90,22 @@ Classes.Gundam = {
 			return gundam.interpreter and gundam.interpreter.maxAmmo or 300
 		end),
 
+		hacker = prop(T.PLAYER, function(deps, gundam)
+			local Interpreters = deps.Interpreters
+			if not Interpreters or not gundam.ownerId then return nil end
+			for _, data in pairs(Interpreters.getByType("player")) do
+				if data.ownerId == gundam.ownerId then
+					return Classes.buildProxy("Player", {
+						id = "player",
+						playerId = data.ownerId,
+						character = data.interpreter.character,
+						interpreter = data.interpreter,
+					}, deps)
+				end
+			end
+			return nil
+		end),
+
 		reload = method({ T.NUMBER }, T.NUMBER, function(deps, gundam, amount)
 			local interp = gundam.interpreter
 			if not interp then return 0 end
