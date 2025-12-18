@@ -1018,12 +1018,12 @@ function MainIDE.create(parent, callbacks)
 
 	function ide:getText() return editor:getText() end
 
-	runBtn.MouseButton1Click:Connect(function()
-		if not currentTabId then return end
+	function ide:triggerRun()
+		if not currentTabId then return false end
 		local data = interpreters[currentTabId]
-		if not data then return end
+		if not data then return false end
 
-		if isEditing(data) and not data.compileOk then return end
+		if isEditing(data) and not data.compileOk then return false end
 
 		data.originalSource = data.localSource
 		data.compileOk = true
@@ -1033,6 +1033,11 @@ function MainIDE.create(parent, callbacks)
 		editor:setErrorLine(-1)
 
 		if callbacks.onRun then callbacks.onRun(currentTabId) end
+		return true
+	end
+
+	runBtn.MouseButton1Click:Connect(function()
+		ide:triggerRun()
 	end)
 
 	gdbBtn.MouseButton1Click:Connect(function()
